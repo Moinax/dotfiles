@@ -29,8 +29,20 @@ eval "$(starship init zsh)"
 # Initialize zoxyde
 eval "$(zoxide init zsh)"
 
+# Add zsh auto suggestions
+source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#696969"
+
+# Add zsh syntax highlighting
+source /home/moinax/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
 # Show neofetch at startup
-neofetch
+# neofetch
+
+# Replace cd by zoxide
+alias cd="z"
+# Replace ls by eza
+alias ls="eza"
 
 # Volta
 export VOLTA_HOME="$HOME/.volta"
