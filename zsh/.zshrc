@@ -30,19 +30,26 @@ eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
 
 # Add zsh auto suggestions
-source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#696969"
 
 # Add zsh syntax highlighting
-source /home/moinax/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 # Show neofetch at startup
-# neofetch
+neofetch
+
+# Editor
+export EDITOR="nvim"
 
 # Replace cd by zoxide
 alias cd="z"
 # Replace ls by eza
 alias ls="eza"
+# Add shortcuts to nvim
+alias vim="nvim"
+alias vi="nvim"
+alias v="nvim"
 
 # Volta
 export VOLTA_HOME="$HOME/.volta"
@@ -68,3 +75,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Store the ssh key for further use in git
 eval "$(keychain --eval id_ed25519)"
+
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ -n "$cwd" ] && [ "$cwd" != "$PWD" ] && builtin cd -- "$cwd"
+	rm -f -- "$tmp"
+}
+
+# Add different rofi scripts in the path @see https://github.com/adi1090x/rofi
+export PATH=$HOME/.config/rofi/scripts:$PATH
