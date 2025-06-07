@@ -46,6 +46,7 @@ export EDITOR="nvim"
 alias cd="z"
 # Replace ls by eza
 alias ls="eza"
+alias lsa="ls -la"
 # Add shortcuts to nvim
 alias vim="nvim"
 alias vi="nvim"
