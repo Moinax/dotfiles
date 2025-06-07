@@ -36,8 +36,8 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#696969"
 # Add zsh syntax highlighting
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
-# Show neofetch at startup
-neofetch
+# Show fastfetch at startup
+fastfetch
 
 # Editor
 export EDITOR="nvim"
