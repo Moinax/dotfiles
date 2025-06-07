@@ -1,32 +1,19 @@
-# dotfiles
-My dotfiles handled with GNU stow
+# My dotfiles
 
-# setup
+Dotfiles made for my ArchLinux Gnome/Hyprland distro.
 
-The current `setup.sh` is a shell script that I made for my Ubuntu on WSL 2.0
+I currently use Stow GNU library to handle them.
 
-# arch ml4w
+# Setup
 
-If you installed the ArchLinux with the ml4w dotfiles, you should not clone this in your `dotfiles` but in a custom folder of your choice, then you can stow whatever you want to override from the ml4w dotfiles.
+I made a `setup.sh` file to be able to reproduce the all thing on a fresh installation.
 
-In my case, I only stow `tmux` and `nvim`
+1. It will install `yay` and install all packages listed in the `packages.json` file.
+2. It will install extra packages like `volta` and plugins for `tmux`.
+3. It will setup all my dotfiles with `Stow`
 
-```
-cd ~/my_custom_dotfiles
-stow tmux nvim
-```
+# Credits
 
-## packages to install
-
-Here is the list of packages I'm using on a day to day basis
-
-* Cursor AI
-* Discord
-* Slack
-* NWG Displays (display settings GUI)
-* Nvidia (official display drivers)
-* Chrome (official Google Chrome)
-  
-```
-yay -S cursor-bin discord slack-desktop nwg-displays nvidia google-chrome
-```
+I initially started my hyprland config with that awesome [ml4w](https://www.ml4w.com/) starter kit.
+After learning a lot from it, I decided to make it my own and remove any dependencies from it, but
+I would definitely recommend it to anyone new to the ArchLinux Hyprland ecosystem.
