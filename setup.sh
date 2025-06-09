@@ -106,4 +106,69 @@ if [ -d "$HOME/dotfiles" ]; then
     stow git hypr kitty nvim pnpm starship tmux wallpapers waybar zsh
 fi
 
+# Setup SSH key
+echo "Setting up SSH key..."
+SSH_DIR="$HOME/.ssh"
+SSH_KEY="$SSH_DIR/id_ed25519"
+
+if [ ! -f "$SSH_KEY" ]; then
+    echo "No SSH key found. Generating new ED25519 key..."
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    
+    # Prompt for passphrase
+    echo "Please enter a passphrase for your SSH key (or press Enter for no passphrase):"
+    read -s PASSPHRASE
+    echo "Please confirm your passphrase:"
+    read -s PASSPHRASE_CONFIRM
+    
+    if [ "$PASSPHRASE" != "$PASSPHRASE_CONFIRM" ]; then
+        echo "Passphrases do not match. Please try again."
+        exit 1
+    fi
+    
+    # Generate SSH key with passphrase
+    ssh-keygen -t ed25519 -f "$SSH_KEY" -N "$PASSPHRASE" || {
+        echo "Failed to generate SSH key"
+        exit 1
+    }
+    chmod 600 "$SSH_KEY"
+    echo "SSH key generated successfully."
+    echo "Public key:"
+    cat "$SSH_KEY.pub"
+    echo "Please add this public key to your GitHub/GitLab account."
+else
+    echo "SSH key already exists."
+fi
+
+# Setup keychain
+echo "Setting up keychain..."
+if command -v keychain &> /dev/null; then
+    keychain --eval --agents ssh "$SSH_KEY" || {
+        echo "Failed to setup keychain"
+        exit 1
+    }
+    echo "Keychain setup complete."
+else
+    echo "Keychain not found. Skipping keychain setup."
+fi
+
+# Change default shell to zsh
+echo "Changing default shell to zsh..."
+ZSH_PATH=$(which zsh)
+if [ -z "$ZSH_PATH" ]; then
+    echo "Error: zsh not found"
+    exit 1
+fi
+
+if [ "$SHELL" != "$ZSH_PATH" ]; then
+    chsh -s "$ZSH_PATH" || {
+        echo "Failed to change shell to zsh"
+        exit 1
+    }
+    echo "Default shell changed to zsh. Please log out and log back in for the changes to take effect."
+else
+    echo "zsh is already the default shell."
+fi
+
 echo "Setup completed successfully!"
