@@ -16,7 +16,12 @@ sudo pacman -Syu --noconfirm
 # Check if yay is installed
 if ! command -v yay &> /dev/null; then
     echo "Installing yay..."
-    sudo pacman -S --noconfirm yay-git
+    sudo pacman -S --needed git base-devel
+    git clone https://aur.archlinux.org/yay.git
+    cd yay
+    makepkg -si
+    cd -
+    rm -rf yay
 fi
 
 # Read packages from JSON file
