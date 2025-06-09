@@ -23,11 +23,6 @@ autoload -Uz compinit
 compinit
 # End of lines added by compinstall
 
-# Initialiaze starhsip
-eval "$(starship init zsh)"
-
-# Initialize zoxide
-eval "$(zoxide init zsh)"
 
 # Add zsh auto suggestions
 source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
@@ -87,3 +82,9 @@ function y() {
 
 # Add different rofi scripts in the path @see https://github.com/adi1090x/rofi
 export PATH=$HOME/.config/rofi/scripts:$PATH
+
+# Initialiaze starhsip
+eval "$(starship init zsh)"
+
+# Initialize zoxide
+eval "$(zoxide init zsh)"
