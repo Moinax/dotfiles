@@ -26,7 +26,7 @@ compinit
 # Initialiaze starhsip
 eval "$(starship init zsh)"
 
-# Initialize zoxyde
+# Initialize zoxide
 eval "$(zoxide init zsh)"
 
 # Add zsh auto suggestions
