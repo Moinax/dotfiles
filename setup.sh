@@ -44,6 +44,18 @@ if ! command -v git &> /dev/null; then
     yay -S --noconfirm git
 fi
 
+# Install zoxide
+echo "Installing zoxide..."
+if ! command -v zoxide &> /dev/null; then
+    curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh || {
+        echo "Failed to install zoxide"
+        exit 1
+    }
+    echo "zoxide installation complete."
+else
+    echo "zoxide is already installed."
+fi
+
 # Install Volta
 if ! command -v volta &> /dev/null; then
     echo "Installing Volta..."
