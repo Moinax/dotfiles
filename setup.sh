@@ -156,7 +156,7 @@ fi
 # Setup keychain
 echo "Setting up keychain..."
 if command -v keychain &> /dev/null; then
-    keychain --eval --agents ssh "$SSH_KEY" || {
+    keychain --eval ssh "$SSH_KEY" || {
         echo "Failed to setup keychain"
         exit 1
     }
