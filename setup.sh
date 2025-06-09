@@ -103,7 +103,7 @@ sudo systemctl enable --now NetworkManager
 if [ -d "$HOME/dotfiles" ]; then
     echo "Installing dotfiles..."
     cd "$HOME/dotfiles"
-    stow .
+    stow git hypr kitty nvim pnpm starship tmux wallpapers waybar zsh
 fi
 
 echo "Setup completed successfully!"
