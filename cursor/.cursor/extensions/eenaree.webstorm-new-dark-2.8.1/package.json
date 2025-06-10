@@ -1,0 +1,75 @@
+{
+	"name": "webstorm-new-dark",
+	"displayName": "WebStorm New UI Theme",
+	"version": "2.8.1",
+	"publisher": "eenaree",
+	"description": "A theme that looks similar to WebStorm New UI",
+	"icon": "./images/icon.png",
+	"galleryBanner": {
+		"color": "#1e1f22",
+		"theme": "dark"
+	},
+	"engines": {
+		"vscode": "^1.81.0"
+	},
+	"categories": [
+		"Themes"
+	],
+	"keywords": [
+		"theme",
+		"dark theme",
+		"light theme",
+		"jetbrains",
+		"intellij",
+		"new dark",
+		"new light",
+		"webstorm"
+	],
+	"contributes": {
+		"themes": [
+			{
+				"label": "Webstorm New Dark",
+				"uiTheme": "vs-dark",
+				"path": "./themes/new_dark.json"
+			},
+			{
+				"label": "Webstorm New Darcula",
+				"uiTheme": "vs-dark",
+				"path": "./themes/new_darcula.json"
+			},
+			{
+				"label": "Webstorm New Light",
+				"uiTheme": "vs",
+				"path": "./themes/new_light.json"
+			},
+			{
+				"label": "Webstorm New Light with Dark Header",
+				"uiTheme": "vs",
+				"path": "./themes/new_light_with_darkHeader.json"
+			}
+		]
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/eenaree/webstorm-new-ui-theme/issues",
+		"email": "narilee91@gmail.com"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/eenaree/webstorm-new-ui-theme.git"
+	},
+	"__metadata": {
+		"id": "5274c722-6166-4b27-bc86-65f2f832d8de",
+		"publisherId": "d8f2607b-7124-4210-9064-5f219a37fa4b",
+		"publisherDisplayName": "eenaree",
+		"targetPlatform": "undefined",
+		"isApplicationScoped": false,
+		"isPreReleaseVersion": false,
+		"hasPreReleaseVersion": false,
+		"installedTimestamp": 1749518841960,
+		"pinned": false,
+		"preRelease": false,
+		"source": "gallery",
+		"size": 954429
+	}
+}
