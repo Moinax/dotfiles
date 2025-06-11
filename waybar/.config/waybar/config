@@ -1,5 +1,5 @@
 [{
-    "output": "DP-4",
+    "output": "DP-3",
     // "layer": "top", // Waybar at top layer
     
     // "position": "bottom", // Waybar position (top|bottom|left|right)
@@ -35,7 +35,7 @@
     ]
   },
   {
-    "output": "!DP-4",
+    "output": "!DP-3",
     // "height": 20, // Waybar height (to be removed for auto height)
     "include": ["~/.config/waybar/modules.jsonc"],
     "modules-left": [
