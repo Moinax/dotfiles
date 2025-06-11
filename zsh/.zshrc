@@ -19,6 +19,10 @@ zstyle ':completion:*' completer _complete _ignored
 zstyle ':completion:*:default' menu select=0
 zstyle :compinstall filename "$HOME/.zshrc"
 
+# Load Git completion
+zstyle ':completion:*:*:git:*' script ~/.zsh/git-completion.bash
+fpath=(~/.zsh $fpath)
+
 autoload -Uz compinit
 compinit
 # End of lines added by compinstall
