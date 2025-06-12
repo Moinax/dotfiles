@@ -1,8 +1,14 @@
 {
-    "window.commandCenter": true,
-    "workbench.activityBar.orientation": "vertical",
-    "git.autofetch": true,
-    "terminal.integrated.defaultProfile.linux": "bash",
-    "workbench.colorTheme": "Webstorm New Dark",
-    "editor.fontFamily": "JetBrains Mono"
+  "window.commandCenter": true,
+  "workbench.activityBar.orientation": "vertical",
+  "git.autofetch": true,
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "workbench.colorTheme": "Webstorm New Dark",
+  "editor.fontFamily": "JetBrains Mono",
+  "git.confirmSync": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "git.mergeEditor": true,
+  "git.allowForcePush": true,
+  "git.confirmForcePush": false
 }
