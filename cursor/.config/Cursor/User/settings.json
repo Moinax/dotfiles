@@ -4,6 +4,5 @@
     "git.autofetch": true,
     "terminal.integrated.defaultProfile.linux": "bash",
     "workbench.colorTheme": "Webstorm New Dark",
-    "editor.fontFamily": "JetBrains Mono",
-    "editor.fontLigatures": true
+    "editor.fontFamily": "JetBrains Mono"
 }
