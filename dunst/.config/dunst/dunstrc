@@ -340,15 +340,25 @@
 [urgency_low]
     background = "#1e1e2e"
     foreground = "#cdd6f4"
+    timeout = 10
+    # Icon for notifications with low urgency
+    default_icon = dialog-information
 
 [urgency_normal]
     background = "#1e1e2e"
     foreground = "#cdd6f4"
+    timeout = 10
+    # Icon for notifications with low urgency
+    default_icon = dialog-information
+    override_pause_level = 30
 
 [urgency_critical]
     background = "#1e1e2e"
     foreground = "#cdd6f4"
     frame_color = "#fab387"
+    timeout = 0
+    override_pause_level = 60
+    default_icon = dialog-warning
  
 
 # [urgency_low]
