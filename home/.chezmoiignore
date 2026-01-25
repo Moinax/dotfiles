@@ -1,0 +1,40 @@
+# Chezmoi ignore file
+# Files listed here will not be managed by chezmoi based on conditions
+
+# README and documentation
+README.md
+LICENSE
+
+# Ignore Hyprland configs if not selected
+{{- if not .install_hyprland }}
+dot_config/hypr
+dot_config/hypr/**
+dot_config/waybar
+dot_config/waybar/**
+dot_config/rofi
+dot_config/rofi/**
+dot_config/mako
+dot_config/mako/**
+dot_config/wlogout
+dot_config/wlogout/**
+dot_local/share/rofi
+dot_local/share/rofi/**
+{{- end }}
+
+# Ignore Development configs if not selected
+{{- if not .install_development }}
+dot_config/nvim
+dot_config/nvim/**
+dot_config/Cursor
+dot_config/Cursor/**
+dot_config/delta
+dot_config/delta/**
+{{- end }}
+
+# Ignore Productivity configs if not selected
+{{- if not .install_productivity }}
+dot_icons
+dot_icons/**
+dot_themes
+dot_themes/**
+{{- end }}

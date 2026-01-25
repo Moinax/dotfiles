@@ -1,0 +1,68 @@
+# Development - Development tools and environments
+name: Development
+description: Development tools (docker, neovim, git tools, editors)
+icon: 💻
+
+# Dotfiles to install when this group is selected
+dotfiles:
+  - dot_config/nvim
+  - dot_config/Cursor
+  - dot_config/delta
+  - dot_gitconfig
+
+# Services to enable
+services:
+  - docker
+
+packages:
+  arch:
+    # Editors
+    - neovim
+    - cursor-bin  # AUR
+    
+    # Git tools
+    - git
+    - github-cli
+    - lazygit
+    - git-delta
+    
+    # Containers
+    - docker
+    - docker-compose
+    - lazydocker
+    
+    # Build tools
+    - cmake
+    - cpio
+    - base-devel
+    
+    # Task runner
+    - just
+
+  fedora:
+    # Editors
+    - neovim
+    
+    # Git tools
+    - git
+    - gh
+    - lazygit
+    - git-delta
+    
+    # Containers
+    - docker
+    - docker-compose
+    - lazydocker
+    
+    # Build tools
+    - cmake
+    - cpio
+    - make
+    - gcc
+    - gcc-c++
+    
+    # Task runner
+    - just
+
+  fedora_copr:
+    - zeno/scrcpy  # For lazydocker if not in main repos

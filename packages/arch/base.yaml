@@ -1,0 +1,37 @@
+# Arch Linux base packages
+# These are installed via pacman/paru
+
+packages:
+  core:
+    # Shell and terminal
+    - zsh
+    - zsh-autosuggestions
+    - zsh-syntax-highlighting
+    - starship
+    - kitty
+    - tmux
+    
+    # Core utilities
+    - git
+    - stow
+    - bat
+    - eza
+    - fzf
+    - fastfetch
+    - tldr
+    - btop
+    - keychain
+    - jq
+    - yq
+    
+    # File management
+    - yazi
+
+    # Fonts
+    - ttf-fira-code
+    - ttf-fira-sans
+    - ttf-font-awesome
+
+  aur:
+    # AUR-only packages (installed via paru)
+    - paru  # Will be installed first if not present

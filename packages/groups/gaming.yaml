@@ -1,0 +1,28 @@
+# Gaming - Gaming platforms and tools
+name: Gaming
+description: Gaming platforms and communication (Steam, Discord)
+icon: 🎮
+
+# No specific dotfiles for gaming
+dotfiles: []
+
+# No services
+services: []
+
+packages:
+  arch:
+    - steam
+    - discord
+    - mangohud  # Optional: FPS overlay
+    - gamemode  # Optional: Game performance optimization
+
+  fedora:
+    - steam
+    - discord
+    - mangohud
+    - gamemode
+
+  fedora_repos:
+    # RPM Fusion required for Steam
+    - rpmfusion-free
+    - rpmfusion-nonfree

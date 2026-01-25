@@ -1,0 +1,32 @@
+# Multimedia - Media players and tools
+name: Multimedia
+description: Media players and multimedia tools (mpv, obs, etc.)
+icon: 🎬
+
+# No specific dotfiles for multimedia
+dotfiles: []
+
+# No services
+services: []
+
+packages:
+  arch:
+    - mpv
+    - obs-studio
+    - ffmpeg
+    - imagemagick
+    - gimp
+    - inkscape
+
+  fedora:
+    - mpv
+    - obs-studio
+    - ffmpeg
+    - ImageMagick
+    - gimp
+    - inkscape
+
+  fedora_repos:
+    # RPM Fusion for codecs
+    - rpmfusion-free
+    - rpmfusion-nonfree

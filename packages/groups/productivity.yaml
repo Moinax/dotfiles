@@ -1,0 +1,60 @@
+# Productivity - File managers, backup, and productivity tools
+name: Productivity
+description: File managers, backup tools, and productivity apps
+icon: 📁
+
+# Dotfiles to install when this group is selected
+dotfiles:
+  - dot_config/yazi
+  - dot_icons
+  - dot_themes
+
+# No services
+services: []
+
+packages:
+  arch:
+    # File managers
+    - thunar
+    - thunar-archive-plugin
+    - thunar-volman
+    
+    # Backup and snapshots
+    - timeshift
+    - timeshift-autosnap
+    - grub-btrfs
+    
+    # Communication
+    - slack-desktop  # AUR
+    
+    # Web browser
+    - google-chrome  # AUR
+    
+    # Archive tools
+    - p7zip
+    - unrar
+    - unzip
+
+  fedora:
+    # File managers
+    - thunar
+    - thunar-archive-plugin
+    - thunar-volman
+    
+    # Backup and snapshots
+    - timeshift
+    
+    # Communication
+    - slack
+    
+    # Web browser
+    - google-chrome-stable
+    
+    # Archive tools
+    - p7zip
+    - unrar
+    - unzip
+
+  fedora_repos:
+    # Google Chrome repo
+    - google-chrome

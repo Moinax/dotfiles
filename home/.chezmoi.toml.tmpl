@@ -1,0 +1,52 @@
+{{- /* Chezmoi configuration template */ -}}
+{{- /* This file prompts for values on first run and stores them */ -}}
+
+{{- $distro := "" -}}
+{{- if hasKey . "distro" -}}
+{{-   $distro = .distro -}}
+{{- else -}}
+{{-   $distro = .chezmoi.osRelease.id -}}
+{{- end -}}
+
+{{- $install_hyprland := false -}}
+{{- if hasKey . "install_hyprland" -}}
+{{-   $install_hyprland = .install_hyprland -}}
+{{- else -}}
+{{-   $install_hyprland = promptBool "Install Hyprland (Wayland compositor)" -}}
+{{- end -}}
+
+{{- $install_development := false -}}
+{{- if hasKey . "install_development" -}}
+{{-   $install_development = .install_development -}}
+{{- else -}}
+{{-   $install_development = promptBool "Install Development tools" -}}
+{{- end -}}
+
+{{- $install_gaming := false -}}
+{{- if hasKey . "install_gaming" -}}
+{{-   $install_gaming = .install_gaming -}}
+{{- else -}}
+{{-   $install_gaming = promptBool "Install Gaming packages" -}}
+{{- end -}}
+
+{{- $install_multimedia := false -}}
+{{- if hasKey . "install_multimedia" -}}
+{{-   $install_multimedia = .install_multimedia -}}
+{{- else -}}
+{{-   $install_multimedia = promptBool "Install Multimedia packages" -}}
+{{- end -}}
+
+{{- $install_productivity := false -}}
+{{- if hasKey . "install_productivity" -}}
+{{-   $install_productivity = .install_productivity -}}
+{{- else -}}
+{{-   $install_productivity = promptBool "Install Productivity tools" -}}
+{{- end -}}
+
+[data]
+    distro = {{ $distro | quote }}
+    install_hyprland = {{ $install_hyprland }}
+    install_development = {{ $install_development }}
+    install_gaming = {{ $install_gaming }}
+    install_multimedia = {{ $install_multimedia }}
+    install_productivity = {{ $install_productivity }}

@@ -1,0 +1,93 @@
+# Hyprland - Wayland compositor and related tools
+name: Hyprland
+description: Hyprland compositor with Wayland tools (waybar, rofi, mako, wlogout)
+icon: 🪟
+
+# Dotfiles to install when this group is selected
+dotfiles:
+  - dot_config/hypr
+  - dot_config/waybar
+  - dot_config/rofi
+  - dot_config/mako
+  - dot_config/wlogout
+  - dot_local/share/rofi
+
+# Services to enable
+services:
+  - bluetooth
+
+packages:
+  arch:
+    # Hyprland core
+    - hyprland
+    - hypridle
+    - hyprlock
+    - hyprpaper
+    - hyprpicker
+    - hyprpolkitagent
+    - hyprshot
+    
+    # Status bar and menus
+    - waybar
+    - rofi-wayland
+    - rofimoji
+    - wlogout
+    
+    # Notifications
+    - mako
+    
+    # Clipboard
+    - extra/cliphist
+    - extra/wl-clipboard
+    - wtype
+    
+    # GTK theming
+    - nwg-look
+    
+    # Audio control
+    - pavucontrol
+    - blueman
+    - bluez-utils
+    
+    # X compatibility
+    - xorg-xhost
+    
+    # Other Wayland tools
+    - inotify-tools
+
+  fedora:
+    # Hyprland core
+    - hyprland
+    - hypridle
+    - hyprlock
+    - hyprpaper
+    - hyprpicker
+    
+    # Status bar and menus
+    - waybar
+    - rofi-wayland
+    - wlogout
+    
+    # Notifications
+    - mako
+    
+    # Clipboard
+    - cliphist
+    - wl-clipboard
+    
+    # GTK theming
+    - nwg-look
+    
+    # Audio control
+    - pavucontrol
+    - blueman
+    - bluez
+    
+    # X compatibility
+    - xorg-x11-server-utils
+    
+    # Other tools
+    - inotify-tools
+
+  fedora_copr:
+    - solopasha/hyprland  # For latest Hyprland packages
