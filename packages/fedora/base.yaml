@@ -18,22 +18,25 @@ packages:
     - eza
     - fzf
     - fastfetch
-    - tldr
+    - tealdeer  # tldr implementation for Fedora
     - btop
     - keychain
     - jq
     - yq
+    - lazygit
     
     # File management
     - yazi
 
     # Fonts
     - fira-code-fonts
-    - mozilla-fira-sans-fonts
     - fontawesome-fonts
+    - google-noto-fonts-common
 
   copr:
-    # COPR repositories to enable
+    # COPR repositories to enable (processed before package installation)
+    # Note: Only include COPRs that exist and support current Fedora version
     repositories:
-      - atim/starship
-      - pennbauman/ports  # For eza if not in main repos
+      - atim/starship      # Starship prompt
+      - atim/lazygit       # Git TUI
+      - lihaohong/yazi     # Terminal file manager

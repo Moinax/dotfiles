@@ -60,7 +60,7 @@ parse_packages() {
     local distro="$2"
     
     if command_exists yq; then
-        yq -r ".packages.$distro[]? // empty" "$file" 2>/dev/null | grep -v "^#" | grep -v "^$"
+        yq -r ".packages.$distro[]? // \"\"" "$file" 2>/dev/null | grep -v "^#" | grep -v "^$"
     else
         # Fallback: simple grep-based parsing
         local in_section=false
@@ -90,7 +90,7 @@ parse_dotfiles() {
     local file="$1"
     
     if command_exists yq; then
-        yq -r '.dotfiles[]? // empty' "$file" 2>/dev/null
+        yq -r '.dotfiles[]? // ""' "$file" 2>/dev/null
     else
         # Fallback: simple parsing
         local in_section=false
@@ -116,7 +116,7 @@ parse_services() {
     local file="$1"
     
     if command_exists yq; then
-        yq -r '.services[]? // empty' "$file" 2>/dev/null
+        yq -r '.services[]? // ""' "$file" 2>/dev/null
     else
         local in_section=false
         while IFS= read -r line; do

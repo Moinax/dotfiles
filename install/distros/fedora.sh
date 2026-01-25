@@ -20,7 +20,10 @@ install_packages() {
     fi
     
     print_info "Installing packages: ${packages[*]}"
-    sudo dnf install -y "${packages[@]}"
+    # Use --skip-unavailable to continue even if some packages aren't found
+    sudo dnf install -y --skip-unavailable "${packages[@]}" || {
+        print_warning "Some packages may not have been installed. Check the output above."
+    }
 }
 
 # Enable a COPR repository
@@ -28,7 +31,11 @@ enable_copr() {
     local repo="$1"
     
     print_info "Enabling COPR repository: $repo"
-    sudo dnf copr enable -y "$repo"
+    if ! sudo dnf copr enable -y "$repo" 2>/dev/null; then
+        print_warning "Failed to enable COPR: $repo (may not exist for this Fedora version)"
+        return 1
+    fi
+    return 0
 }
 
 # Enable RPM Fusion repositories

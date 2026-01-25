@@ -76,8 +76,8 @@ select_groups() {
             
             # Parse description and icon from YAML
             if command_exists yq; then
-                desc=$(yq -r '.description // empty' "$group_file")
-                icon=$(yq -r '.icon // empty' "$group_file")
+                desc=$(yq -r '.description // ""' "$group_file")
+                icon=$(yq -r '.icon // ""' "$group_file")
             else
                 desc=$(grep "^description:" "$group_file" | sed 's/description:[[:space:]]*//')
                 icon=$(grep "^icon:" "$group_file" | sed 's/icon:[[:space:]]*//')
@@ -144,6 +144,19 @@ install_base_packages() {
     # Install yq first for better YAML parsing
     install_yq
     
+    # Enable COPR repositories first (Fedora only)
+    if [ "$DISTRO" = "fedora" ]; then
+        print_info "Enabling COPR repositories..."
+        local copr_repos=()
+        while IFS= read -r repo; do
+            [ -n "$repo" ] && copr_repos+=("$repo")
+        done < <(yq -r '.packages.copr.repositories[]? // ""' "$base_file" 2>/dev/null | grep -v "^$")
+        
+        for repo in "${copr_repos[@]}"; do
+            enable_copr "$repo" || true  # Continue even if COPR fails
+        done
+    fi
+    
     # Parse and install core packages
     local packages=()
     while IFS= read -r pkg; do
@@ -151,7 +164,7 @@ install_base_packages() {
     done < <(parse_packages "$base_file" "core")
     
     if [ ${#packages[@]} -gt 0 ]; then
-        install_packages "${packages[@]}"
+        install_packages "${packages[@]}" || print_warning "Some base packages failed to install"
     fi
     
     # Parse and install AUR packages (Arch only)
@@ -162,7 +175,7 @@ install_base_packages() {
         done < <(parse_packages "$base_file" "aur")
         
         if [ ${#packages[@]} -gt 0 ]; then
-            install_packages "${packages[@]}"
+            install_packages "${packages[@]}" || print_warning "Some AUR packages failed to install"
         fi
     fi
     
@@ -191,6 +204,17 @@ install_group_packages() {
         
         # Setup repos if needed (Fedora)
         if [ "$DISTRO" = "fedora" ]; then
+            # Enable any COPR repos defined in the group file
+            local copr_repos=()
+            while IFS= read -r repo; do
+                [ -n "$repo" ] && copr_repos+=("$repo")
+            done < <(yq -r '.packages.fedora_copr[]? // ""' "$group_file" 2>/dev/null | grep -v "^$")
+            
+            for repo in "${copr_repos[@]}"; do
+                enable_copr "$repo"
+            done
+            
+            # Also run legacy setup functions
             case "$group" in
                 hyprland) setup_hyprland_repos 2>/dev/null || true ;;
                 gaming) setup_gaming_repos 2>/dev/null || true ;;
@@ -351,10 +375,19 @@ EOF
     print_info "Chezmoi config created at $chezmoi_config"
     
     # Initialize chezmoi with the dotfiles repo
-    print_info "Initializing chezmoi..."
-    chezmoi init --source="$DOTFILES_DIR/home" --apply
+    print_info "Initializing chezmoi (this may take a while for large dotfiles)..."
+    print_info "Source directory: $DOTFILES_DIR/home"
     
-    print_success "Dotfiles applied"
+    # Count files to give user an idea of progress
+    local file_count=$(find "$DOTFILES_DIR/home" -type f | wc -l)
+    print_info "Processing ~$file_count files..."
+    
+    # Run chezmoi with verbose output
+    if chezmoi init --source="$DOTFILES_DIR/home" --apply --verbose; then
+        print_success "Dotfiles applied successfully"
+    else
+        print_warning "Chezmoi completed with some warnings"
+    fi
 }
 
 # Enable services
