@@ -293,6 +293,12 @@ install_common_tools() {
         
         rm -rf "$temp_dir"
         if git clone https://github.com/lr-tech/rofi-themes-collection.git "$temp_dir" 2>/dev/null; then
+            # Remove existing symlink, file, or directory if it exists (clean install)
+            if [ -L "$themes_dir" ] || [ -f "$themes_dir" ]; then
+                rm -f "$themes_dir"
+            elif [ -d "$themes_dir" ]; then
+                rm -rf "$themes_dir"
+            fi
             mkdir -p "$themes_dir"
             cp -r "$temp_dir/themes"/* "$themes_dir/" 2>/dev/null || true
             rm -rf "$temp_dir"
@@ -305,9 +311,52 @@ install_common_tools() {
     print_success "Common tools installed"
 }
 
+# Clean up old stow symlinks before applying chezmoi
+cleanup_stow_symlinks() {
+    print_info "Cleaning up old symlinks..."
+    
+    local stow_patterns=(
+        "$HOME/.zshrc"
+        "$HOME/.tmux.conf"
+        "$HOME/.gitconfig"
+        "$HOME/Wallpapers"
+        "$HOME/completion-for-pnpm.bash"
+        "$HOME/.config/hypr"
+        "$HOME/.config/waybar"
+        "$HOME/.config/rofi"
+        "$HOME/.config/kitty"
+        "$HOME/.config/nvim"
+        "$HOME/.config/mako"
+        "$HOME/.config/wlogout"
+        "$HOME/.local/share/rofi/themes"
+    )
+    
+    local removed_count=0
+    for path in "${stow_patterns[@]}"; do
+        if [ -L "$path" ]; then
+            rm -f "$path"
+            removed_count=$((removed_count + 1))
+        fi
+    done
+    
+    if [ $removed_count -gt 0 ]; then
+        print_info "Removed $removed_count old symlinks"
+    fi
+}
+
 # Setup chezmoi and apply dotfiles
 setup_dotfiles() {
     print_header "Setting Up Dotfiles"
+    
+    # Clean up old stow symlinks first
+    cleanup_stow_symlinks
+    
+    # Warn if running inside Hyprland session
+    if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+        print_warning "Running inside Hyprland session"
+        print_info "You may see transient errors during config migration"
+        print_info "Run 'hyprctl reload' after setup completes"
+    fi
     
     # Install chezmoi
     install_chezmoi
@@ -382,8 +431,8 @@ EOF
     local file_count=$(find "$DOTFILES_DIR/home" -type f | wc -l)
     print_info "Processing ~$file_count files..."
     
-    # Run chezmoi with verbose output
-    if chezmoi init --source="$DOTFILES_DIR/home" --apply --verbose; then
+    # Run chezmoi (without --verbose to avoid noisy diffs)
+    if chezmoi init --source="$DOTFILES_DIR/home" --apply; then
         print_success "Dotfiles applied successfully"
     else
         print_warning "Chezmoi completed with some warnings"
@@ -472,6 +521,19 @@ setup_shell() {
 # Show completion message
 show_completion() {
     echo ""
+    
+    # Build next steps list
+    local steps=(
+        "  1. Log out and back in (for shell changes)"
+        "  2. Run 'tmux' and press Ctrl+b I (install plugins)"
+        "  3. Add your SSH key to GitHub/GitLab"
+    )
+    
+    # Add Hyprland step if running in Hyprland or if Hyprland was selected
+    if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ] || [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " hyprland " ]]; then
+        steps+=("  4. Run 'hyprctl reload' to reload Hyprland config")
+    fi
+    
     gum style \
         --border double \
         --border-foreground 82 \
@@ -480,9 +542,7 @@ show_completion() {
         "$(gum style --foreground 82 --bold '✅ Installation Complete!')" \
         "" \
         "Next steps:" \
-        "  1. Log out and back in (for shell changes)" \
-        "  2. Run 'tmux' and press Ctrl+b I (install plugins)" \
-        "  3. Add your SSH key to GitHub/GitLab"
+        "${steps[@]}"
     echo ""
 }
 
