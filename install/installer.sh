@@ -329,6 +329,7 @@ cleanup_stow_symlinks() {
         "$HOME/.config/mako"
         "$HOME/.config/wlogout"
         "$HOME/.local/share/rofi/themes"
+        "$HOME/.cursor/argv.json"
     )
     
     local removed_count=0
@@ -338,6 +339,11 @@ cleanup_stow_symlinks() {
             removed_count=$((removed_count + 1))
         fi
     done
+    
+    # Clean up broken symlinks in .cursor/extensions (from old stow setup)
+    if [ -d "$HOME/.cursor/extensions" ]; then
+        find "$HOME/.cursor/extensions" -maxdepth 1 -type l ! -exec test -e {} \; -delete 2>/dev/null
+    fi
     
     if [ $removed_count -gt 0 ]; then
         print_info "Removed $removed_count old symlinks"

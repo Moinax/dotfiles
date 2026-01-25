@@ -30,7 +30,8 @@ do_export() {
     print_info "Exporting Cursor extensions..."
     mkdir -p "$(dirname "$EXTENSIONS_FILE")"
     cursor --list-extensions | sort > "$EXTENSIONS_FILE"
-    print_success "Exported $(wc -l < "$EXTENSIONS_FILE" | tr -d ' ') extensions to:"
+    local count=$(grep -v '^#' "$EXTENSIONS_FILE" 2>/dev/null | grep -v '^$' | wc -l | tr -d ' ')
+    print_success "Exported $count extensions to:"
     echo "  $EXTENSIONS_FILE"
 }
 
