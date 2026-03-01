@@ -447,18 +447,17 @@ install_common_tools() {
         fi
     fi
 
-    # Install hyprvoice (Fedora only — Arch uses AUR package)
+    # Setup hyprvoice (AI group)
     if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
+        # Install hyprvoice binary (Fedora only — Arch uses AUR package)
         if [ "$DISTRO" = "fedora" ] && ! command_exists hyprvoice; then
             install_curl_tool "hyprvoice" \
                 "curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice && chmod +x ~/.local/bin/hyprvoice"
         elif command_exists hyprvoice; then
             print_info "hyprvoice is already installed"
         fi
-    fi
 
-    # Download whisper model for hyprvoice (if AI group selected and hyprvoice available)
-    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
+        # Download whisper model for local transcription
         if command_exists hyprvoice; then
             print_info "Hyprvoice supports local speech-to-text via whisper models"
             HYPRVOICE_MODEL=$(gum choose --header "Select a whisper model for dictation:" \

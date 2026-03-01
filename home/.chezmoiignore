@@ -47,6 +47,7 @@ dot_local/share/rofi/**
 {{- if not .install_ai }}
 dot_config/hyprvoice
 dot_config/hyprvoice/**
+dot_local/bin/toggle-dictation.sh
 {{- end }}
 
 # Ignore Development configs if not selected
