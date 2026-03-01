@@ -205,4 +205,12 @@
     },
     "on-click-right": "loginctl lock-session",
   },
+  // Caffeine mode (custom idle toggle)
+  "custom/caffeine": {
+    "exec": "~/.local/bin/waybar-caffeine.sh",
+    "return-type": "json",
+    "signal": 10,
+    "interval": "once",
+    "on-click": "~/.local/bin/toggle-caffeine.sh",
+  },
 }

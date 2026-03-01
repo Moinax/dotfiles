@@ -142,7 +142,7 @@ binds {
     Mod+Space hotkey-overlay-title="Run an Application: rofi" { spawn-sh "rofi -show drun"; }
     Mod+B hotkey-overlay-title="Open Browser: chrome" { spawn "google-chrome-stable" "--password-store=basic"; }
     Mod+E hotkey-overlay-title="Open File Manager: dolphin" { spawn "dolphin"; }
-    Mod+I hotkey-overlay-title="Emoji Selector: rofi" { spawn-sh "rofi -show emoji -modi emoji"; }
+    Mod+I hotkey-overlay-title="Emoji Selector: rofimoji" { spawn-sh "rofimoji --action type --typer wtype"; }
     Mod+A hotkey-overlay-title="Switch Audio Output" { spawn-sh "~/.local/bin/toggle-audio-switch.sh"; }
     Mod+K hotkey-overlay-title="Switch Keyboard Layout" { spawn-sh "~/.local/bin/niri-switch-layout.sh"; }
     Mod+Tab hotkey-overlay-title="Switch Window: rofi" { spawn-sh "rofi -show window -window-thumbnail"; }
@@ -270,6 +270,7 @@ binds {
     XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "10%-"; }
 
     // ── 14. Session & System ─────────────────────────────────────────
+    Mod+N hotkey-overlay-title="Toggle Caffeine Mode" { spawn-sh "~/.local/bin/toggle-caffeine.sh"; }
     Mod+Shift+E { quit; }
     Ctrl+Alt+Delete { quit; }
     Mod+L hotkey-overlay-title="Power Menu: wlogout" { spawn "wlogout"; }

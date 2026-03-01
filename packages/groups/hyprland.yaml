@@ -70,6 +70,7 @@ packages:
     # Status bar and menus
     - waybar
     - rofi-wayland
+    - rofimoji
     # Notifications
     - mako
     # Logout screen
@@ -78,7 +79,8 @@ packages:
     # Clipboard
     - cliphist
     - wl-clipboard
-    
+    - wtype
+
     # GTK theming
     - nwg-look
     

@@ -16,7 +16,7 @@
 | App launcher (rofi) | `Mod+Space` | `Mod+Space` | |
 | Open browser (Chrome) | `Mod+B` | `Mod+B` | |
 | File manager (Dolphin) | `Mod+E` | `Mod+E` | |
-| Emoji selector | `Mod+I` | `Mod+I` | |
+| Emoji selector | `Mod+I` | `Mod+I` | rofimoji + wtype |
 | Switch audio output | `Mod+A` | `Mod+A` | |
 | Switch keyboard layout | `Mod+K` | `Mod+K` | |
 | Window switcher (rofi) | `Mod+Tab` | `Mod+Tab` | |
@@ -208,6 +208,7 @@
 | Power menu (rofi) | `Mod+Shift+L` | `Mod+Shift+L` | Text-based fallback |
 | Lock screen | `Mod+Alt+L` | `Mod+Alt+L` | `loginctl lock-session` |
 | Logout | `Mod+Ctrl+L` | `Mod+Ctrl+L` | `compositor-logout.sh` |
+| Toggle caffeine mode | `Mod+N` | `Mod+N` | Inhibits idle (prevents lock/sleep) |
 | Quit compositor | `Mod+Shift+Q` | `Mod+Shift+E` | **Different key** |
 | Quit (alt) | — | `Ctrl+Alt+Delete` | Niri only |
 | Power off monitors | — | `Mod+Alt+P` | Niri only |

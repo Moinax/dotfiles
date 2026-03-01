@@ -62,9 +62,13 @@ tooltip label {
 }
 #custom-exit,
 #custom-system,
+#custom-caffeine,
 #idle-inhibitor,
 #workspaces button {
   font-size: 17px;
+}
+#custom-caffeine.activated {
+  color: #e0af68;
 }
 #custom-exit {
   margin-right: 20px;

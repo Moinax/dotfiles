@@ -816,6 +816,93 @@ transform=normal"
     print_success "SDDM configured"
 }
 
+# Setup Plymouth boot splash screen
+setup_plymouth() {
+    # Only relevant on Arch — Fedora ships Plymouth out of the box
+    [ "$DISTRO" != "arch" ] && return
+
+    echo ""
+    if ! gum confirm "Set up Plymouth boot splash screen?"; then
+        return
+    fi
+
+    print_header "Plymouth Setup"
+
+    # Install plymouth
+    print_info "Installing Plymouth..."
+    install_packages plymouth || {
+        print_error "Failed to install Plymouth"
+        return 1
+    }
+
+    # Build theme list
+    local themes=()
+    while IFS= read -r t; do
+        [ -n "$t" ] && themes+=("$t")
+    done < <(plymouth-set-default-theme -l 2>/dev/null)
+
+    if [ ${#themes[@]} -eq 0 ]; then
+        themes=("spinner" "bgrt")
+    fi
+
+    # Let user pick a theme
+    local theme
+    theme=$(printf '%s\n' "${themes[@]}" | gum choose --header "Select Plymouth theme")
+
+    if [ -z "$theme" ]; then
+        print_warning "No theme selected, using default (spinner)"
+        theme="spinner"
+    fi
+
+    print_info "Setting Plymouth theme to '$theme'..."
+
+    # Set theme (the -R flag also rebuilds initramfs)
+    sudo plymouth-set-default-theme -R "$theme"
+
+    # --- Configure mkinitcpio: add 'plymouth' hook after 'udev' ---
+    local mkinitcpio="/etc/mkinitcpio.conf"
+    if [ -f "$mkinitcpio" ] && ! grep -qE '^HOOKS=.*\bplymouth\b' "$mkinitcpio"; then
+        print_info "Adding plymouth hook to mkinitcpio..."
+        sudo sed -i 's/\(HOOKS=.*\budev\b\)/\1 plymouth/' "$mkinitcpio"
+        sudo mkinitcpio -P
+    else
+        print_info "Plymouth hook already present in mkinitcpio"
+    fi
+
+    # --- Configure GRUB: add 'quiet splash' to kernel command line ---
+    local grub_default="/etc/default/grub"
+    if [ -f "$grub_default" ]; then
+        local current_cmdline
+        current_cmdline=$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$grub_default" | head -1 | sed 's/^GRUB_CMDLINE_LINUX_DEFAULT="//;s/"$//')
+
+        local updated=false
+        if ! echo "$current_cmdline" | grep -qw "quiet"; then
+            current_cmdline="$current_cmdline quiet"
+            updated=true
+        fi
+        if ! echo "$current_cmdline" | grep -qw "splash"; then
+            current_cmdline="$current_cmdline splash"
+            updated=true
+        fi
+
+        if [ "$updated" = true ]; then
+            # Trim leading/trailing whitespace
+            current_cmdline=$(echo "$current_cmdline" | sed 's/^ *//;s/ *$//')
+            print_info "Updating GRUB command line: $current_cmdline"
+            sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$current_cmdline\"/" "$grub_default"
+            print_info "Regenerating GRUB config..."
+            sudo grub-mkconfig -o /boot/grub/grub.cfg
+        else
+            print_info "GRUB already has 'quiet splash'"
+        fi
+    else
+        print_warning "$grub_default not found — skipping GRUB configuration"
+    fi
+
+    PLYMOUTH_CONFIGURED=true
+    print_success "Plymouth configured (theme: $theme)"
+}
+
 # Setup shell
 setup_shell() {
     print_header "Shell Setup"
@@ -866,6 +953,11 @@ show_completion() {
         steps+=("  $next_step. Press Mod+D to toggle dictation (hyprvoice)")
         next_step=$((next_step + 1))
     fi
+
+    if [ "$PLYMOUTH_CONFIGURED" = true ]; then
+        steps+=("  $next_step. Reboot to see the Plymouth boot splash")
+        next_step=$((next_step + 1))
+    fi
     
     gum style \
         --border double \
@@ -884,6 +976,7 @@ main() {
     # Initialize installer state
     SELECTED_GROUP_NAMES=()
     SERVICES_TO_ENABLE=()
+    PLYMOUTH_CONFIGURED=false
     unset GROUP_PACKAGE_MODE GROUP_CUSTOM_PACKAGE_LIST
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()
@@ -910,6 +1003,7 @@ main() {
     setup_dotfiles
     enable_selected_services
     setup_sddm
+    setup_plymouth
     setup_ssh
     setup_shell
     
