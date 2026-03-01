@@ -132,6 +132,7 @@ spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 spawn-at-startup "blueman-applet"
 spawn-at-startup "sh" "-c" "wl-paste --type text --watch cliphist store"
 spawn-at-startup "sh" "-c" "wl-paste --type image --watch cliphist store"
+spawn-at-startup "hyprvoice" "serve"
 
 screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 
@@ -150,6 +151,7 @@ binds {
     Mod+Shift+P hotkey-overlay-title="Color Picker: hyprpicker" { spawn "hyprpicker"; }
     Mod+R hotkey-overlay-title="Theme Selector: rofi" { spawn "rofi-theme-selector"; }
     Mod+M hotkey-overlay-title="Toggle Monitor Layout" { spawn-sh "~/.config/hypr/scripts/toggle-monitor-layout.sh"; }
+    Mod+D hotkey-overlay-title="Toggle Dictation: hyprvoice" { spawn-sh "~/.local/bin/toggle-dictation.sh"; }
 
     // ── 2. Window Management ──────────────────────────────────────────
     Mod+Q repeat=false { close-window; }

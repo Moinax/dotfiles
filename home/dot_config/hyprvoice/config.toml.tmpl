@@ -1,0 +1,46 @@
+# Hyprvoice configuration
+# https://github.com/LeonardoTrapani/hyprvoice
+#
+# First-time setup: run `hyprvoice onboarding`
+# Edit interactively: run `hyprvoice configure`
+# Download a model: `hyprvoice model download small` (multilingual EN+FR, ~500MB)
+#
+# Config hot-reloads automatically when saved.
+
+# ── Recording ──────────────────────────────────────────────────
+[recording]
+sample_rate = 16000              # 16 kHz — standard for Whisper speech recognition
+channels = 1                     # Mono
+format = "s16"                   # 16-bit signed integers
+buffer_size = 8192               # Internal buffer size in bytes
+device = ""                      # Empty = default PipeWire microphone
+channel_buffer_size = 30         # Audio frame buffer size
+timeout = "5m"                   # Maximum recording duration per toggle
+
+# ── Transcription ───────────────────────────────────────────────
+[transcription]
+provider = "whisper-cpp"
+model = {{ .hyprvoice_model | quote }}    # Multilingual model (EN+FR). Use "medium" for better accuracy (~1.5GB).
+language = ""                    # Empty = auto-detect. Set "en" or "fr" to force a language.
+streaming = false
+threads = 0                      # 0 = auto (NumCPU - 1)
+
+# ── LLM Post-Processing (requires API key) ─────────────────────
+[llm]
+enabled = false                  # Set to true + configure a provider below for text cleanup
+
+# [providers.openai]
+# api_key = ""                   # Or set OPENAI_API_KEY env var
+# [providers.groq]
+# api_key = ""                   # Or set GROQ_API_KEY env var
+
+# ── Text Injection ──────────────────────────────────────────────
+[injection]
+backends = ["wtype", "clipboard"]  # wtype is Wayland-native; clipboard as fallback
+wtype_timeout = "5s"
+clipboard_timeout = "3s"
+
+# ── Notifications ───────────────────────────────────────────────
+[notifications]
+enabled = true
+type = "desktop"

@@ -27,6 +27,12 @@ tools:
       rm /tmp/FiraCode.zip
       fc-cache -fv
 
+  - name: hyprvoice
+    description: Voice-powered typing for Wayland desktops
+    install: |
+      curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice
+      chmod +x ~/.local/bin/hyprvoice
+
   - name: rofi-themes-collection
     description: Collection of Rofi themes
     type: git

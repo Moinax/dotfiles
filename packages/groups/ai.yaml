@@ -1,0 +1,18 @@
+# AI - AI-powered tools (dictation, assistants, etc.)
+name: AI
+description: AI-powered desktop tools (voice dictation, assistants)
+icon: 🤖
+
+# Dotfiles to install when this group is selected
+dotfiles:
+  - dot_config/hyprvoice
+
+packages:
+  arch:
+    # Dictation (speech-to-text)
+    - hyprvoice-bin
+    - whisper.cpp
+
+  fedora:
+    # Dictation (speech-to-text)
+    - whisper-cpp

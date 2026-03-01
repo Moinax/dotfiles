@@ -43,6 +43,12 @@ dot_local/share/rofi
 dot_local/share/rofi/**
 {{- end }}
 
+# Ignore AI configs if not selected
+{{- if not .install_ai }}
+dot_config/hyprvoice
+dot_config/hyprvoice/**
+{{- end }}
+
 # Ignore Development configs if not selected
 {{- if not .install_development }}
 dot_config/nvim

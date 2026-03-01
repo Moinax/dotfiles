@@ -28,6 +28,7 @@ SELECTED_GROUP_NAMES=()
 SERVICES_TO_ENABLE=()
 declare -A GROUP_PACKAGE_MODE=()
 declare -A GROUP_CUSTOM_PACKAGE_LIST=()
+HYPRVOICE_MODEL="small"
 
 # Check if gum is available
 check_gum() {
@@ -445,7 +446,44 @@ install_common_tools() {
             print_warning "Failed to install Rofi themes"
         fi
     fi
-    
+
+    # Install hyprvoice (Fedora only — Arch uses AUR package)
+    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
+        if [ "$DISTRO" = "fedora" ] && ! command_exists hyprvoice; then
+            install_curl_tool "hyprvoice" \
+                "curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice && chmod +x ~/.local/bin/hyprvoice"
+        elif command_exists hyprvoice; then
+            print_info "hyprvoice is already installed"
+        fi
+    fi
+
+    # Download whisper model for hyprvoice (if AI group selected and hyprvoice available)
+    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
+        if command_exists hyprvoice; then
+            print_info "Hyprvoice supports local speech-to-text via whisper models"
+            HYPRVOICE_MODEL=$(gum choose --header "Select a whisper model for dictation:" \
+                "small (500MB — good accuracy, EN+FR)" \
+                "medium (1.5GB — better accuracy, EN+FR)" \
+                "tiny (75MB — fastest, lower accuracy)" \
+                "Skip — download later")
+
+            # Extract model name (first word before space)
+            HYPRVOICE_MODEL="${HYPRVOICE_MODEL%% *}"
+
+            if [ "$HYPRVOICE_MODEL" != "Skip" ]; then
+                print_info "Downloading whisper model: $HYPRVOICE_MODEL"
+                if hyprvoice model download "$HYPRVOICE_MODEL"; then
+                    print_success "Whisper model '$HYPRVOICE_MODEL' downloaded"
+                else
+                    print_warning "Failed to download model — run 'hyprvoice model download $HYPRVOICE_MODEL' later"
+                    HYPRVOICE_MODEL="small"
+                fi
+            else
+                HYPRVOICE_MODEL="small"  # Default for config
+            fi
+        fi
+    fi
+
     print_success "Common tools installed"
 }
 
@@ -559,7 +597,8 @@ setup_dotfiles() {
     local install_gaming="false"
     local install_multimedia="false"
     local install_productivity="false"
-    
+    local install_ai="false"
+
     for group in "${SELECTED_GROUP_NAMES[@]}"; do
         case "$group" in
             hyprland) install_hyprland="true" ;;
@@ -568,6 +607,7 @@ setup_dotfiles() {
             gaming) install_gaming="true" ;;
             multimedia) install_multimedia="true" ;;
             productivity) install_productivity="true" ;;
+            ai) install_ai="true" ;;
         esac
     done
     
@@ -583,6 +623,8 @@ sourceDir = "$source_dir"
     install_gaming = $install_gaming
     install_multimedia = $install_multimedia
     install_productivity = $install_productivity
+    install_ai = $install_ai
+    hyprvoice_model = "$HYPRVOICE_MODEL"
 EOF
     
     print_info "Chezmoi config created at $chezmoi_config"
@@ -818,6 +860,11 @@ show_completion() {
 
     if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " niri " ]]; then
         steps+=("  $next_step. Log out, choose Niri in your display manager, and log back in")
+        next_step=$((next_step + 1))
+    fi
+
+    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
+        steps+=("  $next_step. Press Mod+D to toggle dictation (hyprvoice)")
         next_step=$((next_step + 1))
     fi
     

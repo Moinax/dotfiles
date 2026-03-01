@@ -50,6 +50,18 @@
 {{-   $install_productivity = promptBool "Install Productivity tools" -}}
 {{- end -}}
 
+{{- $install_ai := false -}}
+{{- if hasKey . "install_ai" -}}
+{{-   $install_ai = .install_ai -}}
+{{- else -}}
+{{-   $install_ai = promptBool "Install AI tools (voice dictation, assistants)" -}}
+{{- end -}}
+
+{{- $hyprvoice_model := "small" -}}
+{{- if hasKey . "hyprvoice_model" -}}
+{{-   $hyprvoice_model = .hyprvoice_model -}}
+{{- end -}}
+
 {{- $source_dir := "" -}}
 {{- if hasKey . "sourceDir" -}}
 {{-   $source_dir = .sourceDir -}}
@@ -67,3 +79,5 @@ sourceDir = {{ $source_dir | quote }}
     install_gaming = {{ $install_gaming }}
     install_multimedia = {{ $install_multimedia }}
     install_productivity = {{ $install_productivity }}
+    install_ai = {{ $install_ai }}
+    hyprvoice_model = {{ $hyprvoice_model | quote }}
