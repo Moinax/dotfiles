@@ -71,7 +71,6 @@ tooltip label {
 #custom-caffeine.activated {
   color: #e0af68;
 }
-#custom-dark-mode { font-size: 17px; }
 #custom-dark-mode.light { color: #f9e2af; }
 #custom-dark-mode.dark { color: #b4befe; }
 #custom-exit {

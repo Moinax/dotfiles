@@ -60,6 +60,13 @@ dot_config/delta
 dot_config/delta/**
 {{- end }}
 
+# Active theme files managed by apply-dark-mode.sh (variants are still tracked)
+dot_config/kitty/current-theme.conf
+dot_config/mako/config
+dot_local/share/rofi/themes/moinax.rasi
+dot_config/wlogout/style.css
+dot_config/waybar/style.css
+
 # Ignore Productivity configs if not selected
 {{- if not .install_productivity }}
 dot_icons

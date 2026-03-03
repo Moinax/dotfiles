@@ -28,7 +28,7 @@ $cmd_duration\
 $line_break\
 $character"""
 
-palette = 'catppuccin_mocha'
+palette = 'catppuccin_{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}'
 
 [os]
 disabled = false

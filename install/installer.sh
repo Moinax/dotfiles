@@ -800,6 +800,7 @@ sourceDir = "$source_dir"
     install_productivity = $install_productivity
     install_ai = $install_ai
     hyprvoice_model = "$HYPRVOICE_MODEL"
+    dark_mode = "dark"
 EOF
     
     print_info "Chezmoi config created at $chezmoi_config"
