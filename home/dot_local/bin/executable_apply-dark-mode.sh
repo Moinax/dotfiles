@@ -106,7 +106,7 @@ echo "$FLAVOR" > "$NVIM_THEME_FILE"
 # Best-effort remote send to running nvim instances
 for addr in /run/user/$(id -u)/nvim.*.0 /tmp/nvim.*/0; do
     [ -S "$addr" ] || continue
-    nvim --server "$addr" --remote-send "<Cmd>lua require('catppuccin').setup({flavour='${FLAVOR}'}) vim.cmd.colorscheme('catppuccin')<CR>" 2>/dev/null || true
+    nvim --server "$addr" --remote-send "<Cmd>lua local c = require('catppuccin'); c.options.flavour = '${FLAVOR}'; c.compile(); vim.cmd.colorscheme('catppuccin')<CR>" 2>/dev/null || true
 done
 
 # 13. Delta (git diff)
@@ -131,9 +131,13 @@ if [ -f "$CURSOR_SETTINGS" ] && command -v jq &>/dev/null; then
         ICON_THEME="catppuccin-latte"
     fi
     tmp=$(mktemp)
-    jq --arg theme "$THEME" --arg iconTheme "$ICON_THEME" \
+    if jq --arg theme "$THEME" --arg iconTheme "$ICON_THEME" \
         '.["workbench.colorTheme"] = $theme | .["workbench.iconTheme"] = $iconTheme' \
-        "$CURSOR_SETTINGS" > "$tmp" && mv "$tmp" "$CURSOR_SETTINGS"
+        "$CURSOR_SETTINGS" > "$tmp"; then
+        mv "$tmp" "$CURSOR_SETTINGS"
+    else
+        rm -f "$tmp"
+    fi
 fi
 
 # 15. Waybar restart
