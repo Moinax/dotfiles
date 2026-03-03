@@ -14,7 +14,7 @@ border-radius=8
 
 [urgency=low]
 default-timeout=3000
-border-color=#6464FF
+border-color=#6464ff
 
 [urgency=normal]
 default-timeout=15000
@@ -27,8 +27,8 @@ border-color=#fab387
 # Add a section for volume notifications based on the hint
 [app-name="volume-control"]
 format=%s
-border-color=#6464FF
-progress-color=#6464FF4D
+border-color=#6464ff
+progress-color=#6464ff4d
 history=0
 group-by=app-name
 anchor=top-center

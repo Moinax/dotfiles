@@ -106,11 +106,11 @@ elif pgrep -x niri &>/dev/null; then
     NIRI_CONF="$HOME/.config/niri/config.kdl"
     if [ -f "$NIRI_CONF" ]; then
         if [ "$MODE" = "dark" ]; then
-            sed -i 's/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#ff64ff80" to="#9696ffff"/' "$NIRI_CONF"
-            sed -i 's/inactive-color "[^"]*"/inactive-color "#6464ff4d"/' "$NIRI_CONF"
+            sed -i '/border {/,/}/ s/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#ff64ff80" to="#9696ffff"/' "$NIRI_CONF"
+            sed -i '/border {/,/}/ s/inactive-color "[^"]*"/inactive-color "#6464ff4d"/' "$NIRI_CONF"
         else
-            sed -i 's/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#8839efcc" to="#1e66f5cc"/' "$NIRI_CONF"
-            sed -i 's/inactive-color "[^"]*"/inactive-color "#7287fd4d"/' "$NIRI_CONF"
+            sed -i '/border {/,/}/ s/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#8839efcc" to="#1e66f5cc"/' "$NIRI_CONF"
+            sed -i '/border {/,/}/ s/inactive-color "[^"]*"/inactive-color "#7287fd4d"/' "$NIRI_CONF"
         fi
         niri msg action load-config-file 2>/dev/null || true
     fi
