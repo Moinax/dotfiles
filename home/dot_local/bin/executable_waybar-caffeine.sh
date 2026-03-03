@@ -8,15 +8,15 @@ if pgrep -x Hyprland &>/dev/null; then
 elif pgrep -x niri &>/dev/null; then
     DAEMON="swayidle"
 else
-    printf '{"text": "%s", "class": "deactivated", "tooltip": "Unknown compositor"}\n' "$(printf '\uf186')"
+    printf '{"text": "%s", "class": "deactivated", "tooltip": "Unknown compositor"}\n' "$(printf '\uf236')"
     exit 0
 fi
 
-ICON_MOON=$(printf '\uf186')
+ICON_SLEEP=$(printf '\uf236')
 ICON_COFFEE=$(printf '\uf0f4')
 
 if pgrep -x "$DAEMON" &>/dev/null; then
-    printf '{"text": "%s", "class": "deactivated", "tooltip": "Caffeine OFF (idle active)"}\n' "$ICON_MOON"
+    printf '{"text": "%s", "class": "deactivated", "tooltip": "Caffeine OFF (idle active)"}\n' "$ICON_SLEEP"
 else
     printf '{"text": "%s", "class": "activated", "tooltip": "Caffeine ON (idle inhibited)"}\n' "$ICON_COFFEE"
 fi

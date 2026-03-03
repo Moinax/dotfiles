@@ -1,0 +1,14 @@
+/* MOINAX THEME FOR ROFI - DARK */
+
+* {
+    bg0:    #000000ee;
+    bg1:    #6464ff4d;
+    bg2:    #6464ff80;
+    bg3:    #ff64ff80;
+    fg0:    #aeaeae;
+    fg1:    #FFFFFF;
+    fg2:    #969696;
+    fg3:    #6464ff;
+}
+
+@import "template/rounded-template.rasi"

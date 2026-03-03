@@ -15,5 +15,7 @@ exec-once = wl-paste --type image --watch cliphist store # Stores only image dat
 # Start dictation daemon
 exec-once = hyprvoice serve
 {{- end }}
+# Restore dark/light mode
+exec-once = ~/.local/bin/apply-dark-mode.sh
 # Load hyprland plugins
 exec-once = hyprpm reload -n

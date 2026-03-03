@@ -210,6 +210,7 @@
 | Logout | `Mod+Ctrl+L` | `Mod+Ctrl+L` | `compositor-logout.sh` |
 | Toggle caffeine mode | `Mod+N` | `Mod+N` | Inhibits idle (prevents lock/sleep) |
 | Toggle OLED saver | `Mod+Alt+N` | `Mod+Alt+N` | cmatrix overlay for burn-in prevention |
+| Toggle dark/light mode | `Mod+Ctrl+N` | `Mod+Ctrl+N` | Switches Catppuccin Mocha/Latte + portal |
 | Quit compositor | `Mod+Shift+Q` | `Mod+Shift+E` | **Different key** |
 | Quit (alt) | — | `Ctrl+Alt+Delete` | Niri only |
 | Power off monitors | — | `Mod+Alt+P` | Niri only |

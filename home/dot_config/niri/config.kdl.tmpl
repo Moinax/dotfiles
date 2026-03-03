@@ -141,6 +141,7 @@ spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 spawn-at-startup "blueman-applet"
 spawn-at-startup "sh" "-c" "wl-paste --type text --watch cliphist store"
 spawn-at-startup "sh" "-c" "wl-paste --type image --watch cliphist store"
+spawn-at-startup "sh" "-c" "~/.local/bin/apply-dark-mode.sh"
 {{ if .install_ai -}}
 spawn-at-startup "hyprvoice" "serve"
 {{ end -}}
@@ -285,6 +286,7 @@ binds {
     // ── 14. Session & System ─────────────────────────────────────────
     Mod+N hotkey-overlay-title="Toggle Caffeine Mode" { spawn-sh "~/.local/bin/toggle-caffeine.sh"; }
     Mod+Alt+N hotkey-overlay-title="Toggle OLED Saver" { spawn-sh "~/.local/bin/toggle-oled-saver.sh"; }
+    Mod+Ctrl+N hotkey-overlay-title="Toggle Dark/Light Mode" { spawn-sh "~/.local/bin/toggle-dark-mode.sh"; }
     Mod+Shift+E { quit; }
     Ctrl+Alt+Delete { quit; }
     Mod+L hotkey-overlay-title="Power Menu: wlogout" { spawn "wlogout"; }

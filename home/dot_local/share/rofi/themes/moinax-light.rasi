@@ -1,0 +1,14 @@
+/* MOINAX THEME FOR ROFI - LIGHT */
+
+* {
+    bg0:    #eff1f5ee;
+    bg1:    #6464ff4d;
+    bg2:    #6464ff80;
+    bg3:    #ff64ff80;
+    fg0:    #4c4f69;
+    fg1:    #1e1e2e;
+    fg2:    #5c5f77;
+    fg3:    #6464ff;
+}
+
+@import "template/rounded-template.rasi"
