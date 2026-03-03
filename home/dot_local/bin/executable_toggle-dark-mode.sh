@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Toggle between dark and light mode
 
@@ -10,3 +11,6 @@ if [ "$CURRENT" = "dark" ]; then
 else
     ~/.local/bin/apply-dark-mode.sh dark
 fi
+
+# Refresh waybar dark-mode module (signal 8)
+pkill -SIGRTMIN+8 waybar 2>/dev/null || true

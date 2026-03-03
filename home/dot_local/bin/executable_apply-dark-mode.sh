@@ -140,15 +140,17 @@ for addr in /run/user/$(id -u)/nvim.*.0 /tmp/nvim.*/0; do
     nvim --server "$addr" --remote-send "<Cmd>lua local c = require('catppuccin'); c.options.flavour = '${FLAVOR}'; c.compile(); vim.cmd.colorscheme('catppuccin')<CR>" 2>/dev/null || true
 done
 
-# 13. Delta (git diff)
+# 13. Delta (git diff) — swap theme feature while preserving other features
 if command -v git &>/dev/null; then
+    CURRENT_FEATURES=$(git config --global --get delta.features 2>/dev/null || true)
     if [ "$MODE" = "dark" ]; then
-        git config --global delta.features "arctic-fox" 2>/dev/null || true
+        NEW_FEATURES=$(echo "$CURRENT_FEATURES" | sed 's/hoopoe/arctic-fox/')
         git config --global delta.syntax-theme "Catppuccin Macchiato" 2>/dev/null || true
     else
-        git config --global delta.features "hoopoe" 2>/dev/null || true
+        NEW_FEATURES=$(echo "$CURRENT_FEATURES" | sed 's/arctic-fox/hoopoe/')
         git config --global delta.syntax-theme "GitHub" 2>/dev/null || true
     fi
+    git config --global delta.features "$NEW_FEATURES" 2>/dev/null || true
 fi
 
 # 14. Cursor
