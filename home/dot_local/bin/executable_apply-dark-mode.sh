@@ -40,12 +40,27 @@ if [ -f "$CHEZMOI_CONF" ]; then
     fi
 fi
 
-# 3. Portal/GTK color scheme
+# 3. Portal color-scheme (tells browsers prefers-color-scheme via xdg-desktop-portal)
+# Each portal backend monitors its own settings store; write to the correct one.
+if [ "$MODE" = "dark" ]; then
+    GNOME_SCHEME='prefer-dark'
+else
+    GNOME_SCHEME='prefer-light'
+fi
+
+# 3a. GTK/GNOME portal backend — monitors dconf
 if command -v gsettings &>/dev/null; then
+    gsettings set org.gnome.desktop.interface color-scheme "$GNOME_SCHEME" 2>/dev/null || true
+elif command -v dconf &>/dev/null; then
+    dconf write /org/gnome/desktop/interface/color-scheme "'$GNOME_SCHEME'" 2>/dev/null || true
+fi
+
+# 3b. KDE portal backend — monitors kdeglobals
+if command -v plasma-apply-colorscheme &>/dev/null; then
     if [ "$MODE" = "dark" ]; then
-        gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+        plasma-apply-colorscheme BreezeDark 2>/dev/null || true
     else
-        gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
+        plasma-apply-colorscheme BreezeLight 2>/dev/null || true
     fi
 fi
 
