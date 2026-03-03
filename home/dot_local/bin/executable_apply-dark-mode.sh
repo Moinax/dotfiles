@@ -33,7 +33,11 @@ echo "$MODE" > "$STATE_FILE"
 # 2. Update chezmoi config so chezmoi diff stays clean for templated files
 CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 if [ -f "$CHEZMOI_CONF" ]; then
-    sed -i 's/dark_mode = .*/dark_mode = "'"$MODE"'"/' "$CHEZMOI_CONF"
+    if grep -q 'dark_mode = ' "$CHEZMOI_CONF"; then
+        sed -i 's/dark_mode = .*/dark_mode = "'"$MODE"'"/' "$CHEZMOI_CONF"
+    else
+        sed -i '/^\[data\]/a\    dark_mode = "'"$MODE"'"' "$CHEZMOI_CONF"
+    fi
 fi
 
 # 3. Portal/GTK color scheme
@@ -52,10 +56,10 @@ if [ -f "$KITTY_THEME_SRC" ]; then
     pkill -SIGUSR1 -x kitty 2>/dev/null || true
 fi
 
-# 5. Starship
+# 5. Starship (only replace the top-level palette line, not palette definitions)
 STARSHIP_CONF="$HOME/.config/starship.toml"
 if [ -f "$STARSHIP_CONF" ]; then
-    sed -i "s/^palette = .*/palette = 'catppuccin_${FLAVOR}'/" "$STARSHIP_CONF"
+    sed -i "s/^palette = 'catppuccin_.*'/palette = 'catppuccin_${FLAVOR}'/" "$STARSHIP_CONF"
 fi
 
 # 6. Yazi
@@ -89,7 +93,7 @@ if [ -f "$WAYBAR_CSS_SRC" ]; then
     cp "$WAYBAR_CSS_SRC" "$HOME/.config/waybar/style.css"
 fi
 
-# 11. Hyprland borders
+# 11. Compositor borders
 if pgrep -x Hyprland &>/dev/null; then
     if [ "$MODE" = "dark" ]; then
         hyprctl keyword general:col.active_border "rgba(ff64ff80) rgba(9696ffff) 45deg" 2>/dev/null || true
@@ -97,6 +101,18 @@ if pgrep -x Hyprland &>/dev/null; then
     else
         hyprctl keyword general:col.active_border "rgba(8839efcc) rgba(1e66f5cc) 45deg" 2>/dev/null || true
         hyprctl keyword general:col.inactive_border "rgba(7287fd4d)" 2>/dev/null || true
+    fi
+elif pgrep -x niri &>/dev/null; then
+    NIRI_CONF="$HOME/.config/niri/config.kdl"
+    if [ -f "$NIRI_CONF" ]; then
+        if [ "$MODE" = "dark" ]; then
+            sed -i 's/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#ff64ff80" to="#9696ffff"/' "$NIRI_CONF"
+            sed -i 's/inactive-color "[^"]*"/inactive-color "#6464ff4d"/' "$NIRI_CONF"
+        else
+            sed -i 's/active-gradient from="[^"]*" to="[^"]*"/active-gradient from="#8839efcc" to="#1e66f5cc"/' "$NIRI_CONF"
+            sed -i 's/inactive-color "[^"]*"/inactive-color "#7287fd4d"/' "$NIRI_CONF"
+        fi
+        niri msg action load-config-file 2>/dev/null || true
     fi
 fi
 
