@@ -96,7 +96,7 @@ packages:
     - neovim
 
     # Git tools
-    - git
+    # Note: git is already in packages/debian/base.yaml
     - gh           # Requires GitHub CLI apt repo (added by setup_development_repos)
     - git-delta
 
@@ -121,9 +121,6 @@ packages:
 
     # Note: lazygit is not in apt — installed via binary (install_lazygit in debian.sh)
     # Note: lazydocker is not in apt — install manually after setup
-
-  debian_ppa:
-    # No PPAs required for development — repos are added via setup_development_repos
 
   fedora_copr:
     - zeno/scrcpy  # For lazydocker if not in main repos

@@ -162,6 +162,8 @@ packages:
     - rofimoji
 
     # Notifications
+    # Note: dotfiles ship mako configs; dunst is installed as apt alternative.
+    # Manual config adaptation needed for dunst on Debian/Ubuntu.
     - dunst            # mako not in apt; dunst is the apt equivalent
 
     # Clipboard

@@ -19,6 +19,9 @@ print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source distro detection helpers (provides detect_distro, get_distro_family, is_supported_distro)
+source "$SCRIPT_DIR/install/lib/detect.sh"
+
 # Show banner
 echo ""
 echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -26,34 +29,17 @@ echo -e "${PURPLE}            🏠 Dotfiles Setup - Bootstrap${NC}"
 echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Detect distribution
-detect_distro() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        echo "$ID"
-    elif [ -f /etc/arch-release ]; then
-        echo "arch"
-    elif [ -f /etc/fedora-release ]; then
-        echo "fedora"
-    else
-        echo "unknown"
-    fi
-}
-
 DISTRO=$(detect_distro)
 print_info "Detected distribution: $DISTRO"
 
 # Check if distro is supported
-case "$DISTRO" in
-    arch|fedora|ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
-        print_success "Distribution is supported"
-        ;;
-    *)
-        print_error "Unsupported distribution: $DISTRO"
-        print_info "Supported distributions: arch, fedora, ubuntu, debian, linuxmint, pop, elementary, neon, zorin, kali"
-        exit 1
-        ;;
-esac
+if is_supported_distro "$DISTRO"; then
+    print_success "Distribution is supported"
+else
+    print_error "Unsupported distribution: $DISTRO"
+    print_info "Supported distributions: $(get_supported_distros)"
+    exit 1
+fi
 
 # Install gum based on distro
 install_gum() {
@@ -64,7 +50,7 @@ install_gum() {
     
     print_info "Installing gum (interactive prompt tool)..."
     
-    case "$DISTRO" in
+    case "$(get_distro_family "$DISTRO")" in
         arch)
             # Check if paru is installed
             if command -v paru &> /dev/null; then
@@ -91,15 +77,19 @@ install_gum() {
                 sudo dnf install -y gum
             }
             ;;
-        ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
+        debian)
             # Add Charm apt repository and install gum
             print_info "Adding Charm apt repository for gum..."
             sudo mkdir -p /etc/apt/keyrings
             curl -fsSL https://repo.charm.sh/apt/gpg.key \
-                | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+                | sudo gpg --yes --dearmor -o /etc/apt/keyrings/charm.gpg
             echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
                 | sudo tee /etc/apt/sources.list.d/charm.list > /dev/null
             sudo apt update && sudo apt install -y gum
+            ;;
+        *)
+            print_error "Unsupported distribution: $DISTRO"
+            exit 1
             ;;
     esac
     
@@ -119,15 +109,19 @@ install_git() {
     
     print_info "Installing git..."
     
-    case "$DISTRO" in
+    case "$(get_distro_family "$DISTRO")" in
         arch)
             sudo pacman -S --needed --noconfirm git
             ;;
         fedora)
             sudo dnf install -y git
             ;;
-        ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
+        debian)
             sudo apt update && sudo apt install -y git
+            ;;
+        *)
+            print_error "Unsupported distribution: $DISTRO"
+            exit 1
             ;;
     esac
 }

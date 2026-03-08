@@ -139,10 +139,14 @@ packages:
 
     # Status bar and menus
     - waybar
-    - rofi
+    # rofi-wayland is the correct Wayland fork on Ubuntu 24.04+.
+    # Plain 'rofi' is the X11 build; use rofi-wayland for Wayland support.
+    - rofi-wayland
     - rofimoji
 
     # Notifications
+    # Note: dotfiles ship mako configs; dunst is installed as apt alternative.
+    # Manual config adaptation needed for dunst on Debian/Ubuntu.
     - dunst            # mako is not in apt; dunst is the apt equivalent
 
     # Clipboard

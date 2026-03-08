@@ -56,7 +56,7 @@ add_charm_repo() {
     print_info "Adding Charm apt repository..."
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL https://repo.charm.sh/apt/gpg.key \
-        | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+        | sudo gpg --yes --dearmor -o /etc/apt/keyrings/charm.gpg
     echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
         | sudo tee /etc/apt/sources.list.d/charm.list > /dev/null
     sudo apt update
@@ -97,7 +97,7 @@ add_docker_repo() {
     esac
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL "https://download.docker.com/linux/${docker_distro}/gpg" \
-        | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     local codename
     codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
@@ -123,9 +123,9 @@ add_tailscale_repo() {
     esac
     codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
     curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/${codename}.noarch.gpg" \
-        | sudo gpg --dearmor -o /etc/apt/keyrings/tailscale.gpg 2>/dev/null || \
+        | sudo gpg --yes --dearmor -o /etc/apt/keyrings/tailscale.gpg 2>/dev/null || \
     curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/focal.noarch.gpg" \
-        | sudo gpg --dearmor -o /etc/apt/keyrings/tailscale.gpg
+        | sudo gpg --yes --dearmor -o /etc/apt/keyrings/tailscale.gpg
     echo "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/${ts_distro} ${codename} main" \
         | sudo tee /etc/apt/sources.list.d/tailscale.list > /dev/null
     sudo apt update
@@ -268,8 +268,9 @@ install_fastfetch() {
 
     # Fallback: download .deb from GitHub releases
     print_info "Falling back to .deb download for fastfetch..."
-    local tmp_deb="/tmp/fastfetch.deb"
-    curl -sL "https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-amd64.deb" \
+    local arch tmp_deb="/tmp/fastfetch.deb"
+    arch=$(dpkg --print-architecture)
+    curl -sL "https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${arch}.deb" \
         -o "$tmp_deb"
     sudo dpkg -i "$tmp_deb"
     rm -f "$tmp_deb"
@@ -367,7 +368,7 @@ setup_productivity_repos() {
         print_info "Adding Google Chrome repository..."
         sudo mkdir -p /etc/apt/keyrings
         curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg
+            | sudo gpg --yes --dearmor -o /etc/apt/keyrings/google-chrome.gpg
         echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
             | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
         sudo apt update

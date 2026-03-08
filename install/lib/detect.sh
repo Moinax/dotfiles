@@ -27,12 +27,14 @@ get_distro_name() {
     fi
 }
 
-# Check if distro is supported
+# Check if distro is supported (only tested distros are listed here)
+# Derivatives like manjaro, endeavouros, rhel, centos, etc. are mapped in
+# get_distro_family() on a best-effort basis but are NOT officially supported.
 is_supported_distro() {
     local distro="$1"
     case "$distro" in
-        arch|manjaro|endeavouros|garuda|\
-        fedora|rhel|centos|rocky|alma|\
+        arch|\
+        fedora|\
         ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
             return 0
             ;;
@@ -53,7 +55,9 @@ get_distro_family() {
     esac
 }
 
-# Get list of supported distros
+# Get list of supported (tested) distros
+# Note: derivatives (manjaro, endeavouros, garuda, rhel, centos, rocky, alma)
+# are mapped in get_distro_family() on a best-effort basis but are not tested.
 get_supported_distros() {
-    echo "arch manjaro endeavouros garuda fedora rhel centos rocky alma ubuntu debian linuxmint pop elementary neon zorin kali"
+    echo "arch fedora ubuntu debian linuxmint pop elementary neon zorin kali"
 }
