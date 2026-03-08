@@ -79,7 +79,7 @@ packages:
     - timeshift
 
     # Communication
-    - slack-desktop    # Not in apt — install via .deb or snap after setup
+    # Note: Slack is not available in apt — install manually via .deb from https://slack.com/downloads/linux
 
     # Web browser (requires Google Chrome repo — added by setup_productivity_repos)
     - google-chrome-stable

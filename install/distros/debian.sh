@@ -89,13 +89,19 @@ add_docker_repo() {
     fi
 
     print_info "Adding Docker CE apt repository..."
+    local distro_id docker_distro
+    distro_id=$(. /etc/os-release && echo "$ID")
+    case "$distro_id" in
+        ubuntu|linuxmint|pop|elementary|neon|zorin) docker_distro="ubuntu" ;;
+        *) docker_distro="debian" ;;
+    esac
     sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    curl -fsSL "https://download.docker.com/linux/${docker_distro}/gpg" \
         | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     local codename
     codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $codename stable" \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_distro} $codename stable" \
         | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo apt update
     print_success "Docker repository added"
@@ -109,13 +115,18 @@ add_tailscale_repo() {
     fi
 
     print_info "Adding Tailscale apt repository..."
-    local codename
+    local distro_id ts_distro codename
+    distro_id=$(. /etc/os-release && echo "$ID")
+    case "$distro_id" in
+        ubuntu|linuxmint|pop|elementary|neon|zorin) ts_distro="ubuntu" ;;
+        *) ts_distro="debian" ;;
+    esac
     codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
-    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarch.gpg" \
+    curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/${codename}.noarch.gpg" \
         | sudo gpg --dearmor -o /etc/apt/keyrings/tailscale.gpg 2>/dev/null || \
-    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarch.gpg \
+    curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/focal.noarch.gpg" \
         | sudo gpg --dearmor -o /etc/apt/keyrings/tailscale.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu ${codename} main" \
+    echo "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/${ts_distro} ${codename} main" \
         | sudo tee /etc/apt/sources.list.d/tailscale.list > /dev/null
     sudo apt update
     print_success "Tailscale repository added"
@@ -175,7 +186,9 @@ install_yq() {
     fi
 
     print_info "Installing yq (binary)..."
-    sudo curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+    local arch
+    arch=$(dpkg --print-architecture)  # amd64, arm64, armhf, etc.
+    sudo curl -sL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${arch}" \
         -o /usr/local/bin/yq
     sudo chmod +x /usr/local/bin/yq
     print_success "yq installed"
@@ -189,7 +202,14 @@ install_eza() {
     fi
 
     print_info "Installing eza (binary)..."
-    curl -sL "https://github.com/eza-community/eza/releases/latest/download/eza_x86_64-unknown-linux-gnu.tar.gz" \
+    local goarch
+    case "$(uname -m)" in
+        x86_64)  goarch="x86_64" ;;
+        aarch64) goarch="aarch64" ;;
+        armv7l)  goarch="armv7" ;;
+        *)       goarch="$(uname -m)" ;;
+    esac
+    curl -sL "https://github.com/eza-community/eza/releases/latest/download/eza_${goarch}-unknown-linux-gnu.tar.gz" \
         | sudo tar -xz -C /usr/local/bin eza
     sudo chmod +x /usr/local/bin/eza
     print_success "eza installed"
@@ -203,10 +223,16 @@ install_lazygit() {
     fi
 
     print_info "Installing lazygit (binary)..."
-    local version
+    local version goarch
     version=$(curl -s https://api.github.com/repos/jesseduffield/lazygit/releases/latest \
         | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
-    curl -sL "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${version}_Linux_x86_64.tar.gz" \
+    case "$(uname -m)" in
+        x86_64)  goarch="x86_64" ;;
+        aarch64) goarch="arm64" ;;
+        armv7l)  goarch="armv6" ;;
+        *)       goarch="$(uname -m)" ;;
+    esac
+    curl -sL "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${version}_Linux_${goarch}.tar.gz" \
         | sudo tar -xz -C /usr/local/bin lazygit
     sudo chmod +x /usr/local/bin/lazygit
     print_success "lazygit installed"
@@ -258,11 +284,18 @@ install_yazi() {
     fi
 
     print_info "Installing yazi (binary)..."
+    local goarch
+    case "$(uname -m)" in
+        x86_64)  goarch="x86_64" ;;
+        aarch64) goarch="aarch64" ;;
+        armv7l)  goarch="armv7" ;;
+        *)       goarch="$(uname -m)" ;;
+    esac
     local tmp_zip="/tmp/yazi.zip"
-    curl -sL "https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip" \
+    curl -sL "https://github.com/sxyazi/yazi/releases/latest/download/yazi-${goarch}-unknown-linux-gnu.zip" \
         -o "$tmp_zip"
     unzip -q "$tmp_zip" -d /tmp/yazi-extract
-    sudo mv /tmp/yazi-extract/yazi-x86_64-unknown-linux-gnu/yazi /usr/local/bin/
+    sudo mv "/tmp/yazi-extract/yazi-${goarch}-unknown-linux-gnu/yazi" /usr/local/bin/
     sudo chmod +x /usr/local/bin/yazi
     rm -rf "$tmp_zip" /tmp/yazi-extract
     print_success "yazi installed"

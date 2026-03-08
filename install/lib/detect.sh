@@ -31,7 +31,9 @@ get_distro_name() {
 is_supported_distro() {
     local distro="$1"
     case "$distro" in
-        arch|fedora|ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
+        arch|manjaro|endeavouros|garuda|\
+        fedora|rhel|centos|rocky|alma|\
+        ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
             return 0
             ;;
         *)
@@ -53,5 +55,5 @@ get_distro_family() {
 
 # Get list of supported distros
 get_supported_distros() {
-    echo "arch fedora ubuntu debian linuxmint pop elementary neon zorin kali"
+    echo "arch manjaro endeavouros garuda fedora rhel centos rocky alma ubuntu debian linuxmint pop elementary neon zorin kali"
 }

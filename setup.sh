@@ -91,7 +91,7 @@ install_gum() {
                 sudo dnf install -y gum
             }
             ;;
-        ubuntu|debian|*)
+        ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
             # Add Charm apt repository and install gum
             print_info "Adding Charm apt repository for gum..."
             sudo mkdir -p /etc/apt/keyrings
@@ -126,7 +126,7 @@ install_git() {
         fedora)
             sudo dnf install -y git
             ;;
-        ubuntu|debian|*)
+        ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
             sudo apt update && sudo apt install -y git
             ;;
     esac

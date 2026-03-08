@@ -150,7 +150,6 @@ packages:
     - nm-connection-editor
     - plasma-nm
 
-
   debian:
     # niri is not yet packaged for Debian/Ubuntu in official or common PPAs.
     # Install manually from source: https://github.com/YaLTeR/niri
