@@ -158,7 +158,7 @@ packages:
 
     # Status bar and menus
     - waybar
-    - rofi
+    - rofi-wayland
     - rofimoji
 
     # Notifications

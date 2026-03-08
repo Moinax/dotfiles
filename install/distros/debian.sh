@@ -100,7 +100,7 @@ add_docker_repo() {
         | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     local codename
-    codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
+    codename=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}}")
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_distro} $codename stable" \
         | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo apt update
@@ -121,10 +121,10 @@ add_tailscale_repo() {
         ubuntu|linuxmint|pop|elementary|neon|zorin) ts_distro="ubuntu" ;;
         *) ts_distro="debian" ;;
     esac
-    codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}")
+    codename=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}}")
     curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/${codename}.noarch.gpg" \
         | sudo gpg --yes --dearmor -o /etc/apt/keyrings/tailscale.gpg 2>/dev/null || \
-    curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/focal.noarch.gpg" \
+    curl -fsSL "https://pkgs.tailscale.com/stable/${ts_distro}/jammy.noarch.gpg" \
         | sudo gpg --yes --dearmor -o /etc/apt/keyrings/tailscale.gpg
     echo "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/${ts_distro} ${codename} main" \
         | sudo tee /etc/apt/sources.list.d/tailscale.list > /dev/null
@@ -186,9 +186,15 @@ install_yq() {
     fi
 
     print_info "Installing yq (binary)..."
-    local arch
-    arch=$(dpkg --print-architecture)  # amd64, arm64, armhf, etc.
-    sudo curl -sL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${arch}" \
+    local deb_arch yq_arch
+    deb_arch=$(dpkg --print-architecture)
+    case "$deb_arch" in
+        amd64)  yq_arch="amd64" ;;
+        arm64)  yq_arch="arm64" ;;
+        armhf)  yq_arch="arm" ;;
+        *)      yq_arch="$deb_arch" ;;
+    esac
+    sudo curl -sL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" \
         -o /usr/local/bin/yq
     sudo chmod +x /usr/local/bin/yq
     print_success "yq installed"
@@ -286,19 +292,19 @@ install_yazi() {
 
     print_info "Installing yazi (binary)..."
     local goarch
+    local tmp_zip="/tmp/yazi.zip"
+    trap 'rm -rf "$tmp_zip" /tmp/yazi-extract' RETURN
     case "$(uname -m)" in
         x86_64)  goarch="x86_64" ;;
         aarch64) goarch="aarch64" ;;
         armv7l)  goarch="armv7" ;;
         *)       goarch="$(uname -m)" ;;
     esac
-    local tmp_zip="/tmp/yazi.zip"
     curl -sL "https://github.com/sxyazi/yazi/releases/latest/download/yazi-${goarch}-unknown-linux-gnu.zip" \
         -o "$tmp_zip"
     unzip -q "$tmp_zip" -d /tmp/yazi-extract
     sudo mv "/tmp/yazi-extract/yazi-${goarch}-unknown-linux-gnu/yazi" /usr/local/bin/
     sudo chmod +x /usr/local/bin/yazi
-    rm -rf "$tmp_zip" /tmp/yazi-extract
     print_success "yazi installed"
 }
 
