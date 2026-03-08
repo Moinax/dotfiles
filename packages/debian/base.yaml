@@ -1,0 +1,38 @@
+# Debian/Ubuntu base packages
+# These are installed via apt
+
+packages:
+  core:
+    # Shell and terminal
+    - zsh
+    - zsh-autosuggestions
+    - zsh-syntax-highlighting
+    - kitty
+    - tmux
+
+    # Core utilities
+    - git
+    - stow
+    - bat           # Note: binary is 'batcat' on Debian/Ubuntu (alias created post-install)
+    - fzf
+    - btop
+    - keychain
+    - jq
+
+    # Fonts
+    - fonts-firacode
+    - fonts-font-awesome
+
+    # Packages installed via binary download (not available in apt):
+    # yq       → install_yq()      (binary from github.com/mikefarah/yq)
+    # eza      → install_eza()     (binary from github.com/eza-community/eza)
+    # starship → install_starship() (curl https://starship.rs/install.sh)
+    # fastfetch → install_fastfetch() (PPA zhangsongcui3371/fastfetch or .deb)
+    # yazi     → install_yazi()    (binary from github.com/sxyazi/yazi)
+    # lazygit  → install_lazygit() (binary from github.com/jesseduffield/lazygit)
+
+  ppa:
+    # PPA repositories to enable on Ubuntu before package installation
+    # (skipped gracefully on pure Debian where add-apt-repository is unavailable)
+    repositories:
+      - zhangsongcui3371/fastfetch

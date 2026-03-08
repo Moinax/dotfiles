@@ -91,5 +91,39 @@ packages:
     # Task runner
     - just
 
+  debian:
+    # Editors
+    - neovim
+
+    # Git tools
+    - git
+    - gh           # Requires GitHub CLI apt repo (added by setup_development_repos)
+    - git-delta
+
+    # Containers (requires Docker CE apt repo — added by setup_development_repos)
+    - docker-ce
+    - docker-ce-cli
+    - containerd.io
+    - docker-compose-plugin
+
+    # Build tools
+    - build-essential
+    - cmake
+    - make
+    - gcc
+    - g++
+
+    # Networking (requires Tailscale apt repo — added by setup_development_repos)
+    - tailscale
+
+    # Task runner
+    - just
+
+    # Note: lazygit is not in apt — installed via binary (install_lazygit in debian.sh)
+    # Note: lazydocker is not in apt — install manually after setup
+
+  debian_ppa:
+    # No PPAs required for development — repos are added via setup_development_repos
+
   fedora_copr:
     - zeno/scrcpy  # For lazydocker if not in main repos

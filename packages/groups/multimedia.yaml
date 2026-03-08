@@ -35,6 +35,17 @@ packages:
     - gimp
     - inkscape
 
+  debian:
+    # Requires restricted + universe — enabled by setup_multimedia_repos
+    - vlc
+    - obs-studio
+    - kdenlive
+    - ffmpeg
+    - imagemagick
+    - gimp
+    - inkscape
+    - pavucontrol
+
   fedora_repos:
     # RPM Fusion for codecs
     - rpmfusion-free

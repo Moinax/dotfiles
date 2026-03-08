@@ -28,6 +28,13 @@ packages:
     - mangohud
     - gamemode
 
+  debian:
+    # Requires multiverse + i386 — enabled by setup_gaming_repos
+    - steam
+    - lutris
+    - gamemode
+    - mangohud     # Ubuntu 22.04+ (available in universe/multiverse)
+
   fedora_repos:
     # RPM Fusion required for Steam
     - rpmfusion-free

@@ -21,3 +21,12 @@ packages:
   fedora:
     # Dictation (speech-to-text)
     - whisper-cpp
+
+  debian:
+    # whisper.cpp is not packaged for Debian/Ubuntu.
+    # Install via the official install script or build from source:
+    #   https://github.com/ggerganov/whisper.cpp
+    # hyprvoice is also not in apt — install binary from GitHub releases.
+    # Packages listed here are dependencies available in apt:
+    - libsdl2-dev      # Runtime dependency for whisper.cpp audio capture
+    - ffmpeg           # Audio/video decoding support

@@ -1,17 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(chezmoi:*)",
-      "Bash(git:*)",
-      "Bash(niri:*)",
-      "Bash(hyprctl:*)",
-      "Bash(pgrep:*)",
-      "Bash(ls:*)",
+      "Bash(*)",
       "WebSearch",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:wiki.hyprland.org)",
-      "WebFetch(domain:wiki.hypr.land)"
+      "WebFetch(domain:*)"
     ]
   }
 }

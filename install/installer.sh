@@ -13,12 +13,13 @@ source "$SCRIPT_DIR/lib/common.sh"
 # Detect distro
 DISTRO=$(detect_distro)
 DISTRO_NAME=$(get_distro_name)
+DISTRO_FAMILY=$(get_distro_family "$DISTRO")
 
-# Source distro-specific functions
-if [ -f "$SCRIPT_DIR/distros/$DISTRO.sh" ]; then
-    source "$SCRIPT_DIR/distros/$DISTRO.sh"
+# Source distro-specific functions (using family to allow distro variants)
+if [ -f "$SCRIPT_DIR/distros/$DISTRO_FAMILY.sh" ]; then
+    source "$SCRIPT_DIR/distros/$DISTRO_FAMILY.sh"
 else
-    print_error "Unsupported distribution: $DISTRO"
+    print_error "Unsupported distribution: $DISTRO (family: $DISTRO_FAMILY)"
     print_info "Supported distributions: $(get_supported_distros)"
     exit 1
 fi
@@ -113,7 +114,7 @@ _build_tree_json() {
             local desc="$(_json_escape "${descs[$pkg]:-}")"
             local name="$(_json_escape "$pkg")"
             pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
-        done < <(parse_packages "$group_file" "$DISTRO")
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
         # Emit group JSON object
         if [ "$first_group" = true ]; then
@@ -191,7 +192,7 @@ _select_packages_gum_fallback() {
             preselected+=("$display_line")
             line_to_pkg["$display_line"]="$pkg"
             line_to_group["$display_line"]="$group"
-        done < <(parse_packages "$group_file" "$DISTRO")
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
         group_total["$group"]=$pkg_count
     done
 
@@ -272,7 +273,7 @@ select_group_packages() {
         local count=0
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_packages "$group_file" "$DISTRO")
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
         group_total["$group"]=$count
     done
 
@@ -383,7 +384,7 @@ confirm_installation() {
             local total=0
             while IFS= read -r pkg; do
                 [ -n "$pkg" ] && total=$((total + 1))
-            done < <(parse_packages "$group_file" "$DISTRO")
+            done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
             case "$mode" in
                 all)
@@ -422,7 +423,7 @@ confirm_installation() {
 install_base_packages() {
     print_header "Installing Base Packages"
     
-    local base_file="$DOTFILES_DIR/packages/$DISTRO/base.yaml"
+    local base_file="$DOTFILES_DIR/packages/$DISTRO_FAMILY/base.yaml"
     
     if [ ! -f "$base_file" ]; then
         print_error "Base package file not found: $base_file"
@@ -432,16 +433,29 @@ install_base_packages() {
     # Install yq first for better YAML parsing
     install_yq
     
-    # Enable COPR repositories first (Fedora only)
-    if [ "$DISTRO" = "fedora" ]; then
+    # Enable COPR repositories first (Fedora family only)
+    if [ "$DISTRO_FAMILY" = "fedora" ]; then
         print_info "Enabling COPR repositories..."
         local copr_repos=()
         while IFS= read -r repo; do
             [ -n "$repo" ] && copr_repos+=("$repo")
         done < <(yq -r '.packages.copr.repositories[]? // ""' "$base_file" 2>/dev/null | grep -v "^$")
-        
+
         for repo in "${copr_repos[@]}"; do
             enable_copr "$repo" || true  # Continue even if COPR fails
+        done
+    fi
+
+    # Enable PPA repositories first (Debian/Ubuntu family only)
+    if [ "$DISTRO_FAMILY" = "debian" ]; then
+        print_info "Enabling PPA repositories..."
+        local ppa_repos=()
+        while IFS= read -r repo; do
+            [ -n "$repo" ] && ppa_repos+=("$repo")
+        done < <(yq -r '.packages.ppa.repositories[]? // ""' "$base_file" 2>/dev/null | grep -v "^$")
+
+        for repo in "${ppa_repos[@]}"; do
+            enable_ppa "$repo" || true  # Continue even if PPA fails (e.g., pure Debian)
         done
     fi
     
@@ -455,16 +469,26 @@ install_base_packages() {
         install_packages "${packages[@]}" || print_warning "Some base packages failed to install"
     fi
     
-    # Parse and install AUR packages (Arch only)
-    if [ "$DISTRO" = "arch" ]; then
+    # Parse and install AUR packages (Arch family only)
+    if [ "$DISTRO_FAMILY" = "arch" ]; then
         packages=()
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && packages+=("$pkg")
         done < <(parse_packages "$base_file" "aur")
-        
+
         if [ ${#packages[@]} -gt 0 ]; then
             install_packages "${packages[@]}" || print_warning "Some AUR packages failed to install"
         fi
+    fi
+
+    # Install binary packages not available in apt (Debian/Ubuntu family only)
+    if [ "$DISTRO_FAMILY" = "debian" ]; then
+        install_eza || print_warning "Failed to install eza"
+        install_lazygit || print_warning "Failed to install lazygit"
+        install_starship || print_warning "Failed to install starship"
+        install_fastfetch || print_warning "Failed to install fastfetch"
+        install_yazi || print_warning "Failed to install yazi"
+        post_install_bat_alias
     fi
     
     print_success "Base packages installed"
@@ -490,32 +514,54 @@ install_group_packages() {
         
         print_info "Installing $group group..."
         
-        # Setup repos if needed (Fedora)
-        if [ "$DISTRO" = "fedora" ]; then
-            # Enable any COPR repos defined in the group file
-            local copr_repos=()
-            while IFS= read -r repo; do
-                [ -n "$repo" ] && copr_repos+=("$repo")
-            done < <(yq -r '.packages.fedora_copr[]? // ""' "$group_file" 2>/dev/null | grep -v "^$")
-            
-            for repo in "${copr_repos[@]}"; do
-                enable_copr "$repo"
-            done
-            
-            # Also run legacy setup functions
-            case "$group" in
-                hyprland) setup_hyprland_repos 2>/dev/null || true ;;
-                gaming) setup_gaming_repos 2>/dev/null || true ;;
-                multimedia) setup_multimedia_repos 2>/dev/null || true ;;
-                productivity) setup_productivity_repos 2>/dev/null || true ;;
-            esac
-        fi
+        # Setup repos if needed (distro-family specific)
+        case "$DISTRO_FAMILY" in
+            fedora)
+                # Enable any COPR repos defined in the group file
+                local copr_repos=()
+                while IFS= read -r repo; do
+                    [ -n "$repo" ] && copr_repos+=("$repo")
+                done < <(yq -r '.packages.fedora_copr[]? // ""' "$group_file" 2>/dev/null | grep -v "^$")
+
+                for repo in "${copr_repos[@]}"; do
+                    enable_copr "$repo"
+                done
+
+                # Also run legacy setup functions
+                case "$group" in
+                    hyprland) setup_hyprland_repos 2>/dev/null || true ;;
+                    gaming) setup_gaming_repos 2>/dev/null || true ;;
+                    multimedia) setup_multimedia_repos 2>/dev/null || true ;;
+                    productivity) setup_productivity_repos 2>/dev/null || true ;;
+                esac
+                ;;
+            debian)
+                # Enable any PPA repos defined in the group file
+                local debian_ppas=()
+                while IFS= read -r repo; do
+                    [ -n "$repo" ] && debian_ppas+=("$repo")
+                done < <(yq -r '.packages.debian_ppa[]? // ""' "$group_file" 2>/dev/null | grep -v "^$")
+
+                for repo in "${debian_ppas[@]}"; do
+                    enable_ppa "$repo" || true
+                done
+
+                # Run group-specific repo setup functions
+                case "$group" in
+                    hyprland) setup_hyprland_repos 2>/dev/null || true ;;
+                    gaming) setup_gaming_repos 2>/dev/null || true ;;
+                    multimedia) setup_multimedia_repos 2>/dev/null || true ;;
+                    productivity) setup_productivity_repos 2>/dev/null || true ;;
+                    development) setup_development_repos 2>/dev/null || true ;;
+                esac
+                ;;
+        esac
         
         # Parse package candidates
         local all_packages=()
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && all_packages+=("$pkg")
-        done < <(parse_packages "$group_file" "$DISTRO")
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
         # Resolve install package list from selected mode
         local packages=()
@@ -618,7 +664,7 @@ install_common_tools() {
     # Setup hyprvoice (AI group)
     if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " ai " ]]; then
         # Install hyprvoice binary (Fedora only — Arch uses AUR package)
-        if [ "$DISTRO" = "fedora" ] && ! command_exists hyprvoice; then
+        if [ "$DISTRO_FAMILY" = "fedora" ] && ! command_exists hyprvoice; then
             install_curl_tool "hyprvoice" \
                 "curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice && chmod +x ~/.local/bin/hyprvoice"
         elif command_exists hyprvoice; then
@@ -1025,8 +1071,8 @@ transform=normal"
 
 # Setup Plymouth boot splash screen
 setup_plymouth() {
-    # Only relevant on Arch — Fedora ships Plymouth out of the box
-    [ "$DISTRO" != "arch" ] && return
+    # Only relevant on Arch family — Fedora ships Plymouth out of the box
+    [ "$DISTRO_FAMILY" != "arch" ] && return
 
     # Skip if Plymouth is already installed and configured
     if command_exists plymouth-set-default-theme \

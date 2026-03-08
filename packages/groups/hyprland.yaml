@@ -125,5 +125,44 @@ packages:
     - inotify-tools
     - cmatrix
 
+  debian:
+    # Ubuntu 24.04+ recommended (hyprland available in universe)
+    # Requires universe repo — enabled by setup_hyprland_repos
+    - hyprland
+    - hyprpaper
+    - hypridle
+    - hyprlock
+
+    # Display manager
+    - sddm
+    - weston
+
+    # Status bar and menus
+    - waybar
+    - rofi
+    - rofimoji
+
+    # Notifications
+    - dunst            # mako is not in apt; dunst is the apt equivalent
+
+    # Clipboard
+    - wl-clipboard
+    - cliphist
+
+    # Audio control
+    - pavucontrol
+    - blueman
+    - bluez
+
+    # X compatibility
+    - x11-xserver-utils
+
+    # Other tools
+    - inotify-tools
+    - cmatrix
+
+    # Note: hyprpicker, hyprpolkitagent, hyprshot, wlogout, wtype, nwg-look
+    # may not be in apt — install via binary or build from source
+
   fedora_copr:
     - solopasha/hyprland  # For latest Hyprland packages

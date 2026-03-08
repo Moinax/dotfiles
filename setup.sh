@@ -45,12 +45,12 @@ print_info "Detected distribution: $DISTRO"
 
 # Check if distro is supported
 case "$DISTRO" in
-    arch|fedora)
+    arch|fedora|ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali)
         print_success "Distribution is supported"
         ;;
     *)
         print_error "Unsupported distribution: $DISTRO"
-        print_info "Supported distributions: arch, fedora"
+        print_info "Supported distributions: arch, fedora, ubuntu, debian, linuxmint, pop, elementary, neon, zorin, kali"
         exit 1
         ;;
 esac
@@ -91,6 +91,16 @@ install_gum() {
                 sudo dnf install -y gum
             }
             ;;
+        ubuntu|debian|*)
+            # Add Charm apt repository and install gum
+            print_info "Adding Charm apt repository for gum..."
+            sudo mkdir -p /etc/apt/keyrings
+            curl -fsSL https://repo.charm.sh/apt/gpg.key \
+                | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
+                | sudo tee /etc/apt/sources.list.d/charm.list > /dev/null
+            sudo apt update && sudo apt install -y gum
+            ;;
     esac
     
     if command -v gum &> /dev/null; then
@@ -115,6 +125,9 @@ install_git() {
             ;;
         fedora)
             sudo dnf install -y git
+            ;;
+        ubuntu|debian|*)
+            sudo apt update && sudo apt install -y git
             ;;
     esac
 }

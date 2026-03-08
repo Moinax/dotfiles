@@ -149,3 +149,44 @@ packages:
     - network-manager-applet
     - nm-connection-editor
     - plasma-nm
+
+
+  debian:
+    # niri is not yet packaged for Debian/Ubuntu in official or common PPAs.
+    # Install manually from source: https://github.com/YaLTeR/niri
+    # The packages below are Wayland companion tools available via apt.
+    # (niri itself will be skipped — install it separately after running this installer)
+
+    # Status bar and menus
+    - waybar
+    - rofi
+    - rofimoji
+
+    # Notifications
+    - dunst            # mako not in apt; dunst is the apt equivalent
+
+    # Clipboard
+    - wl-clipboard
+
+    # Lock screen
+    - swaylock         # hyprlock not in apt; swaylock is the apt equivalent
+
+    # Idle management
+    - swayidle
+
+    # Wallpaper
+    - swaybg
+
+    # Audio control
+    - pavucontrol
+    - blueman
+    - bluez
+
+    # Other tools
+    - inotify-tools
+    - cmatrix
+
+    # Network management
+    - network-manager
+    - network-manager-gnome
+    - nm-connection-editor
