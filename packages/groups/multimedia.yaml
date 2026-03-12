@@ -2,6 +2,7 @@
 name: Multimedia
 description: Media players and multimedia tools (mpv, obs, etc.)
 icon: 🎬
+environment: desktop
 
 # No specific dotfiles for multimedia
 dotfiles: []

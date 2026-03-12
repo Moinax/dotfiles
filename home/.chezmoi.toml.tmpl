@@ -64,6 +64,11 @@
 {{-   $hyprvoice_model = promptString "Whisper model for dictation (tiny/small/medium)" "small" -}}
 {{- end -}}
 
+{{- $install_purpose := "desktop" -}}
+{{- if hasKey . "install_purpose" -}}
+{{-   $install_purpose = .install_purpose -}}
+{{- end -}}
+
 {{- $dark_mode := "dark" -}}
 {{- if hasKey . "dark_mode" -}}
 {{-   $dark_mode = .dark_mode -}}
@@ -88,4 +93,5 @@ sourceDir = {{ $source_dir | quote }}
     install_productivity = {{ $install_productivity }}
     install_ai = {{ $install_ai }}
     hyprvoice_model = {{ $hyprvoice_model | quote }}
+    install_purpose = {{ $install_purpose | quote }}
     dark_mode = {{ $dark_mode | quote }}

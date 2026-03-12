@@ -8,9 +8,8 @@ packages:
     - zsh-autosuggestions
     - zsh-syntax-highlighting
     - starship
-    - kitty
     - tmux
-    
+
     # Core utilities
     - git
     - stow
@@ -23,9 +22,13 @@ packages:
     - jq
     - yq
     - lazygit
-    
+
     # File management
     - yazi
+
+  desktop:
+    # Terminal emulator
+    - kitty
 
     # Fonts
     - fira-code-fonts

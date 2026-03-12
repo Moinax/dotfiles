@@ -2,6 +2,7 @@
 name: Productivity
 description: File managers, backup tools, and productivity apps
 icon: 📁
+environment: desktop
 
 # Dotfiles to install when this group is selected
 dotfiles:

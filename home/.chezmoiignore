@@ -67,6 +67,14 @@ dot_local/share/rofi/themes/moinax.rasi
 dot_config/wlogout/style.css
 dot_config/waybar/style.css
 
+# Ignore desktop-only base dotfiles in terminal mode
+{{- if eq .install_purpose "terminal" }}
+dot_config/kitty
+dot_config/kitty/**
+Wallpapers
+Wallpapers/**
+{{- end }}
+
 # Ignore Productivity configs if not selected
 {{- if not .install_productivity }}
 dot_icons

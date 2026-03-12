@@ -2,6 +2,7 @@
 name: AI
 description: AI-powered desktop tools (voice dictation, assistants)
 icon: 🤖
+environment: desktop
 
 # Dotfiles to install when this group is selected
 dotfiles:

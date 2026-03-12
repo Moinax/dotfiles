@@ -20,6 +20,7 @@ tools:
 
   - name: firacode-nerd-font
     description: FiraCode Nerd Font (patched with icons for Starship/prompt)
+    environment: desktop
     install: |
       mkdir -p ~/.local/share/fonts/FiraCodeNF
       curl -sL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip -o /tmp/FiraCode.zip

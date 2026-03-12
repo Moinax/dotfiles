@@ -2,6 +2,7 @@
 name: Niri
 description: Niri compositor with Wayland desktop tools (waybar, rofi, mako)
 icon: 📜
+environment: desktop
 
 # Dotfiles to install when this group is selected
 dotfiles:

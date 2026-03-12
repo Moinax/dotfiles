@@ -2,6 +2,7 @@
 name: Gaming
 description: Gaming platforms and communication (Steam, Discord)
 icon: 🎮
+environment: desktop
 
 # No specific dotfiles for gaming
 dotfiles: []

@@ -2,6 +2,7 @@
 name: Development
 description: Development tools (docker, neovim, git tools, editors)
 icon: 💻
+environment: both
 
 # Dotfiles to install when this group is selected
 dotfiles:
@@ -34,6 +35,9 @@ descriptions:
   gcc-c++: GNU C++ compiler (Fedora)
   just: Command runner (like make, simpler)
   tailscale: Mesh VPN for secure networking
+
+desktop_only:
+  - cursor-bin
 
 packages:
   arch:
