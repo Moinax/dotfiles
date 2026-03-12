@@ -172,6 +172,32 @@ parse_services() {
     fi
 }
 
+# Parse desktop_only list from YAML
+# Usage: parse_desktop_only "file.yaml"
+parse_desktop_only() {
+    local file="$1"
+
+    if command_exists yq; then
+        yq -r '.desktop_only[]? // ""' "$file" 2>/dev/null | grep -v "^$"
+    else
+        local in_section=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^desktop_only:[[:space:]]*$ ]]; then
+                in_section=true
+                continue
+            fi
+            if $in_section; then
+                if [[ "$line" =~ ^[a-z] ]]; then
+                    break
+                fi
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
+                    echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
+                fi
+            fi
+        done < "$file"
+    fi
+}
+
 # Install a tool via curl script
 install_curl_tool() {
     local name="$1"

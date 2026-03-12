@@ -135,21 +135,9 @@ _build_tree_json() {
         # Build desktop_only exclusion set for terminal mode
         local -A desktop_only_pkgs=()
         if [ "$INSTALL_PURPOSE" = "terminal" ]; then
-            local in_desktop_only=false
-            while IFS= read -r line; do
-                if echo "$line" | grep -q '^desktop_only:'; then
-                    in_desktop_only=true
-                    continue
-                fi
-                if [ "$in_desktop_only" = true ]; then
-                    if echo "$line" | grep -qE '^[a-z_]'; then
-                        break
-                    fi
-                    local do_pkg
-                    do_pkg=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*//p')
-                    [ -n "$do_pkg" ] && desktop_only_pkgs["$do_pkg"]=1
-                fi
-            done < "$group_file"
+            while IFS= read -r do_pkg; do
+                [ -n "$do_pkg" ] && desktop_only_pkgs["$do_pkg"]=1
+            done < <(parse_desktop_only "$group_file")
         fi
 
         # Collect deduplicated packages
@@ -224,21 +212,9 @@ _select_packages_gum_fallback() {
         # Build desktop_only exclusion set for terminal mode
         local -A desktop_only_pkgs=()
         if [ "$INSTALL_PURPOSE" = "terminal" ]; then
-            local in_desktop_only=false
-            while IFS= read -r line; do
-                if echo "$line" | grep -q '^desktop_only:'; then
-                    in_desktop_only=true
-                    continue
-                fi
-                if [ "$in_desktop_only" = true ]; then
-                    if echo "$line" | grep -qE '^[a-z_]'; then
-                        break
-                    fi
-                    local do_pkg
-                    do_pkg=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*//p')
-                    [ -n "$do_pkg" ] && desktop_only_pkgs["$do_pkg"]=1
-                fi
-            done < "$group_file"
+            while IFS= read -r do_pkg; do
+                [ -n "$do_pkg" ] && desktop_only_pkgs["$do_pkg"]=1
+            done < <(parse_desktop_only "$group_file")
         fi
 
         local header_line="$group_icon $group_label"
@@ -653,7 +629,7 @@ install_group_packages() {
             local -A desktop_only_pkgs=()
             while IFS= read -r do_pkg; do
                 [ -n "$do_pkg" ] && desktop_only_pkgs["$do_pkg"]=1
-            done < <(yq -r '.desktop_only[]? // ""' "$group_file" 2>/dev/null | grep -v "^$")
+            done < <(parse_desktop_only "$group_file")
 
             if [ ${#desktop_only_pkgs[@]} -gt 0 ]; then
                 local filtered_packages=()
@@ -731,24 +707,6 @@ install_common_tools() {
         print_info "Volta is already installed"
     fi
     
-    # Install FiraCode Nerd Font (desktop only)
-    if [ "$INSTALL_PURPOSE" = "desktop" ]; then
-        if [ ! -d "$HOME/.local/share/fonts/FiraCodeNF" ]; then
-            print_info "Installing FiraCode Nerd Font..."
-            mkdir -p ~/.local/share/fonts/FiraCodeNF
-            if curl -sL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip -o /tmp/FiraCode.zip; then
-                unzip -o /tmp/FiraCode.zip -d ~/.local/share/fonts/FiraCodeNF
-                rm /tmp/FiraCode.zip
-                fc-cache -fv >/dev/null 2>&1
-                print_success "FiraCode Nerd Font installed"
-            else
-                print_warning "Failed to download FiraCode Nerd Font"
-            fi
-        else
-            print_info "FiraCode Nerd Font is already installed"
-        fi
-    fi
-
     # Install TPM (Tmux Plugin Manager)
     if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
         install_git_repo "TPM" "https://github.com/tmux-plugins/tpm" "$HOME/.tmux/plugins/tpm"
