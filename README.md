@@ -40,7 +40,7 @@ The interactive installer will:
 | **Development** | `neovim`, Cursor, Git tooling (`gh`, `lazygit`, `delta`), containers (`docker`, `docker-compose`, `lazydocker`), and build/task tools (`cmake`, `gcc`/`base-devel`, `just`) |
 | **Gaming** | Steam + Discord with performance helpers (`mangohud`, `gamemode`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape) |
-| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), backup/snapshots (`timeshift`, `timeshift-autosnap`, `grub-btrfs` on Arch), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
+| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), BTRFS snapshots (`snapper`, `snap-pac`/`python3-dnf-plugin-snapper`, `grub-btrfs`), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
 | **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation with local Whisper models |
 
 ## Structure
