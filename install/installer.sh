@@ -1395,18 +1395,18 @@ APTEOF
     fi
 
     # Debian: install grub-btrfs from source (not in apt repos)
-    if [ "$DISTRO_FAMILY" = "debian" ] && ! command -v grub-btrfsd &>/dev/null; then
+    if [ "$DISTRO_FAMILY" = "debian" ] && ! command_exists grub-btrfsd; then
         print_info "Installing grub-btrfs from source..."
-        local tmp_dir="/tmp/grub-btrfs-build"
-        rm -rf "$tmp_dir"
-        if git clone https://github.com/Antynea/grub-btrfs.git "$tmp_dir" 2>/dev/null; then
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        if git clone https://github.com/Antynea/grub-btrfs.git "$tmp_dir"; then
             (cd "$tmp_dir" && sudo make install) || {
                 print_warning "Failed to install grub-btrfs from source"
             }
-            rm -rf "$tmp_dir"
         else
             print_warning "Failed to clone grub-btrfs repository"
         fi
+        rm -rf "$tmp_dir"
     fi
 
     # Enable grub-btrfsd service if available

@@ -145,8 +145,8 @@ setup_multimedia_repos() {
     enable_rpmfusion
 }
 
-# Setup repos for productivity (Google Chrome, grub-btrfs COPR, etc.)
+# Setup repos for productivity (Google Chrome, etc.)
+# Note: grub-btrfs COPR is handled via fedora_copr key in productivity.yaml
 setup_productivity_repos() {
     enable_google_chrome_repo
-    enable_copr "Clefable/grub-btrfs"
 }
