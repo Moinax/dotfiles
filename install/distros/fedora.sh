@@ -145,7 +145,8 @@ setup_multimedia_repos() {
     enable_rpmfusion
 }
 
-# Setup repos for productivity (Google Chrome, etc.)
+# Setup repos for productivity (Google Chrome, grub-btrfs COPR, etc.)
 setup_productivity_repos() {
     enable_google_chrome_repo
+    enable_copr "Clefable/grub-btrfs"
 }

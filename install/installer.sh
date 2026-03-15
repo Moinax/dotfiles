@@ -32,6 +32,13 @@ declare -A GROUP_CUSTOM_PACKAGE_LIST=()
 HYPRVOICE_MODEL="small"
 INSTALL_PURPOSE="desktop"
 
+# Check if root filesystem is BTRFS
+is_root_btrfs() {
+    local fstype
+    fstype=$(findmnt -n -o FSTYPE / 2>/dev/null)
+    [ "$fstype" = "btrfs" ]
+}
+
 # Check if gum is available
 check_gum() {
     if ! command_exists gum; then
@@ -1335,6 +1342,90 @@ setup_shell() {
     fi
 }
 
+# Setup BTRFS snapshots with Snapper (conditional on BTRFS + productivity group)
+setup_btrfs_snapshots() {
+    # Only run if productivity group was selected
+    if ! [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " productivity " ]]; then
+        return 0
+    fi
+
+    # Check if root filesystem is BTRFS
+    if ! is_root_btrfs; then
+        print_info "Root filesystem is not BTRFS — skipping snapshot setup"
+        return 0
+    fi
+
+    # Verify snapper is installed
+    if ! command_exists snapper; then
+        print_warning "snapper not found — skipping BTRFS snapshot setup"
+        return 0
+    fi
+
+    echo ""
+    print_info "BTRFS root detected with snapper installed"
+    if ! gum confirm "Configure automatic BTRFS snapshots before package upgrades?"; then
+        return 0
+    fi
+
+    print_info "Configuring BTRFS snapshots..."
+
+    # Create snapper root config if it doesn't exist
+    if ! sudo snapper list-configs 2>/dev/null | grep -q "^root"; then
+        print_info "Creating snapper root config..."
+        sudo snapper create-config / || {
+            print_warning "Failed to create snapper root config — skipping snapshot setup"
+            return 0
+        }
+    fi
+
+    # Disable timeline snapshots (we only want pre-upgrade snapshots)
+    sudo snapper -c root set-config "TIMELINE_CREATE=no" || {
+        print_warning "Failed to configure snapper timeline settings"
+    }
+
+    # Debian: install APT hook for pre-upgrade snapshots
+    if [ "$DISTRO_FAMILY" = "debian" ]; then
+        local apt_hook="/etc/apt/apt.conf.d/80-snapper"
+        if [ ! -f "$apt_hook" ]; then
+            print_info "Installing APT snapper hook..."
+            sudo tee "$apt_hook" > /dev/null << 'APTEOF'
+DPkg::Pre-Invoke { "if command -v snapper >/dev/null 2>&1 && snapper list-configs 2>/dev/null | grep -q root; then snapper create --description 'Before APT upgrade' --cleanup-algorithm number; fi"; };
+APTEOF
+        fi
+    fi
+
+    # Debian: install grub-btrfs from source (not in apt repos)
+    if [ "$DISTRO_FAMILY" = "debian" ] && ! command -v grub-btrfsd &>/dev/null; then
+        print_info "Installing grub-btrfs from source..."
+        local tmp_dir="/tmp/grub-btrfs-build"
+        rm -rf "$tmp_dir"
+        if git clone https://github.com/Antynea/grub-btrfs.git "$tmp_dir" 2>/dev/null; then
+            (cd "$tmp_dir" && sudo make install) || {
+                print_warning "Failed to install grub-btrfs from source"
+            }
+            rm -rf "$tmp_dir"
+        else
+            print_warning "Failed to clone grub-btrfs repository"
+        fi
+    fi
+
+    # Enable grub-btrfsd service if available
+    if systemctl list-unit-files grub-btrfsd.service &>/dev/null; then
+        print_info "Enabling grub-btrfsd service..."
+        sudo systemctl enable --now grub-btrfsd || {
+            print_warning "Failed to enable grub-btrfsd service"
+        }
+    fi
+
+    # Create initial snapshot
+    sudo snapper create --description "Initial snapshot after dotfiles setup" || {
+        print_warning "Failed to create initial snapshot"
+    }
+
+    BTRFS_SNAPSHOTS_CONFIGURED=true
+    print_success "BTRFS snapshot setup complete"
+}
+
 # Show completion message
 show_completion() {
     echo ""
@@ -1367,7 +1458,12 @@ show_completion() {
         steps+=("  $next_step. Reboot to see the Plymouth boot splash")
         next_step=$((next_step + 1))
     fi
-    
+
+    if [ "$BTRFS_SNAPSHOTS_CONFIGURED" = true ]; then
+        steps+=("  $next_step. Run 'snapper list' to verify BTRFS snapshots are working")
+        next_step=$((next_step + 1))
+    fi
+
     gum style \
         --border double \
         --border-foreground 82 \
@@ -1386,6 +1482,7 @@ main() {
     SELECTED_GROUP_NAMES=()
     SERVICES_TO_ENABLE=()
     PLYMOUTH_CONFIGURED=false
+    BTRFS_SNAPSHOTS_CONFIGURED=false
     unset GROUP_PACKAGE_MODE GROUP_CUSTOM_PACKAGE_LIST
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()
@@ -1433,6 +1530,7 @@ main() {
         apply_dark_mode_defaults
     fi
     enable_selected_services
+    setup_btrfs_snapshots
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_sddm
         setup_plymouth

@@ -20,9 +20,10 @@ descriptions:
   okular: KDE document viewer (PDF, EPUB, DjVu)
   ffmpegthumbnailer: Video thumbnail generator
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
-  timeshift: System restore / snapshot tool
-  timeshift-autosnap: Auto-snapshot before upgrades (Arch)
-  grub-btrfs: GRUB entries for Btrfs snapshots (Arch)
+  snapper: BTRFS snapshot manager
+  snap-pac: Auto-snapshot on pacman upgrades (Arch)
+  python3-dnf-plugin-snapper: Auto-snapshot on DNF upgrades (Fedora)
+  grub-btrfs: GRUB entries for BTRFS snapshots
   slack-desktop: Team communication app (Arch AUR)
   slack: Team communication app (Fedora)
   google-chrome: Google Chrome web browser (Arch AUR)
@@ -44,10 +45,10 @@ packages:
     - okular
 
     # Backup and snapshots
-    - timeshift
-    - timeshift-autosnap
+    - snapper
+    - snap-pac
     - grub-btrfs
-    
+
     # Communication
     - slack-desktop  # AUR
     
@@ -71,8 +72,10 @@ packages:
     - okular
 
     # Backup and snapshots
-    - timeshift
-    
+    - snapper
+    - python3-dnf-plugin-snapper
+    - grub-btrfs
+
     # Communication
     - slack
     
@@ -95,7 +98,8 @@ packages:
     - okular
 
     # Backup and snapshots
-    - timeshift
+    - snapper
+    # grub-btrfs installed from source by setup_btrfs_snapshots()
 
     # Communication
     # Note: Slack is not available in apt — install manually via .deb from https://slack.com/downloads/linux
@@ -111,3 +115,6 @@ packages:
   fedora_repos:
     # Google Chrome repo
     - google-chrome
+
+  fedora_copr:
+    - Clefable/grub-btrfs
