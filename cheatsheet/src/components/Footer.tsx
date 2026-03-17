@@ -13,7 +13,7 @@ export function Footer({ count, total, leader }: FooterProps) {
           : `${count} of ${total} keybindings`}
       </span>
       {" · "}
-      <span>Leader = <kbd style={{ fontSize: 11 }}>{leader}</kbd></span>
+      <span>Leader = <kbd>{leader}</kbd></span>
       {" · "}
       <span>AstroNvim v5</span>
     </footer>

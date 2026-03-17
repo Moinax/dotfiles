@@ -24,38 +24,14 @@ export function KeybindingTable({
           No keybindings match <code>{query}</code>
         </div>
         {suggestions.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 14, color: "var(--ctp-subtext0)" }}>
-              Did you mean:
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                marginTop: 8,
-              }}
-            >
+          <div className="suggestions-container">
+            <div className="suggestions-label">Did you mean:</div>
+            <div className="suggestions-list">
               {suggestions.map((s) => (
                 <button
                   key={s.key + s.description}
                   onClick={() => onSuggestionClick(s.description)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--ctp-blue)",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                    fontSize: 14,
-                    fontFamily: "var(--font-display)",
-                    textDecoration: "none",
-                  }}
-                  onMouseOver={(e) =>
-                    ((e.target as HTMLElement).style.textDecoration = "underline")
-                  }
-                  onMouseOut={(e) =>
-                    ((e.target as HTMLElement).style.textDecoration = "none")
-                  }
+                  className="suggestion-btn"
                 >
                   "{s.key}" → {s.description}
                 </button>

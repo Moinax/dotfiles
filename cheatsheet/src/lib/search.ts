@@ -13,16 +13,16 @@ const fuseOptions: IFuseOptions<Keybinding> = {
   minMatchCharLength: 2,
 };
 
+const relaxedFuseOptions: IFuseOptions<Keybinding> = {
+  ...fuseOptions,
+  threshold: 0.6,
+  minMatchCharLength: 1,
+};
+
 export function createSearchIndex(data: Keybinding[]): Fuse<Keybinding> {
   return new Fuse(data, fuseOptions);
 }
 
-/** Relaxed search for "did you mean" suggestions */
-export function suggestSearch(
-  index: Fuse<Keybinding>,
-  query: string,
-  limit = 3
-): Keybinding[] {
-  const results = index.search(query, { limit });
-  return results.map((r) => r.item);
+export function createRelaxedSearchIndex(data: Keybinding[]): Fuse<Keybinding> {
+  return new Fuse(data, relaxedFuseOptions);
 }
