@@ -1,0 +1,1495 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-03-17T00:00:00Z",
+  "leader": "<Space>",
+  "localLeader": ",",
+  "keybindings": [
+    {
+      "key": "<Leader>ff",
+      "modes": ["n"],
+      "description": "Find files",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["find", "open", "browse", "file"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+P"
+    },
+    {
+      "key": "<Leader>fw",
+      "modes": ["n"],
+      "description": "Live grep (search in project)",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["grep", "search", "find", "text", "project"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+Shift+F"
+    },
+    {
+      "key": "<Leader>fb",
+      "modes": ["n"],
+      "description": "Find buffers",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["buffer", "switch", "open"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>fh",
+      "modes": ["n"],
+      "description": "Find help tags",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["help", "docs", "documentation"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>fo",
+      "modes": ["n"],
+      "description": "Find recent files",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["recent", "old", "history", "file"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>fc",
+      "modes": ["n"],
+      "description": "Grep current word",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["grep", "word", "cursor"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>fk",
+      "modes": ["n"],
+      "description": "Find keymaps",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["keymap", "shortcut", "binding"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>fm",
+      "modes": ["n"],
+      "description": "Find marks",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["mark", "bookmark"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>fn",
+      "modes": ["n"],
+      "description": "Find notifications",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["notification", "message"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>fr",
+      "modes": ["n"],
+      "description": "Find registers",
+      "category": "search",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["register", "clipboard", "yank"],
+      "priority": 3
+    },
+    {
+      "key": "<C-s>",
+      "modes": ["n", "i"],
+      "description": "Save file",
+      "category": "editing",
+      "source": "vscode-recipe",
+      "plugin": null,
+      "tags": ["save", "write", "file"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+S"
+    },
+    {
+      "key": "u",
+      "modes": ["n"],
+      "description": "Undo",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["undo", "revert"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+Z"
+    },
+    {
+      "key": "<C-r>",
+      "modes": ["n"],
+      "description": "Redo",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["redo", "repeat"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+Shift+Z"
+    },
+    {
+      "key": "gcc",
+      "modes": ["n"],
+      "description": "Toggle comment (line)",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["comment", "toggle", "line"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+/"
+    },
+    {
+      "key": "gc",
+      "modes": ["v"],
+      "description": "Toggle comment (selection)",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["comment", "toggle", "selection"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+/"
+    },
+    {
+      "key": "<C-/>",
+      "modes": ["n"],
+      "description": "Toggle comment (VSCode style)",
+      "category": "editing",
+      "source": "vscode-recipe",
+      "plugin": null,
+      "tags": ["comment", "toggle"],
+      "priority": 2
+    },
+    {
+      "key": "gd",
+      "modes": ["n"],
+      "description": "Go to definition",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["definition", "goto", "navigate", "lsp"],
+      "priority": 1,
+      "vscodeEquivalent": "F12"
+    },
+    {
+      "key": "gr",
+      "modes": ["n"],
+      "description": "Go to references",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["references", "goto", "find", "usage"],
+      "priority": 1,
+      "vscodeEquivalent": "Shift+F12"
+    },
+    {
+      "key": "<Leader>lr",
+      "modes": ["n"],
+      "description": "Rename symbol",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["rename", "refactor", "symbol"],
+      "priority": 1,
+      "vscodeEquivalent": "F2"
+    },
+    {
+      "key": "<C-b>",
+      "modes": ["n"],
+      "description": "Toggle sidebar (Neo-tree)",
+      "category": "ui-toggles",
+      "source": "vscode-recipe",
+      "plugin": "neo-tree.nvim",
+      "tags": ["sidebar", "explorer", "tree", "files"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+B"
+    },
+    {
+      "key": "<Leader>e",
+      "modes": ["n"],
+      "description": "Toggle explorer (Neo-tree focus)",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": "neo-tree.nvim",
+      "tags": ["explorer", "tree", "files", "sidebar"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+B"
+    },
+    {
+      "key": "<Leader>tf",
+      "modes": ["n"],
+      "description": "Toggle floating terminal",
+      "category": "terminal",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["terminal", "float", "shell"],
+      "priority": 1,
+      "vscodeEquivalent": "Ctrl+`"
+    },
+    {
+      "key": "<C-j>",
+      "modes": ["n"],
+      "description": "Toggle terminal (VSCode style)",
+      "category": "terminal",
+      "source": "vscode-recipe",
+      "plugin": null,
+      "tags": ["terminal", "toggle"],
+      "priority": 2
+    },
+    {
+      "key": "<C-p>",
+      "modes": ["n"],
+      "description": "Find files (VSCode style)",
+      "category": "search",
+      "source": "vscode-recipe",
+      "plugin": "telescope.nvim",
+      "tags": ["find", "file", "open"],
+      "priority": 2
+    },
+    {
+      "key": "<C-S-p>",
+      "modes": ["n"],
+      "description": "Command palette",
+      "category": "search",
+      "source": "vscode-recipe",
+      "plugin": "telescope.nvim",
+      "tags": ["command", "palette", "action"],
+      "priority": 2
+    },
+    {
+      "key": "K",
+      "modes": ["n"],
+      "description": "Hover documentation",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["hover", "documentation", "help", "info"],
+      "priority": 2
+    },
+    {
+      "key": "gD",
+      "modes": ["n"],
+      "description": "Go to declaration",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["declaration", "goto"],
+      "priority": 3
+    },
+    {
+      "key": "gI",
+      "modes": ["n"],
+      "description": "Go to implementation",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["implementation", "goto"],
+      "priority": 3
+    },
+    {
+      "key": "gy",
+      "modes": ["n"],
+      "description": "Go to type definition",
+      "category": "lsp",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["type", "definition", "goto"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>la",
+      "modes": ["n"],
+      "description": "Code action",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["action", "quickfix", "refactor"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>ld",
+      "modes": ["n"],
+      "description": "Line diagnostics",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["diagnostic", "error", "warning", "lint"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>lf",
+      "modes": ["n"],
+      "description": "Format document",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["format", "prettier", "lint"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>li",
+      "modes": ["n"],
+      "description": "LSP info",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["lsp", "info", "status"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>ls",
+      "modes": ["n"],
+      "description": "Document symbols",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["symbol", "outline", "structure"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>lS",
+      "modes": ["n"],
+      "description": "Workspace symbols",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["symbol", "workspace", "project"],
+      "priority": 3
+    },
+    {
+      "key": "s",
+      "modes": ["n", "v", "o"],
+      "description": "Flash jump — search + label any visible text",
+      "category": "navigation",
+      "source": "plugin",
+      "plugin": "flash.nvim",
+      "tags": ["jump", "motion", "search", "label", "flash"],
+      "priority": 2
+    },
+    {
+      "key": "S",
+      "modes": ["n", "v", "o"],
+      "description": "Flash treesitter select",
+      "category": "navigation",
+      "source": "plugin",
+      "plugin": "flash.nvim",
+      "tags": ["treesitter", "select", "node", "flash"],
+      "priority": 3
+    },
+    {
+      "key": "r",
+      "modes": ["o"],
+      "description": "Remote flash (operator-pending)",
+      "category": "navigation",
+      "source": "plugin",
+      "plugin": "flash.nvim",
+      "tags": ["remote", "flash", "operator"],
+      "priority": 3
+    },
+    {
+      "key": "ys{motion}{char}",
+      "modes": ["n"],
+      "description": "Add surround (e.g. ysiw\" to wrap word in quotes)",
+      "category": "text-objects",
+      "source": "plugin",
+      "plugin": "nvim-surround",
+      "tags": ["surround", "wrap", "add", "quotes", "brackets"],
+      "priority": 2
+    },
+    {
+      "key": "ds{char}",
+      "modes": ["n"],
+      "description": "Delete surround (e.g. ds\" to remove quotes)",
+      "category": "text-objects",
+      "source": "plugin",
+      "plugin": "nvim-surround",
+      "tags": ["surround", "delete", "remove"],
+      "priority": 2
+    },
+    {
+      "key": "cs{old}{new}",
+      "modes": ["n"],
+      "description": "Change surround (e.g. cs\"' to change quotes)",
+      "category": "text-objects",
+      "source": "plugin",
+      "plugin": "nvim-surround",
+      "tags": ["surround", "change", "replace"],
+      "priority": 2
+    },
+    {
+      "key": "S{char}",
+      "modes": ["v"],
+      "description": "Surround selection",
+      "category": "text-objects",
+      "source": "plugin",
+      "plugin": "nvim-surround",
+      "tags": ["surround", "wrap", "selection"],
+      "priority": 2
+    },
+    {
+      "key": "ciw",
+      "modes": ["n"],
+      "description": "Change inside word",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["change", "word", "edit", "inside"],
+      "priority": 1,
+      "vscodeEquivalent": "Double-click + type"
+    },
+    {
+      "key": "ci\"",
+      "modes": ["n"],
+      "description": "Change inside double quotes",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["change", "quotes", "string", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "ci(",
+      "modes": ["n"],
+      "description": "Change inside parentheses",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["change", "parentheses", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "ci{",
+      "modes": ["n"],
+      "description": "Change inside curly braces",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["change", "braces", "block", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "diw",
+      "modes": ["n"],
+      "description": "Delete inside word",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "word", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "di\"",
+      "modes": ["n"],
+      "description": "Delete inside double quotes",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "quotes", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "da(",
+      "modes": ["n"],
+      "description": "Delete around parentheses",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "parentheses", "around"],
+      "priority": 3
+    },
+    {
+      "key": "viw",
+      "modes": ["n"],
+      "description": "Select inside word",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["select", "visual", "word", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "vi\"",
+      "modes": ["n"],
+      "description": "Select inside double quotes",
+      "category": "text-objects",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["select", "visual", "quotes", "inside"],
+      "priority": 2
+    },
+    {
+      "key": "gg",
+      "modes": ["n"],
+      "description": "Go to beginning of file",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["top", "beginning", "start", "file"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+Home"
+    },
+    {
+      "key": "G",
+      "modes": ["n"],
+      "description": "Go to end of file",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["bottom", "end", "file"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+End"
+    },
+    {
+      "key": "0",
+      "modes": ["n"],
+      "description": "Go to beginning of line",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["line", "start", "beginning"],
+      "priority": 2
+    },
+    {
+      "key": "$",
+      "modes": ["n"],
+      "description": "Go to end of line",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["line", "end"],
+      "priority": 2
+    },
+    {
+      "key": "^",
+      "modes": ["n"],
+      "description": "Go to first non-blank character",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["line", "first", "non-blank", "indent"],
+      "priority": 2
+    },
+    {
+      "key": "w",
+      "modes": ["n"],
+      "description": "Next word",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["word", "forward", "next"],
+      "priority": 1
+    },
+    {
+      "key": "b",
+      "modes": ["n"],
+      "description": "Previous word",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["word", "backward", "previous"],
+      "priority": 1
+    },
+    {
+      "key": "e",
+      "modes": ["n"],
+      "description": "End of word",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["word", "end"],
+      "priority": 2
+    },
+    {
+      "key": "f{char}",
+      "modes": ["n"],
+      "description": "Find character forward on line",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["find", "char", "forward", "line"],
+      "priority": 2
+    },
+    {
+      "key": "t{char}",
+      "modes": ["n"],
+      "description": "Find character forward (before) on line",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["find", "char", "forward", "till", "before"],
+      "priority": 3
+    },
+    {
+      "key": "*",
+      "modes": ["n"],
+      "description": "Search word under cursor (forward)",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "word", "cursor", "forward"],
+      "priority": 2
+    },
+    {
+      "key": "#",
+      "modes": ["n"],
+      "description": "Search word under cursor (backward)",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "word", "cursor", "backward"],
+      "priority": 3
+    },
+    {
+      "key": "/",
+      "modes": ["n"],
+      "description": "Search forward",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "find", "forward"],
+      "priority": 1,
+      "vscodeEquivalent": "Cmd+F"
+    },
+    {
+      "key": "?",
+      "modes": ["n"],
+      "description": "Search backward",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "find", "backward"],
+      "priority": 3
+    },
+    {
+      "key": "n",
+      "modes": ["n"],
+      "description": "Next search result",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "next", "result"],
+      "priority": 2
+    },
+    {
+      "key": "N",
+      "modes": ["n"],
+      "description": "Previous search result",
+      "category": "search",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["search", "previous", "result"],
+      "priority": 2
+    },
+    {
+      "key": "dd",
+      "modes": ["n"],
+      "description": "Delete line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "line", "cut"],
+      "priority": 1
+    },
+    {
+      "key": "yy",
+      "modes": ["n"],
+      "description": "Yank (copy) line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["yank", "copy", "line"],
+      "priority": 1
+    },
+    {
+      "key": "p",
+      "modes": ["n"],
+      "description": "Paste after cursor",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["paste", "put", "after"],
+      "priority": 1
+    },
+    {
+      "key": "P",
+      "modes": ["n"],
+      "description": "Paste before cursor",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["paste", "put", "before"],
+      "priority": 2
+    },
+    {
+      "key": ".",
+      "modes": ["n"],
+      "description": "Repeat last change",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["repeat", "dot", "again"],
+      "priority": 2
+    },
+    {
+      "key": "<C-o>",
+      "modes": ["n"],
+      "description": "Jump back (jumplist)",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["jump", "back", "history", "jumplist"],
+      "priority": 2
+    },
+    {
+      "key": "<C-i>",
+      "modes": ["n"],
+      "description": "Jump forward (jumplist)",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["jump", "forward", "history", "jumplist"],
+      "priority": 2
+    },
+    {
+      "key": "zz",
+      "modes": ["n"],
+      "description": "Center screen on cursor",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["center", "screen", "scroll"],
+      "priority": 2
+    },
+    {
+      "key": "<C-d>",
+      "modes": ["n"],
+      "description": "Scroll half page down",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["scroll", "down", "page"],
+      "priority": 2
+    },
+    {
+      "key": "<C-u>",
+      "modes": ["n"],
+      "description": "Scroll half page up",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["scroll", "up", "page"],
+      "priority": 2
+    },
+    {
+      "key": "%",
+      "modes": ["n"],
+      "description": "Jump to matching bracket",
+      "category": "navigation",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["bracket", "matching", "jump", "pair"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>s",
+      "modes": ["n"],
+      "description": "Split window horizontally",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["split", "horizontal", "window"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>v",
+      "modes": ["n"],
+      "description": "Split window vertically",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["split", "vertical", "window"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>h",
+      "modes": ["n"],
+      "description": "Move to left window",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["window", "navigate", "left"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>j",
+      "modes": ["n"],
+      "description": "Move to window below",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["window", "navigate", "down", "below"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>k",
+      "modes": ["n"],
+      "description": "Move to window above",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["window", "navigate", "up", "above"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>l",
+      "modes": ["n"],
+      "description": "Move to right window",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["window", "navigate", "right"],
+      "priority": 2
+    },
+    {
+      "key": "<C-w>q",
+      "modes": ["n"],
+      "description": "Close window",
+      "category": "windows",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["window", "close", "quit"],
+      "priority": 2
+    },
+    {
+      "key": "]b",
+      "modes": ["n"],
+      "description": "Next buffer",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "next", "tab"],
+      "priority": 2
+    },
+    {
+      "key": "[b",
+      "modes": ["n"],
+      "description": "Previous buffer",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "previous", "tab"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>bc",
+      "modes": ["n"],
+      "description": "Close buffer",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "close", "delete"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>bC",
+      "modes": ["n"],
+      "description": "Close all buffers",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "close", "all"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>bp",
+      "modes": ["n"],
+      "description": "Pick buffer",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "pick", "select"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>bl",
+      "modes": ["n"],
+      "description": "Close buffers to the left",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "close", "left"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>br",
+      "modes": ["n"],
+      "description": "Close buffers to the right",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "close", "right"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>bs",
+      "modes": ["n"],
+      "description": "Sort buffers",
+      "category": "buffers",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["buffer", "sort"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gb",
+      "modes": ["n"],
+      "description": "Git branches",
+      "category": "git",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["git", "branch", "checkout"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gc",
+      "modes": ["n"],
+      "description": "Git commits",
+      "category": "git",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["git", "commit", "history", "log"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gd",
+      "modes": ["n"],
+      "description": "Git diff",
+      "category": "git",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["git", "diff", "changes"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>gt",
+      "modes": ["n"],
+      "description": "Git status",
+      "category": "git",
+      "source": "astronvim-core",
+      "plugin": "telescope.nvim",
+      "tags": ["git", "status"],
+      "priority": 2
+    },
+    {
+      "key": "]g",
+      "modes": ["n"],
+      "description": "Next git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "hunk", "next", "change"],
+      "priority": 2
+    },
+    {
+      "key": "[g",
+      "modes": ["n"],
+      "description": "Previous git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "hunk", "previous", "change"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>gp",
+      "modes": ["n"],
+      "description": "Preview git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "hunk", "preview"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gs",
+      "modes": ["n"],
+      "description": "Stage git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "stage", "hunk", "add"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gu",
+      "modes": ["n"],
+      "description": "Unstage git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "unstage", "hunk"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gr",
+      "modes": ["n"],
+      "description": "Reset git hunk",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "reset", "hunk", "revert"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>gl",
+      "modes": ["n"],
+      "description": "Git blame line",
+      "category": "git",
+      "source": "plugin",
+      "plugin": "gitsigns.nvim",
+      "tags": ["git", "blame", "author", "line"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>th",
+      "modes": ["n"],
+      "description": "Toggle horizontal terminal",
+      "category": "terminal",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["terminal", "horizontal", "split"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>tv",
+      "modes": ["n"],
+      "description": "Toggle vertical terminal",
+      "category": "terminal",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["terminal", "vertical", "split"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>tl",
+      "modes": ["n"],
+      "description": "Open LazyGit",
+      "category": "terminal",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["lazygit", "git", "tui"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>td",
+      "modes": ["n"],
+      "description": "Open LazyDocker",
+      "category": "terminal",
+      "source": "plugin",
+      "plugin": "lazydocker",
+      "tags": ["lazydocker", "docker", "tui"],
+      "priority": 3
+    },
+    {
+      "key": "<Tab>",
+      "modes": ["i"],
+      "description": "Accept AI suggestion / snippet forward / indent",
+      "category": "ai-completion",
+      "source": "custom",
+      "plugin": "blink.cmp",
+      "tags": ["ai", "supermaven", "completion", "accept", "snippet", "tab"],
+      "priority": 2
+    },
+    {
+      "key": "<S-Tab>",
+      "modes": ["i"],
+      "description": "Snippet backward",
+      "category": "ai-completion",
+      "source": "custom",
+      "plugin": "blink.cmp",
+      "tags": ["snippet", "backward", "previous"],
+      "priority": 3
+    },
+    {
+      "key": "<C-Space>",
+      "modes": ["i"],
+      "description": "Trigger completion menu",
+      "category": "ai-completion",
+      "source": "astronvim-core",
+      "plugin": "blink.cmp",
+      "tags": ["completion", "trigger", "autocomplete"],
+      "priority": 2
+    },
+    {
+      "key": "<C-n>",
+      "modes": ["i"],
+      "description": "Next completion item",
+      "category": "ai-completion",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["completion", "next", "down"],
+      "priority": 2
+    },
+    {
+      "key": "<C-p>",
+      "modes": ["i"],
+      "description": "Previous completion item",
+      "category": "ai-completion",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["completion", "previous", "up"],
+      "priority": 2
+    },
+    {
+      "key": "<CR>",
+      "modes": ["i"],
+      "description": "Confirm completion selection",
+      "category": "ai-completion",
+      "source": "astronvim-core",
+      "plugin": "blink.cmp",
+      "tags": ["completion", "confirm", "accept", "enter"],
+      "priority": 2
+    },
+    {
+      "key": "<C-e>",
+      "modes": ["i"],
+      "description": "Close completion menu",
+      "category": "ai-completion",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["completion", "close", "cancel"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>uw",
+      "modes": ["n"],
+      "description": "Toggle word wrap",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["wrap", "word", "toggle"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>un",
+      "modes": ["n"],
+      "description": "Toggle line numbers",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["numbers", "line", "toggle"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>ud",
+      "modes": ["n"],
+      "description": "Toggle diagnostics",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["diagnostics", "toggle", "errors"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>uh",
+      "modes": ["n"],
+      "description": "Toggle inlay hints",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["inlay", "hints", "toggle", "type"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>us",
+      "modes": ["n"],
+      "description": "Toggle spell check",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["spell", "check", "toggle"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>uA",
+      "modes": ["n"],
+      "description": "Toggle autopairs",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["autopairs", "brackets", "toggle"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>db",
+      "modes": ["n"],
+      "description": "Toggle breakpoint",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "nvim-dap",
+      "tags": ["debug", "breakpoint", "toggle"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>dc",
+      "modes": ["n"],
+      "description": "Debug continue",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "nvim-dap",
+      "tags": ["debug", "continue", "run"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>di",
+      "modes": ["n"],
+      "description": "Debug step into",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "nvim-dap",
+      "tags": ["debug", "step", "into"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>do",
+      "modes": ["n"],
+      "description": "Debug step over",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "nvim-dap",
+      "tags": ["debug", "step", "over"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>xx",
+      "modes": ["n"],
+      "description": "Toggle trouble (diagnostics list)",
+      "category": "lsp",
+      "source": "astronvim-core",
+      "plugin": "trouble.nvim",
+      "tags": ["trouble", "diagnostics", "list", "toggle"],
+      "priority": 2
+    },
+    {
+      "key": "<Leader>Sl",
+      "modes": ["n"],
+      "description": "Load last session",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["session", "load", "last", "restore"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>Ss",
+      "modes": ["n"],
+      "description": "Save session",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["session", "save"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>Sf",
+      "modes": ["n"],
+      "description": "Find session",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": null,
+      "tags": ["session", "find", "list"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>pi",
+      "modes": ["n"],
+      "description": "Plugins install",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": "lazy.nvim",
+      "tags": ["plugin", "install", "lazy"],
+      "priority": 3
+    },
+    {
+      "key": "<Leader>ps",
+      "modes": ["n"],
+      "description": "Plugins sync",
+      "category": "ui-toggles",
+      "source": "astronvim-core",
+      "plugin": "lazy.nvim",
+      "tags": ["plugin", "sync", "update"],
+      "priority": 3
+    },
+    {
+      "key": "qa...q",
+      "modes": ["n"],
+      "description": "Record macro into register 'a'",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["macro", "record", "automate", "register"],
+      "priority": 3
+    },
+    {
+      "key": "@a",
+      "modes": ["n"],
+      "description": "Play macro from register 'a'",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["macro", "play", "replay", "register"],
+      "priority": 3
+    },
+    {
+      "key": ">>",
+      "modes": ["n"],
+      "description": "Indent line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["indent", "shift", "right"],
+      "priority": 2
+    },
+    {
+      "key": "<<",
+      "modes": ["n"],
+      "description": "Unindent line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["unindent", "shift", "left", "dedent"],
+      "priority": 2
+    },
+    {
+      "key": ">",
+      "modes": ["v"],
+      "description": "Indent selection",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["indent", "shift", "right", "selection"],
+      "priority": 2
+    },
+    {
+      "key": "<",
+      "modes": ["v"],
+      "description": "Unindent selection",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["unindent", "shift", "left", "selection", "dedent"],
+      "priority": 2
+    },
+    {
+      "key": "o",
+      "modes": ["n"],
+      "description": "Insert line below",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["insert", "line", "below", "open"],
+      "priority": 1
+    },
+    {
+      "key": "O",
+      "modes": ["n"],
+      "description": "Insert line above",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["insert", "line", "above", "open"],
+      "priority": 1
+    },
+    {
+      "key": "J",
+      "modes": ["n"],
+      "description": "Join lines",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["join", "lines", "merge"],
+      "priority": 2
+    },
+    {
+      "key": "x",
+      "modes": ["n"],
+      "description": "Delete character under cursor",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "char", "character"],
+      "priority": 2
+    },
+    {
+      "key": "r{char}",
+      "modes": ["n"],
+      "description": "Replace character under cursor",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["replace", "char", "character"],
+      "priority": 2
+    },
+    {
+      "key": "~",
+      "modes": ["n"],
+      "description": "Toggle case of character",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["case", "toggle", "upper", "lower"],
+      "priority": 3
+    },
+    {
+      "key": "D",
+      "modes": ["n"],
+      "description": "Delete to end of line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["delete", "line", "end"],
+      "priority": 2
+    },
+    {
+      "key": "C",
+      "modes": ["n"],
+      "description": "Change to end of line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["change", "line", "end"],
+      "priority": 2
+    },
+    {
+      "key": "A",
+      "modes": ["n"],
+      "description": "Append at end of line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["append", "end", "line", "insert"],
+      "priority": 2
+    },
+    {
+      "key": "I",
+      "modes": ["n"],
+      "description": "Insert at beginning of line",
+      "category": "editing",
+      "source": "vim-builtin",
+      "plugin": null,
+      "tags": ["insert", "beginning", "line"],
+      "priority": 2
+    }
+  ]
+}
