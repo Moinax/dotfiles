@@ -7,15 +7,16 @@ return {
     "nvim-lua/plenary.nvim",
   },
   config = function()
+    local actions = require("telescope.actions")
+    local action_state = require("telescope.actions.state")
     require("cheatsheet").setup({
       bundled_cheatsheets = true,
       bundled_plugin_cheatsheets = true,
       include_only_installed_plugins = true,
       telescope_mappings = {
-        ["<CR>"] = require("telescope.actions").select_entry,
+        ["<CR>"] = actions.select_default,
         ["<C-Y>"] = function(prompt_bufnr)
-          -- Yank the keybinding to clipboard
-          local selection = require("telescope.actions.state").get_selected_entry(prompt_bufnr)
+          local selection = action_state.get_selected_entry(prompt_bufnr)
           if selection then
             vim.fn.setreg("+", selection.value or selection[1])
             vim.notify("Copied: " .. (selection.value or selection[1]), vim.log.levels.INFO)
