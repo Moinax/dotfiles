@@ -211,7 +211,7 @@ install_chezmoi() {
     fi
 
     print_info "Installing chezmoi..."
-    sh -c "$(curl -fsLS get.chezmoi.io)"
+    sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
 }
 
 # Install yq for YAML parsing (binary — not available in apt)
@@ -252,7 +252,7 @@ install_eza() {
         *)       goarch="$(uname -m)" ;;
     esac
     curl -sL "https://github.com/eza-community/eza/releases/latest/download/eza_${goarch}-unknown-linux-gnu.tar.gz" \
-        | sudo tar -xz -C /usr/local/bin eza
+        | sudo tar -xz -C /usr/local/bin
     sudo chmod +x /usr/local/bin/eza
     print_success "eza installed"
 }

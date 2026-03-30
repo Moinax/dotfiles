@@ -45,6 +45,24 @@ descriptions:
 desktop_only:
   - cursor-bin
 
+# Tools installed via custom commands (not available in package managers).
+# These appear in the package selector alongside distro packages.
+# Fields: name (display + selection key), check (command to test if installed),
+#         install (shell command to run), distro_skip (list of distro families to skip)
+custom_install:
+  - name: claude-code
+    check: claude
+    install: curl -fsSL https://claude.ai/install.sh | bash
+  - name: gh-dash
+    check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
+    install: gh extension install dlvhdr/gh-dash
+    requires: gh
+  - name: worktrunk
+    check: wt
+    install: curl -fsSL https://github.com/max-sixty/worktrunk/releases/latest/download/worktrunk-installer.sh | sh
+    distro_skip:
+      - arch
+
 packages:
   arch:
     # Editors

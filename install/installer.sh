@@ -24,6 +24,9 @@ else
     exit 1
 fi
 
+# Ensure ~/.local/bin is in PATH so we can detect tools installed there (chezmoi, claude, etc.)
+export PATH="$HOME/.local/bin:$PATH"
+
 # Installer state
 SELECTED_GROUP_NAMES=()
 SERVICES_TO_ENABLE=()
@@ -240,6 +243,18 @@ _build_tree_json() {
             pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
+        # Include custom_install entries (curl/script-installed tools)
+        while IFS= read -r pkg; do
+            [ -z "$pkg" ] && continue
+            [ -n "${pkg_seen[$pkg]}" ] && continue
+            [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
+            pkg_seen["$pkg"]="$group"
+
+            local desc="$(_json_escape "${descs[$pkg]:-}")"
+            local name="$(_json_escape "$pkg")"
+            pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
+        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+
         # Emit group JSON object
         if [ "$first_group" = true ]; then
             first_group=false
@@ -307,8 +322,16 @@ _select_packages_gum_fallback() {
         display_lines+=("$header_line")
 
         local pkg_count=0
+        # Combine distro packages and custom_install packages into one list
+        local all_group_pkgs=()
         while IFS= read -r pkg; do
-            [ -z "$pkg" ] && continue
+            [ -n "$pkg" ] && all_group_pkgs+=("$pkg")
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && all_group_pkgs+=("$pkg")
+        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+
+        for pkg in "${all_group_pkgs[@]}"; do
             # Skip desktop_only packages in terminal mode
             [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
             pkg_count=$((pkg_count + 1))
@@ -326,7 +349,7 @@ _select_packages_gum_fallback() {
             preselected+=("$display_line")
             line_to_pkg["$display_line"]="$pkg"
             line_to_group["$display_line"]="$group"
-        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        done
         group_total["$group"]=$pkg_count
     done
 
@@ -408,6 +431,9 @@ select_group_packages() {
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && count=$((count + 1))
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && count=$((count + 1))
+        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
         group_total["$group"]=$count
     done
 
@@ -680,11 +706,15 @@ install_group_packages() {
         
         setup_group_repos "$group_file" "$group"
         
-        # Parse package candidates
+        # Parse package candidates (distro packages + custom_install)
         local all_packages=()
+        local -A custom_install_names=()
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && all_packages+=("$pkg")
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && all_packages+=("$pkg") && custom_install_names["$pkg"]=1
+        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
 
         # Filter out desktop_only packages in terminal mode
         if [ "$INSTALL_PURPOSE" = "terminal" ]; then
@@ -719,12 +749,55 @@ install_group_packages() {
                 ;;
         esac
         
-        if [ ${#packages[@]} -gt 0 ]; then
-            install_packages "${packages[@]}" || track_warning "Some packages from $group failed to install"
-        elif [ "$package_mode" != "skip" ]; then
+        # Separate custom_install packages from distro packages
+        local distro_packages=()
+        local custom_packages=()
+        for pkg in "${packages[@]}"; do
+            if [ -n "${custom_install_names[$pkg]}" ]; then
+                custom_packages+=("$pkg")
+            else
+                distro_packages+=("$pkg")
+            fi
+        done
+
+        if [ ${#distro_packages[@]} -gt 0 ]; then
+            install_packages "${distro_packages[@]}" || track_warning "Some packages from $group failed to install"
+        fi
+
+        # Install custom_install packages via their own commands
+        for pkg in "${custom_packages[@]}"; do
+            local check_cmd
+            check_cmd=$(parse_custom_install_check "$group_file" "$pkg")
+            local install_cmd
+            install_cmd=$(parse_custom_install_cmd "$group_file" "$pkg")
+            local requires_cmd
+            requires_cmd=$(parse_custom_install_requires "$group_file" "$pkg")
+
+            # Skip if a required command is missing
+            if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
+                print_info "$requires_cmd not found — skipping $pkg"
+                continue
+            fi
+
+            # Check if already installed
+            local already_installed=false
+            if [ -n "$check_cmd" ]; then
+                if command_exists "$check_cmd" 2>/dev/null || eval "$check_cmd" 2>/dev/null; then
+                    already_installed=true
+                fi
+            fi
+
+            if $already_installed; then
+                print_info "$pkg is already installed"
+            elif [ -n "$install_cmd" ]; then
+                install_curl_tool "$pkg" "$install_cmd" || track_warning "Failed to install $pkg"
+            fi
+        done
+
+        if [ ${#distro_packages[@]} -eq 0 ] && [ ${#custom_packages[@]} -eq 0 ] && [ "$package_mode" != "skip" ]; then
             track_warning "No packages resolved for group $group"
         fi
-        
+
         # Collect services to enable
         while IFS= read -r service; do
             [ -n "$service" ] && SERVICES_TO_ENABLE+=("$service")
@@ -833,42 +906,6 @@ install_common_tools() {
             print_success "Rofi themes installed"
         else
             track_warning "Failed to install Rofi themes"
-        fi
-    fi
-
-    # Install gh-dash (development group)
-    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " development " ]]; then
-        if command_exists gh; then
-            if ! gh extension list 2>/dev/null | grep -q "dlvhdr/gh-dash"; then
-                print_info "Installing gh-dash extension..."
-                gh extension install dlvhdr/gh-dash && print_success "gh-dash installed" || track_warning "Failed to install gh-dash"
-            else
-                print_info "gh-dash is already installed"
-            fi
-        else
-            print_info "gh CLI not found — skipping gh-dash extension"
-        fi
-    fi
-
-    # Install Claude Code (development group)
-    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " development " ]]; then
-        if ! command_exists claude; then
-            install_curl_tool "Claude Code" \
-                "curl -fsSL https://claude.ai/install.sh | sh"
-        else
-            print_info "Claude Code is already installed"
-        fi
-    fi
-
-    # Install WorkTrunk (development group, non-Arch — Arch uses worktrunk-bin AUR package)
-    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " development " ]]; then
-        if [ "$DISTRO_FAMILY" != "arch" ]; then
-            if ! command_exists wt; then
-                install_curl_tool "WorkTrunk" \
-                    "curl -fsSL https://github.com/max-sixty/worktrunk/releases/latest/download/worktrunk-installer.sh | sh"
-            else
-                print_info "WorkTrunk is already installed"
-            fi
         fi
     fi
 

@@ -53,7 +53,7 @@ elif [ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
 fi
 
 # Show fastfetch at startup
-if [ "$TERM_PROGRAM" != "vscode" ]; then 
+if command -v fastfetch &> /dev/null && [ "$TERM_PROGRAM" != "vscode" ]; then
 		fastfetch
 fi
 
@@ -63,10 +63,12 @@ export VISUAL="cursor"
 
 {{- if ne .chezmoi.osRelease.id "fedora" }}
 # Replace ls by eza
-alias ls="eza --icons --group-directories-first"
-alias ll="eza --icons --group-directories-first -l --git"
-alias lsa="eza --icons --group-directories-first -la --git"
-alias lt="eza --icons --group-directories-first --tree --level=2"
+if command -v eza &> /dev/null; then
+  alias ls="eza --icons --group-directories-first"
+  alias ll="eza --icons --group-directories-first -l --git"
+  alias lsa="eza --icons --group-directories-first -la --git"
+  alias lt="eza --icons --group-directories-first --tree --level=2"
+fi
 {{- end }}
 # Add shortcuts to nvim
 alias vim="nvim"
@@ -76,8 +78,12 @@ alias v="nvim"
 alias lg="lazygit"
 # Add shortcuts to lazydocker
 alias ld="lazydocker"
+{{- if ne .install_purpose "terminal" }}
 # Use kitten ssh to auto-copy terminfo to remote servers
-alias ssh="kitten ssh"
+if command -v kitten &> /dev/null; then
+  alias ssh="kitten ssh"
+fi
+{{- end }}
 # Add shortcut to gh-dash
 alias dash="gh dash"
 # Add shortucts to find the biggest files in the current directory (even hidden files)
@@ -87,47 +93,51 @@ alias big="sudo du -sh *(D) | sort -rh | head -n 10"
 # This ensures VS Code and other tools can find pnpm, volta, etc.
 
 # Pnpm completion (keep in .zshrc as it's interactive-only)
-source ~/completion-for-pnpm.bash
+[[ -f ~/completion-for-pnpm.bash ]] && source ~/completion-for-pnpm.bash
 
 
 # Set up television for terminal keybindings (CTRL+T file picker, CTRL+R history search)
-eval "$(tv init zsh)"
+if command -v tv &> /dev/null; then
+  eval "$(tv init zsh)"
 
-# Override smart autocomplete to launch tv files channel on empty prompt
-# instead of falling back to zsh's expand-or-complete (shows "5500 possibilities")
-_tv_smart_autocomplete() {
-  _disable_bracketed_paste
-  local tokens prefix lbuf
-  setopt localoptions noshwordsplit noksh_arrays noposixbuiltins
+  # Override smart autocomplete to launch tv files channel on empty prompt
+  # instead of falling back to zsh's expand-or-complete (shows "5500 possibilities")
+  _tv_smart_autocomplete() {
+    _disable_bracketed_paste
+    local tokens prefix lbuf
+    setopt localoptions noshwordsplit noksh_arrays noposixbuiltins
 
-  tokens=(${(z)LBUFFER})
-  if [ ${#tokens} -lt 1 ]; then
-    zle -I
-    local output
-    output=$(tv files --no-status-bar --inline < /dev/tty)
-    if [ -n "$output" ]; then
-      LBUFFER="${(q)output} "
+    tokens=(${(z)LBUFFER})
+    if [ ${#tokens} -lt 1 ]; then
+      zle -I
+      local output
+      output=$(tv files --no-status-bar --inline < /dev/tty)
+      if [ -n "$output" ]; then
+        LBUFFER="${(q)output} "
+      fi
+      zle reset-prompt
+      _enable_bracketed_paste
+      return
     fi
-    zle reset-prompt
+
+    [[ ${LBUFFER[-1]} == ' ' ]] && tokens+=("")
+    if [[ ${LBUFFER} = *"${tokens[-2]-}${tokens[-1]}" ]]; then
+      tokens[-2]="${tokens[-2]-}${tokens[-1]}"
+      tokens=(${tokens[0,-2]})
+    fi
+
+    lbuf=$LBUFFER
+    prefix=${tokens[-1]}
+    [ -n "${tokens[-1]}" ] && lbuf=${lbuf:0:-${#tokens[-1]}}
+    __tv_path_completion "$prefix" "$lbuf"
     _enable_bracketed_paste
-    return
-  fi
-
-  [[ ${LBUFFER[-1]} == ' ' ]] && tokens+=("")
-  if [[ ${LBUFFER} = *"${tokens[-2]-}${tokens[-1]}" ]]; then
-    tokens[-2]="${tokens[-2]-}${tokens[-1]}"
-    tokens=(${tokens[0,-2]})
-  fi
-
-  lbuf=$LBUFFER
-  prefix=${tokens[-1]}
-  [ -n "${tokens[-1]}" ] && lbuf=${lbuf:0:-${#tokens[-1]}}
-  __tv_path_completion "$prefix" "$lbuf"
-  _enable_bracketed_paste
-}
+  }
+fi
 
 # Store the ssh key for further use in git
-eval "$(keychain --eval id_ed25519)"
+if command -v keychain &> /dev/null; then
+  eval "$(keychain --eval id_ed25519)"
+fi
 
 function y() {
 	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
@@ -137,11 +147,15 @@ function y() {
 	rm -f -- "$tmp"
 }
 
-# Initialiaze starhsip
-eval "$(starship init zsh)"
+# Initialize starship
+if command -v starship &> /dev/null; then
+  eval "$(starship init zsh)"
+fi
 
 # Initialize zoxide (--cmd cd replaces cd/cdi with smart zoxide versions)
-eval "$(zoxide init zsh --cmd cd)"
+if command -v zoxide &> /dev/null; then
+  eval "$(zoxide init zsh --cmd cd)"
+fi
 
 {{- if .install_development }}
 # Initialize WorkTrunk shell integration (directory switching for worktrees)

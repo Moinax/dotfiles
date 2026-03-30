@@ -204,6 +204,92 @@ parse_desktop_only() {
     fi
 }
 
+# Parse custom_install entries and output their names (filtered by distro).
+# Usage: parse_custom_install_names "file.yaml" "debian"
+parse_custom_install_names() {
+    local file="$1"
+    local distro="$2"
+
+    if command_exists yq; then
+        yq -r "(.custom_install // [])[] | select((.distro_skip // []) | contains([\"$distro\"]) | not) | .name" "$file" 2>/dev/null | grep -v "^$"
+    else
+        # Fallback: simple parsing
+        local in_section=false
+        local current_name=""
+        local skip=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
+                in_section=true
+                continue
+            fi
+            if $in_section; then
+                # Exit when hitting another top-level key
+                if [[ "$line" =~ ^[a-z] ]]; then
+                    break
+                fi
+                # New entry
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*(.+)$ ]]; then
+                    # Emit previous entry if valid
+                    if [ -n "$current_name" ] && ! $skip; then
+                        echo "$current_name"
+                    fi
+                    current_name="${BASH_REMATCH[1]}"
+                    skip=false
+                fi
+                # Check distro_skip list
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*${distro}[[:space:]]*$ ]] && [ -n "$current_name" ]; then
+                    skip=true
+                fi
+            fi
+        done < "$file"
+        # Emit last entry
+        if [ -n "$current_name" ] && ! $skip; then
+            echo "$current_name"
+        fi
+    fi
+}
+
+# Get a field from a custom_install entry by name.
+# Usage: _parse_custom_install_field "file.yaml" "claude-code" "install"
+_parse_custom_install_field() {
+    local file="$1"
+    local pkg_name="$2"
+    local field="$3"
+
+    if command_exists yq; then
+        yq -r "(.custom_install // [])[] | select(.name == \"$pkg_name\") | .$field // \"\"" "$file" 2>/dev/null
+    else
+        local in_section=false
+        local found=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
+                in_section=true
+                continue
+            fi
+            if $in_section; then
+                if [[ "$line" =~ ^[a-z] ]]; then
+                    break
+                fi
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*${pkg_name}[[:space:]]*$ ]]; then
+                    found=true
+                    continue
+                fi
+                if $found && [[ "$line" =~ ^[[:space:]]*${field}:[[:space:]]*(.+)$ ]]; then
+                    echo "${BASH_REMATCH[1]}"
+                    return 0
+                fi
+                if $found && [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name: ]]; then
+                    break
+                fi
+            fi
+        done < "$file"
+    fi
+}
+
+parse_custom_install_cmd() { _parse_custom_install_field "$1" "$2" "install"; }
+parse_custom_install_check() { _parse_custom_install_field "$1" "$2" "check"; }
+parse_custom_install_requires() { _parse_custom_install_field "$1" "$2" "requires"; }
+
 # Parse a nested list from the top-level packages: map in YAML.
 # Usage: parse_package_nested_list "file.yaml" "fedora_copr"
 parse_package_nested_list() {

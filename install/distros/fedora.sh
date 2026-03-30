@@ -143,7 +143,7 @@ install_chezmoi() {
     print_info "Installing chezmoi..."
     sudo dnf install -y chezmoi || {
         # Fallback to official install script
-        sh -c "$(curl -fsLS get.chezmoi.io)"
+        sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
     }
 }
 
