@@ -43,18 +43,23 @@ hl.bind(mod .. " + down",          hl.dsp.focus({ direction = "d" }))
 hl.bind(mod .. " + SHIFT + Tab",   hl.dsp.window.cycle_next({ next = false }))            -- Cycle prev window
 
 -- ── 4. Move Window / Column ──────────────────────────────────────
--- Replicate the old `movewindoworgroup`: enter an adjacent group, or exit
--- the current one. Lua 0.55 has no single dispatcher for this — we shell
--- out to a helper that picks between `into_group` and `out_of_group`.
--- Safe because `hl.exec_cmd` is async; an `io.popen` here would deadlock.
+-- Mod+Ctrl+Arrow: group-aware swap within the current monitor (in-group →
+-- out, adjacent-group → in, else swap with the visual neighbor). Lua 0.55
+-- has no single dispatcher for this, so we shell out; `hl.exec_cmd` is
+-- async, so it's safe — an `io.popen` from a Lua bind would deadlock.
 hl.bind(mod .. " + CTRL + right", hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh r"))
 hl.bind(mod .. " + CTRL + left",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh l"))
 hl.bind(mod .. " + CTRL + up",    hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh u"))
 hl.bind(mod .. " + CTRL + down",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh d"))
-hl.bind(mod .. " + ALT + right",  hl.dsp.window.swap({ direction = "r" }))
-hl.bind(mod .. " + ALT + left",   hl.dsp.window.swap({ direction = "l" }))
-hl.bind(mod .. " + ALT + up",     hl.dsp.window.swap({ direction = "u" }))
-hl.bind(mod .. " + ALT + down",   hl.dsp.window.swap({ direction = "d" }))
+
+-- Mod+Alt+Arrow: plain directional movewindow. No group entry/exit — when
+-- the focus is inside a group, this moves the entire group container as
+-- one unit through the tile tree. At the monitor edge, the window crosses
+-- to the adjacent monitor automatically.
+hl.bind(mod .. " + ALT + right",  hl.dsp.window.move({ direction = "r" }))
+hl.bind(mod .. " + ALT + left",   hl.dsp.window.move({ direction = "l" }))
+hl.bind(mod .. " + ALT + up",     hl.dsp.window.move({ direction = "u" }))
+hl.bind(mod .. " + ALT + down",   hl.dsp.window.move({ direction = "d" }))
 
 -- ── 5. Resize ────────────────────────────────────────────────────
 hl.bind(mod .. " + SHIFT + right", hl.dsp.window.resize({ x =  30, y =   0, relative = true }), { repeating = true })
@@ -68,6 +73,19 @@ hl.bind(mod .. " + G",          hl.dsp.group.toggle())                          
 hl.bind("ALT + TAB",            hl.dsp.group.next())                                       -- Cycle group forward
 hl.bind("ALT + SHIFT + TAB",    hl.dsp.group.prev())                                       -- Cycle group backward
 hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))              -- Move window in group
+
+-- ── 6b. Scrolling Layout (no-op on dwindle/vstack workspaces) ───
+hl.bind(mod .. " + W",               hl.dsp.layout("colresize +conf"))                     -- Cycle preset column widths
+hl.bind(mod .. " + ALT + W",         hl.dsp.layout("colresize -conf"))                     -- Cycle preset widths (reverse)
+hl.bind(mod .. " + period",          hl.dsp.layout("move +col"))                           -- Scroll tape right (one column)
+hl.bind(mod .. " + comma",           hl.dsp.layout("move -col"))                           -- Scroll tape left (one column)
+hl.bind(mod .. " + ALT + period",    hl.dsp.layout("swapcol r"))                           -- Swap column with right neighbor
+hl.bind(mod .. " + ALT + comma",     hl.dsp.layout("swapcol l"))                           -- Swap column with left neighbor
+hl.bind(mod .. " + ALT + J",         hl.dsp.layout("consume_or_expel next"))               -- Consume from / expel to next column
+hl.bind(mod .. " + ALT + SHIFT + J", hl.dsp.layout("consume_or_expel prev"))               -- Consume from / expel to prev column
+hl.bind(mod .. " + ALT + P",         hl.dsp.layout("promote"))                             -- Window to its own column
+hl.bind(mod .. " + ALT + Z",         hl.dsp.layout("inhibit_scroll"))                      -- Pin tape position (toggle)
+hl.bind(mod .. " + ALT + T",         hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle workspace scrolling ↔ baseline
 
 -- ── 7. Workspace Navigation ──────────────────────────────────────
 -- QWERTY 1-7

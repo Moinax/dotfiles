@@ -45,7 +45,8 @@
 | Center column | — | `Mod+Alt+C` | Niri only |
 | Center visible columns | — | `Mod+Ctrl+C` | Niri only |
 | Maximize column | — | `Mod+Alt+M` | Niri only |
-| Preset column widths | — | `Mod+W` | Niri only (cycles through preset widths) |
+| Preset column widths | `Mod+W` | `Mod+W` | Hyprland: `colresize +conf` (scrolling layout only); cycles preset widths |
+| Preset column widths (reverse) | `Mod+Alt+W` | `Mod+Alt+W` | Hyprland: `colresize -conf` (scrolling layout only); Niri: preset window heights |
 | Preset window heights | — | `Mod+Alt+W` | Niri only |
 | Reset window height | — | `Mod+Ctrl+W` | Niri only |
 | Switch float/tile focus | — | `Mod+P` | Niri only |
@@ -66,14 +67,14 @@
 
 | Action | Hyprland | Niri | Notes |
 |---|---|---|---|
-| Move left | `Mod+Ctrl+Left` | `Mod+Ctrl+Left` | Hyprland: movewindoworgroup; Niri: move-column-left |
-| Move right | `Mod+Ctrl+Right` | `Mod+Ctrl+Right` | Hyprland: movewindoworgroup; Niri: move-column-right |
-| Move up | `Mod+Ctrl+Up` | `Mod+Ctrl+Up` | Hyprland: movewindoworgroup; Niri: move-window-up |
-| Move down | `Mod+Ctrl+Down` | `Mod+Ctrl+Down` | Hyprland: movewindoworgroup; Niri: move-window-down |
-| Swap window left | `Mod+Alt+Left` | `Mod+Alt+Left` | Niri: swap-window-left |
-| Swap window right | `Mod+Alt+Right` | `Mod+Alt+Right` | Niri: swap-window-right |
-| Swap window up | `Mod+Alt+Up` | — | Hyprland only; Niri uses `Mod+Alt+Up` for workspace move |
-| Swap window down | `Mod+Alt+Down` | — | Hyprland only; Niri uses `Mod+Alt+Down` for workspace move |
+| Swap with neighbor / group | `Mod+Ctrl+Left` | `Mod+Ctrl+Left` | Hyprland: group-aware swap (in-group→out / adjacent-group→in / else→swap); Niri: move-column-left |
+| Swap with neighbor / group | `Mod+Ctrl+Right` | `Mod+Ctrl+Right` | Hyprland: group-aware swap; Niri: move-column-right |
+| Swap with neighbor / group | `Mod+Ctrl+Up` | `Mod+Ctrl+Up` | Hyprland: group-aware swap; Niri: move-window-up |
+| Swap with neighbor / group | `Mod+Ctrl+Down` | `Mod+Ctrl+Down` | Hyprland: group-aware swap; Niri: move-window-down |
+| Move window (whole group as unit) | `Mod+Alt+Left` | `Mod+Alt+Left` | Hyprland: `move({ direction = "l" })` — moves the focused window or group container; crosses monitor at edge; Niri: swap-window-left |
+| Move window (whole group as unit) | `Mod+Alt+Right` | `Mod+Alt+Right` | Hyprland: `move({ direction = "r" })`; Niri: swap-window-right |
+| Move window (whole group as unit) | `Mod+Alt+Up` | — | Hyprland only; Niri uses `Mod+Alt+Up` for workspace move |
+| Move window (whole group as unit) | `Mod+Alt+Down` | — | Hyprland only; Niri uses `Mod+Alt+Down` for workspace move |
 | Move column to first | — | `Mod+Ctrl+Home` | Niri only |
 | Move column to last | — | `Mod+Ctrl+End` | Niri only |
 
@@ -90,15 +91,23 @@
 
 | Action | Hyprland | Niri | Notes |
 |---|---|---|---|
-| Consume into column | — | `Mod+J` | Niri only; Hyprland uses `Mod+J` for toggle split (layoutmsg togglesplit) |
-| Expel from column | — | `Mod+Shift+J` | Niri only |
+| Consume into / expel from next column | `Mod+Alt+J` | `Mod+J` | Hyprland: scrolling-layout `consume_or_expel next`; Niri: `consume-window-into-column` |
+| Consume into / expel from prev column | `Mod+Alt+Shift+J` | `Mod+Shift+J` | Hyprland: scrolling-layout `consume_or_expel prev`; Niri: `expel-window-from-column` |
+| Promote window to own column | `Mod+Alt+P` | — | Hyprland scrolling layout only |
+| Pin tape (inhibit scroll) | `Mod+Alt+Z` | — | Hyprland scrolling layout only (per-workspace toggle) |
+| Move tape right (one column) | `Mod+Period` | — | Hyprland scrolling layout only |
+| Move tape left (one column) | `Mod+Comma` | — | Hyprland scrolling layout only |
+| Swap column with right neighbor | `Mod+Alt+Period` | — | Hyprland scrolling layout only |
+| Swap column with left neighbor | `Mod+Alt+Comma` | — | Hyprland scrolling layout only |
 | Toggle tabbed display | — | `Mod+G` | Niri: toggle-column-tabbed-display |
 | Normal display | — | `Mod+Shift+G` | Niri: set-column-display "normal" |
 | Toggle group | `Mod+G` | — | Hyprland only (togglegroup) |
 | Cycle group forward | `Alt+Tab` | — | Hyprland only (changegroupactive) |
 | Cycle group backward | `Alt+Shift+Tab` | — | Hyprland only |
 | Swap in group | `Alt+Ctrl+Tab` | — | Hyprland only (movegroupwindow) |
-| Toggle split | `Mod+J` | — | Hyprland only (togglesplit) |
+| Toggle split | `Mod+J` | — | Hyprland only (togglesplit, dwindle layout) |
+
+> **Note**: Hyprland's scrolling-layout binds (`Mod+W`, `Mod+Period`, `Mod+Comma`, `Mod+Alt+J/P/Z`, etc.) are layout messages — they only have an effect on workspaces currently using the `scrolling` layout. On dwindle workspaces they are silent no-ops.
 
 > **Key reuse**: `Mod+J` and `Mod+G` serve different but analogous purposes in each compositor.
 > Hyprland: `J` = toggle split layout, `G` = toggle group.
@@ -251,6 +260,14 @@
 | Focused opacity baseline | — | *(window rule: 0.95)* | Needed for Niri opacity toggle |
 | Unfocused opacity | — | *(window rule: 0.85)* | Niri uses automatic window rules |
 
+## 17. Layout Switching (Hyprland only)
+
+Hyprland uses `dwindle` as the default layout on every host.
+
+| Action | Hyprland | Niri | Notes |
+|---|---|---|---|
+| Toggle workspace scrolling ↔ dwindle | `Mod+Alt+T` | — | Flips the active workspace into the `scrolling` (Niri-style tape) layout or back to `dwindle`. State persisted to `~/.cache/hypr-ws-layout`. |
+
 ---
 
 ## Quick Reference: Key Conflicts
@@ -260,5 +277,9 @@ Keys that do **different things** in each compositor:
 | Key | Hyprland | Niri |
 |---|---|---|
 | `Mod+G` | Toggle group | Tabbed column display |
-| `Mod+J` | Toggle split | Consume into column |
+| `Mod+J` | Toggle split (dwindle) | Consume into column |
+| `Mod+Alt+J` | Scrolling: consume_or_expel next | *(unbound)* |
+| `Mod+Alt+P` | Scrolling: promote to own column | Power off monitors |
+| `Mod+Alt+Comma` / `Mod+Alt+Period` | Scrolling: swap column with neighbor | Focus monitor left/right |
 | `Mod+Alt+Up/Down` | Swap window | Workspace reorder |
+| `Mod+Alt+T` | Toggle workspace scrolling ↔ baseline | *(unbound)* |
