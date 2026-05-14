@@ -2,9 +2,7 @@
 Description=SwayOSD server
 PartOf=graphical-session.target
 After=graphical-session.target
-# See waybar.service for why: prevent the unit from entering start-limit-hit
-# while it spins on Wayland-socket failures between logout and login.
-StartLimitIntervalSec=0
+Requisite=graphical-session.target
 
 [Service]
 Type=simple
