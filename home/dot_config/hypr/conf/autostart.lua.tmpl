@@ -22,7 +22,11 @@ hl.on("hyprland.start", function()
 
     hl.exec_cmd("hyprpaper")
     hl.exec_cmd("swaync")
+{{- if eq .chezmoi.osRelease.id "fedora" }}
+    hl.exec_cmd("/usr/libexec/polkit-kde-authentication-agent-1")
+{{- else }}
     hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")
+{{- end }}
     hl.exec_cmd("hypridle")
     hl.exec_cmd("blueman-applet")
     hl.exec_cmd("dropbox")
