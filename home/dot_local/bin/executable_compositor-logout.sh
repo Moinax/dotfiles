@@ -1,16 +1,17 @@
 #!/bin/bash
 set -e
 
-# Exit the compositor gracefully so sddm-helper finishes with status 0 and
-# SDDM re-spawns the greeter. `loginctl terminate-session` looks tidy but
-# SIGTERMs the whole cgroup including sddm-helper, which SDDM then logs as
-# "Process crashed" — on NVIDIA the DRM master isn't always released
-# cleanly afterwards and the VT stays black.
+# Stop the graphical session gracefully so sddm-helper finishes with status 0
+# and SDDM re-spawns the greeter. Under uwsm, `uwsm stop` walks
+# graphical-session.target down in dependency order (stops user services
+# first, then the compositor) — no broken-pipe SIGABRTs, no drkonqi cascade.
 . "$HOME/.local/lib/compositor.sh"
 
-if is_hyprland; then
-    # Hyprland 0.55 parses `hyprctl dispatch` args as Lua, so the bare
-    # `exit` identifier no longer resolves. The Lua call form does.
+if is_hyprland && command -v uwsm >/dev/null && uwsm check active >/dev/null 2>&1; then
+    uwsm stop
+elif is_hyprland; then
+    # Non-uwsm fallback. Hyprland 0.55 parses `hyprctl dispatch` args as Lua,
+    # so the bare `exit` identifier no longer resolves — use the Lua form.
     hyprctl dispatch 'hl.dsp.exit()'
 elif is_niri; then
     niri msg action quit --skip-confirmation
