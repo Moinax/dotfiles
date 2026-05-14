@@ -1494,9 +1494,12 @@ setup_nvidia() {
     # timeouts on resume (black screen, POST code "01"). This was verified empirically: enabling
     # compositor STOP/CONT services on 595+ causes display loss on second resume cycle.
     # Driver <595 still needs the systemd service approach and compositor STOP/CONT services.
+    #
+    # Always clean up legacy units first so an upgrade from <595 to 595+ on an existing
+    # install is self-healing — we then re-install them below only if still on <595.
+    cleanup_legacy_nvidia_suspend_services
     if [ "$nvidia_major" != "unknown" ] && [ "$nvidia_major" -ge 595 ] 2>/dev/null; then
-        print_info "Driver ${nvidia_major}+ uses kernel suspend notifiers — skipping systemd services"
-        cleanup_legacy_nvidia_suspend_services
+        print_info "Driver ${nvidia_major}+ uses kernel suspend notifiers — no systemd services needed"
     else
         print_info "Driver ${nvidia_major} requires systemd suspend services"
 
