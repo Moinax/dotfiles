@@ -1,0 +1,43 @@
+# Wayland app environment.
+#
+# Loaded by systemd user manager at login; inherited by user services and,
+# under uwsm, by the compositor itself. This is the only place these reach
+# user services like plasma-polkit-agent — `hl.env(...)` / `env =` in the
+# Hyprland config sets them only for the compositor's own children.
+#
+# Duplicated here AND in environments.lua/.conf because:
+#   - uwsm sessions:    systemd user env is the source of truth (this file).
+#   - non-uwsm sessions: compositor started by SDDM doesn't inherit user-env;
+#                        it reads its own `env =` / `hl.env` directives.
+
+# Qt
+QT_QPA_PLATFORM=wayland;xcb
+QT_QPA_PLATFORMTHEME=kde
+QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+QT_AUTO_SCREEN_SCALE_FACTOR=1
+
+# GTK
+GDK_SCALE=1
+
+# Mozilla
+MOZ_ENABLE_WAYLAND=1
+
+# Ozone (Chromium / Electron)
+OZONE_PLATFORM=wayland
+
+# Cursor
+XCURSOR_SIZE=24
+
+# kbuildsycoca6 expects plasma-* menu prefix to populate KDE service cache
+# under a non-Plasma compositor (commit ffb8c2d). Overrides uwsm's default
+# of `hyprland-`.
+XDG_MENU_PREFIX=plasma-
+
+{{- if .has_nvidia }}
+
+# NVIDIA — https://wiki.hypr.land/Nvidia/
+LIBVA_DRIVER_NAME=nvidia
+GBM_BACKEND=nvidia-drm
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+__GL_VRR_ALLOWED=1
+{{- end }}
