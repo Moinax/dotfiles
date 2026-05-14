@@ -50,6 +50,7 @@ descriptions:
   cmatrix: Terminal matrix rain animation
   xdg-desktop-portal-kde: KDE portal backend (color-scheme, file chooser, etc.)
   xdg-desktop-portal-hyprland: Hyprland portal backend (screenshot, screencast)
+  uwsm: Universal Wayland Session Manager (wraps Hyprland in a systemd unit)
 
 packages:
   arch:
@@ -65,6 +66,7 @@ packages:
     - hyprpicker
     - polkit-kde-agent
     - hyprshot
+    - uwsm
     
     # Status bar and menus
     - waybar
@@ -117,6 +119,7 @@ packages:
     - hyprpicker
     - polkit-kde
     - hyprshot
+    - uwsm
 
     # Status bar and menus
     - waybar
@@ -163,6 +166,9 @@ packages:
     - hyprpaper
     - hypridle
     - hyprlock
+    # uwsm landed in Debian trixie (13); on Ubuntu 24.04 it's not packaged.
+    # Install from source if missing — see install/installer.sh setup helpers.
+    - uwsm
 
     # Display manager (kwin_wayland preferred if present, weston as fallback)
     - sddm
