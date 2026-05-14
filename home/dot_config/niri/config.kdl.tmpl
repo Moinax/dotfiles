@@ -151,8 +151,9 @@ environment {
 {{- end }}
 }
 
-spawn-at-startup "systemctl" "--user" "start" "swayosd-server.service"
-spawn-at-startup "systemctl" "--user" "start" "waybar.service"
+// reset-failed first: a previous session's broken-pipe exit may have left
+// these units in start-limit-hit, which makes `start` a silent no-op.
+spawn-at-startup "sh" "-c" "systemctl --user reset-failed swayosd-server.service waybar.service && systemctl --user start swayosd-server.service waybar.service"
 spawn-at-startup "blueman-applet"
 spawn-at-startup "swayidle" "-w"
 spawn-at-startup "sh" "-c" "{{ .chezmoi.homeDir }}/.local/bin/swayidle-resume-reset.sh"

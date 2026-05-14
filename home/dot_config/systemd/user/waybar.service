@@ -3,6 +3,13 @@ Description=Waybar (compositor-aware launcher)
 Documentation=https://github.com/Alexays/Waybar/wiki/
 PartOf=graphical-session.target
 After=graphical-session.target
+# Nothing in our Hyprland setup explicitly stops graphical-session.target on
+# logout, so waybar sees the Wayland socket die and exits 1. Without a wide
+# StartLimitInterval it burns its retries in the logout→login gap and hits
+# start-limit-hit; the new session's autostart `systemctl --user start` then
+# does nothing. Reset the counter via the autostart hook instead — but keep
+# this conservative in case suspend/resume crashes recur.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
