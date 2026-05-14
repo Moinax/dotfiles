@@ -1,40 +1,19 @@
 -- Apps started at Hyprland launch
+--
+-- Daemons (waybar, swayosd, hyprpaper, swaync, hypridle, polkit agent,
+-- cliphist, blueman-applet, dropbox, …) are systemd user services bound to
+-- graphical-session.target — see home/dot_config/systemd/user/. uwsm
+-- activates that target on session start and stops it on logout, so they
+-- come up and go down with the compositor. Don't add daemon spawns here.
+--
+-- This hook is for one-shot actions that must run after the compositor is
+-- live (Lua dispatch available) but don't have their own systemd lifecycle.
 local home = assert(os.getenv("HOME"), "HOME not set")
 
 hl.on("hyprland.start", function()
-    -- Push Hyprland's env into systemd/dbus so --user services can find the
-    -- Wayland display, then start them. Without this, services launched via
-    -- `systemctl --user start` race the env push and crash with
-    -- "cannot open display:" before hitting the systemd start-limit.
-    -- `reset-failed` first so a previous session's broken-pipe exit (which
-    -- triggers Restart=on-failure until the unit fails outright) doesn't
-    -- leave the unit in start-limit-hit and ignore the start request.
-    local env_vars = "WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE"
-    local user_services = "swayosd-server.service waybar.service"
-{{- if .install_ai }}
-    user_services = user_services .. " hyprvoice.service"
-{{- end }}
-    hl.exec_cmd(
-        "dbus-update-activation-environment --systemd " .. env_vars ..
-        " && systemctl --user reset-failed " .. user_services ..
-        " && systemctl --user start " .. user_services
-    )
-
-    hl.exec_cmd("hyprpaper")
-    hl.exec_cmd("swaync")
-{{- if eq .chezmoi.osRelease.id "fedora" }}
-    hl.exec_cmd("/usr/libexec/polkit-kde-authentication-agent-1")
-{{- else }}
-    hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")
-{{- end }}
-    hl.exec_cmd("hypridle")
-    hl.exec_cmd("blueman-applet")
-    hl.exec_cmd("dropbox")
-    -- Clipboard history (text + images)
-    hl.exec_cmd("wl-paste --type text  --watch cliphist store")
-    hl.exec_cmd("wl-paste --type image --watch cliphist store")
     -- Restore dark/light mode
     hl.exec_cmd(home .. "/.local/bin/apply-dark-mode.sh")
+
     -- Load Hyprland plugins
     hl.exec_cmd("hyprpm reload -n")
 end)

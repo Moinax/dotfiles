@@ -1,22 +1,16 @@
-# Execute your favorite apps at launch
-exec-once = systemctl --user start swayosd-server.service
-exec-once = systemctl --user start waybar.service
-exec-once = hyprpaper
-exec-once = swaync
-exec-once = /usr/lib/polkit-kde-authentication-agent-1 &
-exec-once = hypridle
-# Load bluetooth applet
-exec-once = blueman-applet
-# Load dropbox
-exec-once = dropbox
-# Load clipboard history
-exec-once = wl-paste --type text --watch cliphist store # Stores only text data
-exec-once = wl-paste --type image --watch cliphist store # Stores only image data
-{{- if .install_ai }}
-# Start dictation daemon (via systemd --user so environment.d is loaded)
-exec-once = systemctl --user start hyprvoice.service
-{{- end }}
+# Apps started at Hyprland launch
+#
+# Daemons (waybar, swayosd, hyprpaper, swaync, hypridle, polkit agent,
+# cliphist, blueman-applet, dropbox, …) are systemd user services bound to
+# graphical-session.target — see ~/.config/systemd/user/. uwsm activates that
+# target on session start and stops it on logout, so they come up and go
+# down with the compositor. Don't add daemon spawns here.
+#
+# This file is for one-shot actions that must run after the compositor is
+# live but don't have their own systemd lifecycle.
+
 # Restore dark/light mode
 exec-once = ~/.local/bin/apply-dark-mode.sh
-# Load hyprland plugins
+
+# Load Hyprland plugins
 exec-once = hyprpm reload -n
