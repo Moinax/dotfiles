@@ -2019,6 +2019,18 @@ DROPEOF
     fi
 
     print_success "SDDM configured"
+
+    # Hyprland session choice hint: the hyprland package installs two SDDM
+    # sessions (hyprland.desktop, hyprland-uwsm.desktop). The dotfiles assume
+    # the uwsm-managed variant — daemons are bound to graphical-session.target
+    # which only activates under uwsm. SDDM remembers the per-user last
+    # selection in /var/lib/sddm/state.conf, so this is one-time.
+    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " hyprland " ]] \
+        && [ -f /usr/share/wayland-sessions/hyprland-uwsm.desktop ]; then
+        echo ""
+        print_info "At the SDDM greeter, select 'Hyprland (uwsm-managed)' the first time you log in."
+        print_info "Selecting plain 'Hyprland' will skip uwsm and leave the session daemons unstarted."
+    fi
 }
 
 # Setup Plymouth boot splash screen
