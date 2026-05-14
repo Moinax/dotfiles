@@ -126,6 +126,42 @@ systemctl --user cat dropbox.service | tail -6
 
 ---
 
+## 3b. Mid-session catch-up for the env file (only if you skipped a logout)
+
+The newly-applied `~/.config/environment.d/50-wayland.conf` only loads at user
+login. If you ran step 3 in your existing session and want the env vars now,
+without logging out, push them once:
+
+```bash
+systemctl --user set-environment \
+    QT_QPA_PLATFORM='wayland;xcb' \
+    QT_QPA_PLATFORMTHEME=kde \
+    QT_WAYLAND_DISABLE_WINDOWDECORATION=1 \
+    QT_AUTO_SCREEN_SCALE_FACTOR=1 \
+    GDK_SCALE=1 \
+    MOZ_ENABLE_WAYLAND=1 \
+    OZONE_PLATFORM=wayland \
+    XCURSOR_SIZE=24 \
+    XDG_MENU_PREFIX=plasma-
+
+# NVIDIA-only:
+systemctl --user set-environment \
+    LIBVA_DRIVER_NAME=nvidia \
+    GBM_BACKEND=nvidia-drm \
+    __GLX_VENDOR_LIBRARY_NAME=nvidia \
+    __GL_VRR_ALLOWED=1
+
+# Then recover any unit that failed earlier from the missing env:
+systemctl --user reset-failed
+systemctl --user start plasma-polkit-agent.service
+```
+
+Without this, plasma-polkit-agent fails with "no Qt platform plugin could be
+initialized" until you log out and back in.
+
+This whole section is unnecessary if you do step 4 (log out) immediately
+after step 3.
+
 ## 4. Log out cleanly
 
 Right now you're still in the *old* (non-uwsm) Hyprland session.
