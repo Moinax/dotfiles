@@ -1,0 +1,11 @@
+# Loaded by uwsm's prepare-env.sh after it sets compositor-specific defaults.
+# We override XDG_MENU_PREFIX here (rather than only in environment.d) because
+# uwsm hardcodes XDG_MENU_PREFIX=<compositor>- (e.g. hyprland-, niri-) in
+# prepare-env.sh and exports it to the systemd user manager, clobbering
+# whatever environment.d had loaded at PAM login.
+#
+# kbuildsycoca6 needs `plasma-` to index KDE .desktop files; without it the
+# KDE service cache is empty and Dolphin/KIO can't find app handlers for
+# images, video, PDFs, etc. (see commit ffb8c2d for the original fix).
+
+export XDG_MENU_PREFIX=plasma-
