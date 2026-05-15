@@ -408,17 +408,6 @@ setup_productivity_repos() {
         print_success "Slack repository added"
     fi
 
-    # Dropbox
-    if [ ! -f /etc/apt/sources.list.d/dropbox.list ]; then
-        print_info "Adding Dropbox repository..."
-        sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL https://linux.dropbox.com/debian/deb_key.asc \
-            | sudo gpg --yes --dearmor -o /etc/apt/keyrings/dropbox.gpg
-        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/dropbox.gpg] https://linux.dropbox.com/debian sid main" \
-            | sudo tee /etc/apt/sources.list.d/dropbox.list > /dev/null
-        sudo apt update
-        print_success "Dropbox repository added"
-    fi
 }
 
 # Setup repos for development (GitHub CLI, Docker CE, Tailscale)

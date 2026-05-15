@@ -114,28 +114,6 @@ EOF
     print_success "Slack repository added"
 }
 
-# Enable Dropbox repository
-enable_dropbox_repo() {
-    local repo_file="/etc/yum.repos.d/dropbox.repo"
-
-    if [ -f "$repo_file" ]; then
-        print_info "Dropbox repository already configured"
-        return 0
-    fi
-
-    print_info "Adding Dropbox repository..."
-    sudo tee "$repo_file" > /dev/null << 'EOF'
-[Dropbox]
-name=Dropbox Repository
-baseurl=https://linux.dropbox.com/fedora/$releasever/
-enabled=1
-gpgcheck=1
-gpgkey=https://linux.dropbox.com/fedora/rpm-public-key.asc
-EOF
-
-    print_success "Dropbox repository added"
-}
-
 # Check if a package is installed
 is_package_installed() {
     local package="$1"
@@ -224,5 +202,4 @@ setup_multimedia_repos() {
 setup_productivity_repos() {
     enable_google_chrome_repo
     enable_slack_repo
-    enable_dropbox_repo
 }

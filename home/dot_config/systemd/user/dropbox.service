@@ -1,0 +1,15 @@
+[Unit]
+Description=Dropbox
+Documentation=https://help.dropbox.com/installs/linux
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.dropbox-dist/dropboxd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

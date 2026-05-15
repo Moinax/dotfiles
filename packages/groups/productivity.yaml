@@ -31,7 +31,7 @@ descriptions:
   zen-browser: Zen Browser (Fedora / Debian)
   google-chrome: Google Chrome web browser (Arch AUR)
   google-chrome-stable: Google Chrome web browser (Fedora)
-  dropbox: Dropbox cloud file sync
+  dropbox: Dropbox cloud file sync (official dist binary, bypasses distro package)
   p7zip: 7-Zip archive tool
   unrar: RAR archive extractor
   unzip: ZIP archive extractor
@@ -61,8 +61,8 @@ packages:
     - zen-browser-bin  # AUR
     - google-chrome  # AUR
 
-    # Cloud sync
-    - dropbox  # AUR
+    # Cloud sync — dropbox installed via custom_install (Dropbox's own
+    # auto-updater fights any distro package)
 
     # Archive tools
     - p7zip
@@ -93,8 +93,8 @@ packages:
     - zen-browser
     - google-chrome-stable
 
-    # Cloud sync
-    - dropbox
+    # Cloud sync — dropbox installed via custom_install (Dropbox's own
+    # auto-updater fights any distro package)
 
     # Archive tools
     - p7zip
@@ -122,8 +122,8 @@ packages:
     # Web browsers (Google Chrome requires repo — added by setup_productivity_repos)
     - google-chrome-stable
 
-    # Cloud sync
-    - dropbox
+    # Cloud sync — dropbox installed via custom_install (Dropbox's own
+    # auto-updater fights any distro package)
 
     # Archive tools
     - p7zip-full
@@ -146,3 +146,18 @@ custom_install:
     distro_skip:
       - arch
       - fedora
+
+  # Dropbox's in-app auto-updater downloads dist binaries to ~/.dropbox-dist/
+  # and SIGKILLs the running daemon to swap them in. Any distro-packaged
+  # /opt/dropbox/ install loses that fight (restart-loop). We install the
+  # official dist tarball directly; the systemd user unit at
+  # ~/.config/systemd/user/dropbox.service runs ~/.dropbox-dist/dropboxd.
+  - name: dropbox
+    check: '[ -x "$HOME/.dropbox-dist/dropboxd" ]'
+    # Download to a temp file before extracting so a truncated curl can't
+    # leave a partial ~/.dropbox-dist/ that passes the check on the next run.
+    install: |
+      tmp=$(mktemp -t dropbox-dist.XXXXXX.tar.gz) \
+        && curl -fsSL "https://www.dropbox.com/download?plat=lnx.x86_64" -o "$tmp" \
+        && tar -C "$HOME" -xzf "$tmp" \
+        && rm -f "$tmp"

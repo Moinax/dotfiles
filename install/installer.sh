@@ -1287,6 +1287,61 @@ migrate_notification_daemon() {
     print_success "Notification daemon migrated to SwayNC"
 }
 
+# One-shot migration: switch from a distro-packaged Dropbox to the official
+# dist tarball at ~/.dropbox-dist/ used by our chezmoi-managed dropbox.service.
+# Dropbox's in-app auto-updater downloads newer dist binaries to ~/.dropbox-dist/
+# and SIGKILLs the running daemon to swap them in — that fights any distro
+# package and produces a restart loop. Idempotent: silently returns when there
+# is nothing left to clean up.
+migrate_dropbox_to_dist() {
+    if ! [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " productivity " ]]; then
+        return 0
+    fi
+
+    local did_something=false
+
+    if is_package_installed dropbox 2>/dev/null; then
+        print_info "Removing distro dropbox package (superseded by ~/.dropbox-dist/)..."
+        # Free the binary before the package manager yanks it — otherwise the
+        # SIGKILL-on-update loop keeps respawning during pacman/dnf/apt removal.
+        systemctl --user stop dropbox.service 2>/dev/null || true
+        pkill -9 -f "/opt/dropbox"  2>/dev/null || true
+        pkill -9 -f "dropbox-lnx"   2>/dev/null || true
+        remove_packages dropbox || track_warning "Failed to remove dropbox package"
+        did_something=true
+    fi
+
+    # Arch ships dropbox in main repos so there's no repo file to clean
+    case "$DISTRO_FAMILY" in
+        fedora)
+            if [ -f /etc/yum.repos.d/dropbox.repo ]; then
+                print_info "Removing leftover Dropbox dnf repo..."
+                sudo rm -f /etc/yum.repos.d/dropbox.repo
+                did_something=true
+            fi
+            ;;
+        debian)
+            if [ -f /etc/apt/sources.list.d/dropbox.list ] \
+                || [ -f /etc/apt/keyrings/dropbox.gpg ]; then
+                print_info "Removing leftover Dropbox apt repo..."
+                sudo rm -f /etc/apt/sources.list.d/dropbox.list \
+                           /etc/apt/keyrings/dropbox.gpg
+                sudo apt-get update -qq || true
+                did_something=true
+            fi
+            ;;
+    esac
+
+    if $did_something; then
+        systemctl --user daemon-reload      2>/dev/null || true
+        systemctl --user reset-failed dropbox.service 2>/dev/null || true
+        if [ -n "$WAYLAND_DISPLAY" ] || [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+            systemctl --user start dropbox.service 2>/dev/null || true
+        fi
+        print_success "Dropbox migrated to ~/.dropbox-dist/"
+    fi
+}
+
 # Apply initial dark mode defaults (creates active theme files not tracked by chezmoi)
 apply_dark_mode_defaults() {
     local state_file="$HOME/.local/share/dark-light-mode"
@@ -2508,6 +2563,7 @@ main() {
     setup_dotfiles
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         migrate_notification_daemon
+        migrate_dropbox_to_dist
         apply_dark_mode_defaults
     fi
     enable_selected_services
