@@ -12,7 +12,19 @@ esac
 export FNM_PATH="$HOME/.local/share/fnm"
 if [[ -d "$FNM_PATH" ]]; then
   export PATH="$FNM_PATH:$PATH"
-  eval "$(fnm env --use-on-cd --shell zsh)"
+  if [[ -o interactive ]]; then
+    eval "$(fnm env --use-on-cd --shell zsh)"
+  else
+    # Non-interactive shells (Claude Code's `zsh -c`, VS Code tasks): put the
+    # default Node version's real bin on PATH directly. Skip fnm's per-shell
+    # `fnm env` multishell + `--use-on-cd` chpwd hook, which race with Claude
+    # Code's shell snapshot: .zshenv creates a fresh multishell, then the
+    # snapshot replays an older PATH without it, so `fnm use` (fired on cd)
+    # warns "the current Node.js path is not on your PATH".
+    _fnm_default="$FNM_PATH/aliases/default/bin"
+    [[ -x "$_fnm_default/node" ]] && export PATH="$_fnm_default:$PATH"
+    unset _fnm_default
+  fi
 fi
 
 # Cargo (worktrunk, vibewatch, etc.)
