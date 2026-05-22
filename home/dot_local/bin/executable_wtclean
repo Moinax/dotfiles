@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 # Remove all worktrees whose branches are already merged into main.
+#
+# A branch counts as merged when either:
+#   * worktrunk reports its main_state as "integrated" or "empty"
+#     (true merge / fast-forward / no commits beyond main), or
+#   * worktrunk reports "would_conflict" AND GitHub has a merged PR whose
+#     merged head commit still matches the branch tip.
+#     This is the squash-merge case: the squashed commit lives on main, but
+#     the branch's original commits never became ancestors of main, so
+#     worktrunk can't see the merge from the commit graph alone and flags
+#     the branch as conflicting instead. The head-SHA check guards against
+#     deleting a branch that merely reuses a merged PR's name, or that has
+#     gained new commits since its PR was merged.
 set -euo pipefail
 
-branches=$(wt list --format=json 2>/dev/null | /usr/bin/python3 -c "
+json=$(wt list --format=json 2>/dev/null || true)
+
+# Branches whose merge is visible in the commit graph — no GitHub needed.
+graph_merged=$(printf '%s' "$json" | /usr/bin/python3 -c "
 import sys, json
 raw = sys.stdin.read()
 if not raw.strip():
@@ -11,6 +26,45 @@ for wt in json.loads(raw):
     if wt.get('main_state') in ('integrated', 'empty') and not wt.get('is_main'):
         print(wt['branch'])
 ")
+
+# Branches that may be squash-merged: would_conflict in worktrunk, needing a
+# GitHub check to confirm a merged PR actually exists.
+candidates=$(printf '%s' "$json" | /usr/bin/python3 -c "
+import sys, json
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+for wt in json.loads(raw):
+    if wt.get('main_state') == 'would_conflict' and not wt.get('is_main'):
+        print(wt['branch'])
+")
+
+squash_merged=""
+if [[ -n "$candidates" ]]; then
+  if command -v gh >/dev/null 2>&1; then
+    while IFS= read -r branch; do
+      [[ -z "$branch" ]] && continue
+      pr=$(gh pr list --head "$branch" --state merged --json headRefOid --limit 1 2>/dev/null || true)
+      pr_sha=$(printf '%s' "$pr" | /usr/bin/python3 -c "
+import sys, json
+d = json.loads(sys.stdin.read() or '[]')
+print(d[0]['headRefOid'] if d else '')
+")
+      local_sha=$(git rev-parse --verify --quiet "refs/heads/$branch" || true)
+      # Only a branch still pointing at the exact commit GitHub merged is
+      # safe to drop. A divergent tip means a reused name or commits added
+      # since the PR merged — force-deleting either would lose real work.
+      if [[ -n "$pr_sha" && "$pr_sha" == "$local_sha" ]]; then
+        squash_merged+="$branch"$'\n'
+      fi
+    done <<< "$candidates"
+  else
+    echo "warning: 'gh' not found — skipping squash-merge detection." >&2
+    echo "         Branches merged via squash will not be cleaned." >&2
+  fi
+fi
+
+branches=$(printf '%s\n%s' "$graph_merged" "$squash_merged" | grep -v '^[[:space:]]*$' | sort -u || true)
 
 if [[ -z "$branches" ]]; then
   echo "No merged worktrees to clean up."
@@ -23,4 +77,15 @@ echo
 read -r -p "Remove all? [y/N] " reply
 [[ "$reply" =~ ^[Yy]$ ]] || exit 0
 
-echo "$branches" | xargs wt remove -f
+# Remove each worktree on its own so one stuck worktree can't abort the rest.
+# Graph-merged branches: wt deletes the branch automatically. Squash-merged
+# branches: pass -D so wt force-deletes the branch it can't see as merged.
+while IFS= read -r branch; do
+  [[ -z "$branch" ]] && continue
+  wt remove -y -f "$branch" || echo "warning: could not remove worktree '$branch'" >&2
+done <<< "$graph_merged"
+
+while IFS= read -r branch; do
+  [[ -z "$branch" ]] && continue
+  wt remove -y -f -D "$branch" || echo "warning: could not remove worktree '$branch'" >&2
+done <<< "$squash_merged"
