@@ -68,8 +68,257 @@ function xf86(k) {
 '
 
 # ── Hyprland parser ───────────────────────────────────────────────
+# Two source formats coexist (see hyprland.conf vs hyprland.lua): older
+# Hyprland releases (e.g. shipped by Fedora) only understand the .conf
+# syntax; newer releases use the Lua plugin and load binds.lua. Pick the
+# one that's actually deployed.
 
 parse_hyprland() {
+    if [ -f "$HOME/.config/hypr/conf/binds.lua" ]; then
+        parse_hyprland_lua
+    elif [ -f "$HOME/.config/hypr/conf/binds.conf" ]; then
+        parse_hyprland_conf
+    else
+        echo "No Hyprland binds file found at conf/binds.{lua,conf}" >&2
+        return 1
+    fi
+}
+
+parse_hyprland_lua() {
+    local config="$HOME/.config/hypr/conf/binds.lua"
+    [ -f "$config" ] || { echo "Config not found: $config" >&2; return 1; }
+
+    awk "$XF86_AWK"'
+    function dir_name(d) {
+        if (d == "r") return "right"
+        if (d == "l") return "left"
+        if (d == "u") return "up"
+        if (d == "d") return "down"
+        return d
+    }
+
+    function ws_name(w) {
+        if (w == "r-1") return "prev"
+        if (w == "r+1") return "next"
+        if (w == "e-1") return "prev (non-empty)"
+        if (w == "e+1") return "next (non-empty)"
+        if (w == "special") return "scratchpad"
+        return w
+    }
+
+    # Humanize an hl.dsp.* dispatcher expression when no trailing -- comment.
+    function humanize(disp,    m, val, silent, cmd, x, y, v) {
+        sub(/^[ \t]+/, "", disp)
+
+        if (match(disp, /hl\.dsp\.focus\([^)]*direction[ \t]*=[ \t]*"[^"]+"/)) {
+            m = substr(disp, RSTART, RLENGTH)
+            match(m, /"[^"]+"/); val = substr(m, RSTART+1, RLENGTH-2)
+            return "Focus " dir_name(val)
+        }
+        if (match(disp, /hl\.dsp\.focus\([^)]*workspace[ \t]*=/)) {
+            if (match(disp, /workspace[ \t]*=[ \t]*tostring\(i\)/)) return "Workspace <I>"
+            if (match(disp, /workspace[ \t]*=[ \t]*"[^"]+"/)) {
+                m = substr(disp, RSTART, RLENGTH); match(m, /"[^"]+"/)
+                val = substr(m, RSTART+1, RLENGTH-2)
+                return "Workspace " ws_name(val)
+            }
+            return "Workspace"
+        }
+        if (match(disp, /hl\.dsp\.window\.move\([^)]*workspace[ \t]*=/)) {
+            silent = (disp ~ /follow[ \t]*=[ \t]*false/) ? " (silent)" : ""
+            if (match(disp, /workspace[ \t]*=[ \t]*tostring\(i\)/)) return "Move to workspace <I>" silent
+            if (match(disp, /workspace[ \t]*=[ \t]*"[^"]+"/)) {
+                m = substr(disp, RSTART, RLENGTH); match(m, /"[^"]+"/)
+                val = substr(m, RSTART+1, RLENGTH-2)
+                return "Move to workspace " ws_name(val) silent
+            }
+            return "Move to workspace" silent
+        }
+        if (match(disp, /hl\.dsp\.window\.move\([^)]*direction[ \t]*=[ \t]*"[^"]+"/)) {
+            m = substr(disp, RSTART, RLENGTH)
+            match(m, /direction[ \t]*=[ \t]*"[^"]+"/); val = substr(m, RSTART, RLENGTH)
+            match(val, /"[^"]+"/); val = substr(val, RSTART+1, RLENGTH-2)
+            return "Move window " dir_name(val)
+        }
+        if (match(disp, /hl\.dsp\.window\.resize\(/)) {
+            x = 0; y = 0
+            if (match(disp, /x[ \t]*=[ \t]*-?[0-9]+/)) {
+                v = substr(disp, RSTART, RLENGTH); sub(/.*=[ \t]*/, "", v); x = v + 0
+            }
+            if (match(disp, /y[ \t]*=[ \t]*-?[0-9]+/)) {
+                v = substr(disp, RSTART, RLENGTH); sub(/.*=[ \t]*/, "", v); y = v + 0
+            }
+            if (x > 0) return "Resize right"
+            if (x < 0) return "Resize left"
+            if (y > 0) return "Resize down"
+            if (y < 0) return "Resize up"
+            return "Resize"
+        }
+        if (match(disp, /hl\.dsp\.window\.tag\(/))   return "Toggle opacity"
+        if (match(disp, /hl\.dsp\.window\.drag\(/))  return "Drag window"
+        if (match(disp, /hl\.dsp\.window\.close\(/)) return "Close window"
+        if (match(disp, /hl\.dsp\.window\.pin\(/))   return "Pin window"
+        if (match(disp, /hl\.dsp\.group\.toggle\(/)) return "Toggle group"
+        if (match(disp, /hl\.dsp\.group\.next\(/))   return "Group next"
+        if (match(disp, /hl\.dsp\.group\.prev\(/))   return "Group prev"
+        if (match(disp, /hl\.dsp\.exit\(/))          return "Exit Hyprland"
+
+        if (match(disp, /hl\.dsp\.exec_cmd\(/)) {
+            cmd = substr(disp, RSTART + RLENGTH)
+            sub(/^[ \t]*home[ \t]*\.\.[ \t]*"/, "\"", cmd)
+            if (match(cmd, /"[^"]+"/)) {
+                v = substr(cmd, RSTART + 1, RLENGTH - 2)
+                sub(/[ \t].*/, "", v)
+                sub(/.*\//, "", v)
+                sub(/\.[a-zA-Z0-9]+$/, "", v)
+                gsub(/-/, " ", v)
+                if (v != "") return toupper(substr(v, 1, 1)) substr(v, 2)
+            }
+            return "Run command"
+        }
+        return ""
+    }
+
+    function build_combo(expr,    s, n, i, p, out, parts) {
+        s = expr
+        gsub(/^[ \t]+|[ \t]+$/, "", s)
+        gsub(/\<mod\>/, "\"Mod\"", s)
+        gsub(/tostring\(i\)/, "\"<I>\"", s)
+        while (gsub(/"[ \t]*\.\.[ \t]*"/, "", s)) {}
+        gsub(/"/, "", s)
+        gsub(/[ \t]*\+[ \t]*/, "+", s)
+        n = split(s, parts, "+")
+        out = ""
+        for (i = 1; i <= n; i++) {
+            p = parts[i]
+            if (p == "SUPER")        p = "Mod"
+            else if (p == "ALT")     p = "Alt"
+            else if (p == "CTRL")    p = "Ctrl"
+            else if (p == "SHIFT")   p = "Shift"
+            else if (p == "RETURN")  p = "Return"
+            else if (p == "SPACE")   p = "Space"
+            else if (p == "TAB")     p = "Tab"
+            else if (p == "PRINT")   p = "Print"
+            else if (p == "left" || p == "right" || p == "up" || p == "down")
+                p = toupper(substr(p, 1, 1)) substr(p, 2)
+            out = (i == 1) ? p : out "+" p
+        }
+        return out
+    }
+
+    BEGIN { section = ""; skip_block = 0; in_for_i = 0 }
+
+    # Section headers: -- ── N. Name ─────
+    /^-- ── [0-9]+[a-z]?\./ {
+        s = $0
+        sub(/^-- ── [0-9]+[a-z]?\. /, "", s)
+        sub(/ ─+$/, "", s)
+        sub(/ \(.*\)$/, "", s)
+        section = s; next
+    }
+
+    # AZERTY loop: skip its bindings (they duplicate the QWERTY layer)
+    /for ws, key in pairs\(azerty_top_row\) do/ { skip_block = 1; next }
+
+    # Numeric QWERTY loop: expand <I> placeholder over 1..7
+    /for i = 1, 7 do/ { in_for_i = 1; next }
+
+    /^[ \t]*end[ \t]*$/ {
+        if (skip_block) skip_block = 0
+        else if (in_for_i) in_for_i = 0
+        next
+    }
+
+    skip_block             { next }
+    /^[ \t]*--/            { next }
+    /^[ \t]*$/             { next }
+
+    /hl\.bind\(/ {
+        line = $0
+
+        # Trailing -- comment (description)
+        comment = ""
+        if (match(line, /\)[ \t]+-- /)) {
+            comment = substr(line, RSTART + RLENGTH)
+            sub(/[ \t]+$/, "", comment)
+        }
+
+        # Parse hl.bind(arg1, arg2 ...): extract first and second top-level args.
+        # Handle "..." strings, [[...]] long strings, and nested parens.
+        if (!match(line, /hl\.bind\(/)) next
+        rest = substr(line, RSTART + RLENGTH)
+        depth = 0; in_str = 0; in_lstr = 0; arg = ""; nn = length(rest); split_at = 0
+        for (k = 1; k <= nn; k++) {
+            c = substr(rest, k, 1); c2 = substr(rest, k, 2)
+            if (in_lstr) {
+                arg = arg c
+                if (c2 == "]]") { in_lstr = 0; arg = arg "]"; k++ }
+                continue
+            }
+            if (in_str) {
+                arg = arg c
+                if (c == "\\") { arg = arg substr(rest, k+1, 1); k++; continue }
+                if (c == "\"") in_str = 0
+                continue
+            }
+            if (c2 == "[[") { in_lstr = 1; arg = arg "[["; k++; continue }
+            if (c == "\"") { in_str = 1; arg = arg c; continue }
+            if (c == "(") { depth++; arg = arg c; continue }
+            if (c == ")") { if (depth == 0) break; depth--; arg = arg c; continue }
+            if (c == "," && depth == 0) { split_at = k; break }
+            arg = arg c
+        }
+
+        second = ""
+        if (split_at > 0) {
+            rest2 = substr(rest, split_at + 1)
+            depth = 0; in_str = 0; in_lstr = 0; nn2 = length(rest2)
+            for (k = 1; k <= nn2; k++) {
+                c = substr(rest2, k, 1); c2 = substr(rest2, k, 2)
+                if (in_lstr) {
+                    second = second c
+                    if (c2 == "]]") { in_lstr = 0; second = second "]"; k++ }
+                    continue
+                }
+                if (in_str) {
+                    second = second c
+                    if (c == "\\") { second = second substr(rest2, k+1, 1); k++; continue }
+                    if (c == "\"") in_str = 0
+                    continue
+                }
+                if (c2 == "[[") { in_lstr = 1; second = second "[["; k++; continue }
+                if (c == "\"") { in_str = 1; second = second c; continue }
+                if (c == "(") { depth++; second = second c; continue }
+                if (c == ")") { if (depth == 0) break; depth--; second = second c; continue }
+                if (c == "," && depth == 0) break
+                second = second c
+            }
+        }
+
+        combo = build_combo(arg)
+
+        desc = comment
+        if (desc == "") desc = humanize(second)
+        if (desc == "" && combo ~ /XF86/) {
+            xfk = combo; sub(/.*\+/, "", xfk)
+            desc = xf86(xfk); if (desc == "") desc = xfk
+        }
+        if (desc == "") desc = "(no description)"
+
+        if (in_for_i && combo ~ /<I>/) {
+            for (j = 1; j <= 7; j++) {
+                c2 = combo; gsub(/<I>/, j, c2)
+                d2 = desc;  gsub(/<I>/, j, d2)
+                printf "[%s]  %s  →  %s\n", section, c2, d2
+            }
+        } else {
+            printf "[%s]  %s  →  %s\n", section, combo, desc
+        }
+    }
+    ' "$config"
+}
+
+parse_hyprland_conf() {
     local config="$HOME/.config/hypr/conf/binds.conf"
     [ -f "$config" ] || { echo "Config not found: $config" >&2; return 1; }
 
@@ -92,24 +341,20 @@ parse_hyprland() {
 
     BEGIN { section = ""; skip = 0 }
 
-    # Section headers: # ── N. Name ───...
     /^# ── [0-9]+\./ {
         s = $0; sub(/^# ── [0-9]+\. /, "", s); sub(/ ─+$/, "", s)
         section = s; skip = 0; next
     }
 
-    # AZERTY skip control
     /^# AZERTY/ || /^# Silent move/ { skip = 1; next }
     /^# QWERTY/                      { skip = 0; next }
     /^#/ || /^$/                      { next }
     skip                              { next }
     /^bindm/ || /^windowrule/         { next }
 
-    # Keybinding lines: bind[e] = MODS, KEY, ACTION[, ARGS] [# COMMENT]
     /^binde? = / {
         line = $0; sub(/^binde? = /, "", line)
 
-        # Extract trailing comment
         comment = ""
         if (match(line, /[ \t]# /)) {
             comment = substr(line, RSTART + 3)
@@ -117,7 +362,6 @@ parse_hyprland() {
             sub(/[ \t]+$/, "", line)
         }
 
-        # Split: mods, key, action [, args...]
         n = split(line, p, ",")
         if (n < 3) next
         for (i = 1; i <= n; i++) gsub(/^[ \t]+|[ \t]+$/, "", p[i])
@@ -129,7 +373,6 @@ parse_hyprland() {
             if (a != "") { if (args != "") args = args " "; args = args a }
         }
 
-        # Build key combo display
         if (mods != "") {
             gsub(/SUPER/, "Mod", mods)
             gsub(/ +ALT/, "+Alt", mods);   gsub(/^ALT/, "Alt", mods)
@@ -140,11 +383,10 @@ parse_hyprland() {
             combo = norm_key(key)
         }
 
-        # Description: prefer comment, then XF86 lookup, then humanize action
         desc = comment
         if (desc == "" && key ~ /^XF86/) desc = xf86(key)
         if (desc == "") {
-            if (action == "movewindoworgroup")     desc = "Move window " dir(args)
+            if (action == "movewindoworgroup")     desc = "Move window/group " dir(args)
             else if (action == "swapwindow")       desc = "Swap window " dir(args)
             else if (action == "movefocus")        desc = "Focus " dir(args)
             else if (action == "cyclenext")        desc = "Cycle window " args

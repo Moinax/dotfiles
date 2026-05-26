@@ -47,10 +47,10 @@ hl.bind(mod .. " + SHIFT + Tab",   hl.dsp.window.cycle_next({ next = false }))  
 -- out, adjacent-group → in, else swap with the visual neighbor). Lua 0.55
 -- has no single dispatcher for this, so we shell out; `hl.exec_cmd` is
 -- async, so it's safe — an `io.popen` from a Lua bind would deadlock.
-hl.bind(mod .. " + CTRL + right", hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh r"))
-hl.bind(mod .. " + CTRL + left",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh l"))
-hl.bind(mod .. " + CTRL + up",    hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh u"))
-hl.bind(mod .. " + CTRL + down",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh d"))
+hl.bind(mod .. " + CTRL + right", hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh r")) -- Move window/group right
+hl.bind(mod .. " + CTRL + left",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh l")) -- Move window/group left
+hl.bind(mod .. " + CTRL + up",    hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh u")) -- Move window/group up
+hl.bind(mod .. " + CTRL + down",  hl.dsp.exec_cmd(home .. "/.local/bin/hypr-move-or-group.sh d")) -- Move window/group down
 
 -- Mod+Alt+Arrow: plain directional movewindow. No group entry/exit — when
 -- the focus is inside a group, this moves the entire group container as
@@ -79,7 +79,7 @@ hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))   
 -- arrow binds above (focus, movewindow, group-swap script all work in both
 -- layouts). Column-stacking ops (consume/expel/promote/inhibit/swapcol) and
 -- viewport pan are unused.
-hl.bind(mod .. " + ALT + T",         hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle workspace scrolling ↔ baseline
+hl.bind(mod .. " + ALT + T",         hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
 
 -- ── 7. Workspace Navigation ──────────────────────────────────────
 -- QWERTY 1-7
