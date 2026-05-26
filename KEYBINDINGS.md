@@ -257,6 +257,7 @@
 |---|---|---|---|
 | Toggle full opacity | `Mod+O` | `Mod+O` | Niri: toggle-window-rule-opacity |
 | Toggle half opacity | `Mod+Shift+O` | — | Hyprland only |
+| Toggle all windows to opacity 1 | `Mod+Alt+O` | — | Hyprland: tags every mapped window with `force_full_opacity` |
 | Focused opacity baseline | — | *(window rule: 0.95)* | Needed for Niri opacity toggle |
 | Unfocused opacity | — | *(window rule: 0.85)* | Niri uses automatic window rules |
 

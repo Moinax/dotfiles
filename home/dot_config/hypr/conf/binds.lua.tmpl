@@ -171,3 +171,4 @@ hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })        
 -- ── 16. Opacity toggles (matched by windowrules.lua) ─────────────
 hl.bind(mod .. " + o",         hl.dsp.window.tag({ tag = "switch_opacity" }))
 hl.bind(mod .. " + SHIFT + o", hl.dsp.window.tag({ tag = "switch_opacity_half" }))
+hl.bind(mod .. " + ALT + o",   hl.dsp.exec_cmd(home .. "/.local/bin/toggle-all-opacity.sh"))

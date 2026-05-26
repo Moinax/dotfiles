@@ -178,3 +178,5 @@ bind = SUPER, o, tagwindow, switch_opacity
 windowrulev2 = opacity 1 override, tag:switch_opacity
 bind = SUPER SHIFT, o, tagwindow, switch_opacity_half
 windowrulev2 = opacity 0.5 override, tag:switch_opacity_half
+# SUPER ALT + O (toggle all windows to opacity 1) lives in binds.lua.tmpl only —
+# its helper script uses Lua-dispatch syntax that legacy-parser Hyprland rejects.

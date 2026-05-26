@@ -18,3 +18,4 @@ hl.window_rule({
 -- Opacity toggles driven by binds (see binds.lua)
 hl.window_rule({ match = { tag = "switch_opacity" },      opacity = "1 override" })
 hl.window_rule({ match = { tag = "switch_opacity_half" }, opacity = "0.5 override" })
+hl.window_rule({ match = { tag = "force_full_opacity" },  opacity = "1 override" })
