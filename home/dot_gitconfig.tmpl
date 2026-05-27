@@ -12,7 +12,7 @@
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
 [alias]
-	cleanup = !git fetch -p && git for-each-ref --format \"%(refname:short) %(upstream:track)\" refs/heads/ | grep \"\\[gone\\]\" | awk '{print $1}' | xargs -r git branch -D
+	cleanup = "!sh -c 'git fetch -p && git for-each-ref --format \"%(refname:short) %(upstream:track)\" refs/heads/ | awk \"/\\\\[gone\\\\]/ {print \\$1}\" | xargs -r -n 1 git branch -D; git branch --merged main --format \"%(refname:short)\" | grep -v \"^main$\" | xargs -r -n 1 git branch -d'"
 	fp = push --force-with-lease
 [init]
 	defaultBranch = main
