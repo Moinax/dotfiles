@@ -23,6 +23,7 @@ Personal dotfiles for Arch Linux, Fedora, and Debian/Ubuntu, managed with [Chezm
 ./manage.sh apps import-appimage ~/Downloads/App.AppImage
 ./manage.sh apps remove-appimage --name App
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
+./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
 ./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
 ./manage.sh update              # update system packages
 

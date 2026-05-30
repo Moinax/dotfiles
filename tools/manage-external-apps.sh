@@ -27,12 +27,14 @@ Commands:
   remove-appimage [--name NAME]
       Remove an installed AppImage, its desktop entry, and icon.
 
-  install-distrobox --container NAME --package FILE [--app DESKTOP_ID] [--name APP_NAME]
+  install-distrobox --container NAME --package FILE [--app DESKTOP_ID] [--name APP_NAME] [--args "FLAGS"]
       Install a local package inside a Distrobox container, export it to the host launcher,
-      and save metadata for future updates.
+      and save metadata for future updates. --args persists launch flags (e.g. "--disable-gpu")
+      that are re-applied to the desktop entry after every export.
 
-  update-distrobox --name APP_NAME --package FILE
-      Update a previously managed Distrobox app using saved metadata.
+  update-distrobox --name APP_NAME --package FILE [--args "FLAGS"]
+      Update a previously managed Distrobox app using saved metadata. Saved launch args are
+      preserved automatically; pass --args to change them (--args "" clears them).
 
   list
       List all managed apps (AppImages and Distrobox apps).
@@ -698,6 +700,75 @@ export_distrobox_app() {
     run_in_distrobox "$container" distrobox-export --app "$app_id"
 }
 
+# Locate the host-side desktop file that distrobox-export created for an app.
+# distrobox names it "<container>-<appid>.desktop", with a couple of fallbacks.
+find_exported_desktop_file() {
+    local app_id="$1"
+    local container="$2"
+    local app_basename=""
+    app_basename=$(basename "$app_id" .desktop)
+
+    local -a candidates=(
+        "$APP_DESKTOP_DIR/${container}-${app_basename}.desktop"
+        "$APP_DESKTOP_DIR/${app_basename}.desktop"
+    )
+    local c
+    for c in "${candidates[@]}"; do
+        if [ -f "$c" ]; then
+            printf '%s\n' "$c"
+            return 0
+        fi
+    done
+
+    shopt -s nullglob
+    local -a globbed=("$APP_DESKTOP_DIR"/*"-${app_basename}.desktop")
+    shopt -u nullglob
+    if [ ${#globbed[@]} -gt 0 ]; then
+        printf '%s\n' "${globbed[0]}"
+        return 0
+    fi
+    return 1
+}
+
+# Re-inject saved launch args into the exported desktop file's Exec line(s).
+# distrobox-export regenerates the desktop file on every install/update, dropping
+# any custom flags (e.g. --disable-gpu), so this must run after each export.
+apply_distrobox_app_args() {
+    local app_id="$1"
+    local container="$2"
+    local app_args="$3"
+
+    [ -z "$app_args" ] && return 0
+
+    local desktop_file=""
+    if ! desktop_file=$(find_exported_desktop_file "$app_id" "$container"); then
+        print_warning "Could not find the exported desktop file; launch args not applied."
+        return 0
+    fi
+
+    local tmp=""
+    tmp=$(mktemp)
+    # Insert args before the first field code (%U/%F/...) on each distrobox Exec
+    # line, or append them if no field code is present. Skip if already injected.
+    DBX_APP_ARGS="$app_args" awk '
+        BEGIN { args = ENVIRON["DBX_APP_ARGS"] }
+        /^Exec=/ && /distrobox-enter/ && index($0, args) == 0 {
+            if (match($0, /[[:space:]]*%[a-zA-Z]/)) {
+                pre = substr($0, 1, RSTART - 1)
+                field = substr($0, RSTART)
+                $0 = pre " " args field
+            } else {
+                sub(/[[:space:]]+$/, "")
+                $0 = $0 " " args
+            }
+        }
+        { print }
+    ' "$desktop_file" > "$tmp" && mv "$tmp" "$desktop_file" || { rm -f "$tmp"; return 1; }
+
+    print_info "Applied launch args to '$(basename "$desktop_file")': $app_args"
+    refresh_desktop_db
+}
+
 metadata_file_for_name() {
     printf '%s/%s.env\n' "$DISTROBOX_STATE_DIR" "$(slugify "$1")"
 }
@@ -707,6 +778,7 @@ save_distrobox_metadata() {
     local container="$2"
     local package_type="$3"
     local app_id="$4"
+    local app_args="${5:-}"
     local metadata_file=""
     metadata_file=$(metadata_file_for_name "$app_name")
 
@@ -715,6 +787,7 @@ save_distrobox_metadata() {
         printf 'CONTAINER=%q\n' "$container"
         printf 'PACKAGE_TYPE=%q\n' "$package_type"
         printf 'APP_ID=%q\n' "$app_id"
+        printf 'APP_ARGS=%q\n' "$app_args"
     } > "$metadata_file"
 }
 
@@ -726,8 +799,11 @@ load_distrobox_metadata() {
         print_error "No saved metadata for app: $app_name"
         return 1
     fi
+    # Reset optional fields so values don't leak from a previously sourced file.
+    APP_ARGS=""
     # shellcheck disable=SC1090
     source "$metadata_file"
+    APP_ARGS="${APP_ARGS:-}"
 }
 
 execute_install_distrobox() {
@@ -735,6 +811,7 @@ execute_install_distrobox() {
     local package_path="$2"
     local app_name="$3"
     local requested_app_id="$4"
+    local app_args="${5:-}"
 
     ensure_dirs
     require_distrobox || return 1
@@ -767,12 +844,14 @@ execute_install_distrobox() {
 
     print_info "Exporting '$app_id' to the host launcher..."
     export_distrobox_app "$container" "$app_id"
-    save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id"
+    apply_distrobox_app_args "$app_id" "$container" "$app_args"
+    save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id" "$app_args"
 
     print_success "Installed and exported Distrobox app"
     echo "  App: $app_name"
     echo "  Container: $container"
     echo "  Desktop entry: $app_id"
+    [ -n "$app_args" ] && echo "  Launch args: $app_args"
 }
 
 do_install_distrobox() {
@@ -780,6 +859,7 @@ do_install_distrobox() {
     local package_path=""
     local app_id=""
     local app_name=""
+    local app_args=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -797,6 +877,10 @@ do_install_distrobox() {
                 ;;
             --name)
                 app_name="$2"
+                shift 2
+                ;;
+            --args)
+                app_args="$2"
                 shift 2
                 ;;
             --help|-h)
@@ -817,7 +901,7 @@ do_install_distrobox() {
     fi
 
     package_path=$(realpath "$package_path")
-    execute_install_distrobox "$container" "$package_path" "$app_name" "$app_id"
+    execute_install_distrobox "$container" "$package_path" "$app_name" "$app_id" "$app_args"
 }
 
 interactive_install_distrobox_with_file() {
@@ -842,11 +926,15 @@ interactive_install_distrobox_with_file() {
     local app_name=""
     app_name=$(prompt_with_default "App name" "$suggested_name" "Saved app name" true) || return 0
 
+    local app_args=""
+    app_args=$(prompt_with_default "Launch args (optional, e.g. --disable-gpu)" "" "Leave empty for none" false) || return 0
+
     if ! confirm_summary "Install package in Distrobox" \
         "  Container: $container" \
         "  Package: $package_path" \
         "  Type: $package_type" \
         "  App name: $app_name" \
+        "  Launch args: ${app_args:-none}" \
         "  Desktop entry: auto-detect after install"; then
         print_info "Cancelled."
         return 0
@@ -883,21 +971,31 @@ interactive_install_distrobox_with_file() {
         return 1
     }
 
-    save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id"
+    apply_distrobox_app_args "$app_id" "$container" "$app_args"
+    save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id" "$app_args"
     print_success "Installed and exported Distrobox app"
     echo "  App: $app_name"
     echo "  Container: $container"
     echo "  Desktop entry: $app_id"
+    [ -n "$app_args" ] && echo "  Launch args: $app_args"
 }
 
 execute_update_distrobox() {
     local app_name="$1"
     local package_path="$2"
+    local app_args_override="${3:-}"
+    local app_args_override_set="${4:-0}"
 
     ensure_dirs
     require_distrobox || return 1
     require_file "$package_path"
     load_distrobox_metadata "$app_name" || return 1
+
+    # Preserve the saved launch args across the update unless explicitly overridden.
+    local app_args="$APP_ARGS"
+    if [ "$app_args_override_set" = "1" ]; then
+        app_args="$app_args_override"
+    fi
 
     local new_package_type=""
     new_package_type=$(package_type_for_file "$package_path") || return 1
@@ -910,12 +1008,14 @@ execute_update_distrobox() {
 
     print_info "Refreshing exported desktop entry '$APP_ID'..."
     export_distrobox_app "$CONTAINER" "$APP_ID"
-    save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID"
+    apply_distrobox_app_args "$APP_ID" "$CONTAINER" "$app_args"
+    save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID" "$app_args"
 
     print_success "Updated Distrobox app"
     echo "  App: $APP_NAME"
     echo "  Container: $CONTAINER"
     echo "  Desktop entry: $APP_ID"
+    [ -n "$app_args" ] && echo "  Launch args: $app_args"
 }
 
 execute_remove_distrobox() {
@@ -953,6 +1053,8 @@ execute_remove_distrobox() {
 do_update_distrobox() {
     local app_name=""
     local package_path=""
+    local app_args=""
+    local app_args_set=0
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -962,6 +1064,11 @@ do_update_distrobox() {
                 ;;
             --package)
                 package_path="$2"
+                shift 2
+                ;;
+            --args)
+                app_args="$2"
+                app_args_set=1
                 shift 2
                 ;;
             --help|-h)
@@ -982,7 +1089,7 @@ do_update_distrobox() {
     fi
 
     package_path=$(realpath "$package_path")
-    execute_update_distrobox "$app_name" "$package_path"
+    execute_update_distrobox "$app_name" "$package_path" "$app_args" "$app_args_set"
 }
 
 do_list() {
@@ -1009,10 +1116,13 @@ do_list() {
         found=true
         local file
         for file in "${files[@]}"; do
+            APP_ARGS=""
             # shellcheck disable=SC1090
             source "$file"
             _listed_ids+=("$APP_ID")
-            echo "$APP_NAME | type=distrobox | container=$CONTAINER | app=$APP_ID | pkg=$PACKAGE_TYPE"
+            local args_field=""
+            [ -n "${APP_ARGS:-}" ] && args_field=" | args=$APP_ARGS"
+            echo "$APP_NAME | type=distrobox | container=$CONTAINER | app=$APP_ID | pkg=$PACKAGE_TYPE$args_field"
         done
     fi
 
@@ -1269,8 +1379,10 @@ interactive_manage_apps() {
                 new_file=$(pick_file_from_downloads "Pick the updated AppImage" appimage) || return 0
                 interactive_import_appimage_with_file "$new_file" "$current_name"
             else
+                APP_ARGS=""
                 # shellcheck disable=SC1090
                 source "$app_key"
+                APP_ARGS="${APP_ARGS:-}"
                 local package_path=""
                 package_path=$(pick_file_from_downloads "Pick the updated package" package) || return 0
 
@@ -1285,6 +1397,7 @@ interactive_manage_apps() {
                     "  App: $APP_NAME" \
                     "  Container: $CONTAINER" \
                     "  Desktop entry: $APP_ID" \
+                    "  Launch args: ${APP_ARGS:-none}" \
                     "  New package: $package_path" \
                     "${type_warning:-  Package type matches saved metadata}"; then
                     print_info "Cancelled."
@@ -1299,11 +1412,13 @@ interactive_manage_apps() {
                     print_error "Export refresh failed."
                     return 1
                 }
-                save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID"
+                apply_distrobox_app_args "$APP_ID" "$CONTAINER" "$APP_ARGS"
+                save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID" "$APP_ARGS"
                 print_success "Updated Distrobox app"
                 echo "  App: $APP_NAME"
                 echo "  Container: $CONTAINER"
                 echo "  Desktop entry: $APP_ID"
+                [ -n "$APP_ARGS" ] && echo "  Launch args: $APP_ARGS"
             fi
             ;;
         "Uninstall")
