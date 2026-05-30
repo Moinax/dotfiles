@@ -18,6 +18,7 @@ descriptions:
   gwenview: KDE image viewer
   kate: KDE text editor
   okular: KDE document viewer (PDF, EPUB, DjVu)
+  ark: KDE archive manager (Dolphin right-click "Extract here")
   ffmpegthumbnailer: Video thumbnail generator
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
   snapper: BTRFS snapshot manager
@@ -50,6 +51,7 @@ packages:
     - gwenview
     - kate
     - okular
+    - ark
 
     # Backup and snapshots
     - snapper
@@ -85,6 +87,7 @@ packages:
     - gwenview
     - kate
     - okular
+    - ark
 
     # Backup and snapshots
     - snapper
@@ -118,6 +121,7 @@ packages:
     - gwenview
     - kate
     - okular
+    - ark
 
     # Backup and snapshots
     - snapper
