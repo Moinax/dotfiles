@@ -1,6 +1,6 @@
-# Biometric - Fingerprint authentication + Bitwarden with biometric unlock
+# Biometric - Fingerprint authentication (fprintd + PAM)
 name: Biometric
-description: Fingerprint reader (fprintd) and Bitwarden password manager with biometric unlock
+description: Fingerprint reader (fprintd) for login, sudo, and polkit (Bitwarden biometric unlock)
 icon: 🫆
 environment: desktop
 
@@ -17,33 +17,15 @@ services: []
 descriptions:
   fprintd: Fingerprint reader daemon (libfprint)
   fprintd-pam: PAM module for fprintd (Fedora / Debian / Ubuntu)
-  bitwarden: Bitwarden password manager desktop app
-  bitwarden-flatpak: Bitwarden Desktop via Flathub (Fedora / Debian — no native package)
 
 packages:
   arch:
     - fprintd
-    - bitwarden
 
   fedora:
     - fprintd
     - fprintd-pam
-    # bitwarden installed via Flatpak (see custom_install)
 
   debian:
     - fprintd
     - libpam-fprintd
-    # bitwarden installed via Flatpak (see custom_install)
-
-custom_install:
-  - name: bitwarden-flatpak
-    check: flatpak info com.bitwarden.desktop
-    requires: flatpak
-    requires_packages:
-      fedora: [flatpak]
-      debian: [flatpak]
-    install: |
-      flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-      flatpak install --user -y --noninteractive flathub com.bitwarden.desktop
-    distro_skip:
-      - arch

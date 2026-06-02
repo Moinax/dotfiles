@@ -2799,8 +2799,9 @@ main() {
                 continue
             fi
         fi
+        # No fingerprint reader → silently skip the biometric group. Bitwarden
+        # itself lives in 'productivity' now, so it still installs without one.
         if [ "$group_name" = "biometric" ] && [ "$HAS_FINGERPRINT" != "true" ]; then
-            print_info "Skipping 'biometric' group — no fingerprint reader detected"
             continue
         fi
         SELECTED_GROUP_NAMES+=("$group_name")
