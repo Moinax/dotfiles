@@ -180,3 +180,13 @@ Wallpapers/**
 .config/environment.d/ssh-agent.conf
 .config/systemd/user/sockets.target.wants/ssh-agent.socket
 {{- end }}
+
+# hypridle-pin watcher: notifies when Arch rebuilds hypridle so the
+# sdbus-cpp/hyprlock IgnorePkg pins can be lifted. Pins live in Arch's
+# /etc/pacman.conf, so this is Arch-only.
+{{- if ne .chezmoi.osRelease.id "arch" }}
+.local/bin/check-hypridle-pin.sh
+.config/systemd/user/check-hypridle-pin.service
+.config/systemd/user/check-hypridle-pin.timer
+.config/systemd/user/timers.target.wants/check-hypridle-pin.timer
+{{- end }}

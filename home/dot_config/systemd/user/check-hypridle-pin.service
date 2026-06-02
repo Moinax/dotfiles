@@ -1,0 +1,7 @@
+[Unit]
+Description=Check whether hypridle was rebuilt so the sdbus-cpp/hyprlock pins can be lifted
+Documentation=man:pacman.conf(5)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/check-hypridle-pin.sh
