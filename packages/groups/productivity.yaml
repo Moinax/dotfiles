@@ -70,6 +70,7 @@ packages:
     # Web browsers
     - zen-browser-bin  # AUR
     - google-chrome  # AUR
+    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
 
     # Cloud sync — dropbox installed via custom_install (Dropbox's own
     # auto-updater fights any distro package)
@@ -108,6 +109,7 @@ packages:
     # Web browsers
     - zen-browser
     - google-chrome-stable
+    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
 
     # Cloud sync — dropbox installed via custom_install (Dropbox's own
     # auto-updater fights any distro package)
@@ -142,6 +144,7 @@ packages:
 
     # Web browsers (Google Chrome requires repo — added by setup_productivity_repos)
     - google-chrome-stable
+    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
 
     # Cloud sync — dropbox installed via custom_install (Dropbox's own
     # auto-updater fights any distro package)
