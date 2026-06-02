@@ -1208,6 +1208,7 @@ sourceDir = "$source_dir"
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
     has_nvidia = $HAS_NVIDIA
+    has_fingerprint = $HAS_FINGERPRINT
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
     install_purpose = "$INSTALL_PURPOSE"

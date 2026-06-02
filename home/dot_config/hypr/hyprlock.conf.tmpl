@@ -9,7 +9,11 @@
 background {
     monitor =
     path = ~/Wallpapers/colorful.jpg
-
+    # Solid-color fallback (Catppuccin Mocha base) shown until the wallpaper is
+    # loaded. On the NVIDIA box the async image gather can time out ("Gathering
+    # resources timed out... render background:color"), which without this left
+    # the lock screen pure black with no visible prompt.
+    color = rgba(1e1e2eff)
 }
 
 input-field {
@@ -68,8 +72,13 @@ label {
     shadow_size = 10
 }
 
+{{ if and (hasKey . "has_fingerprint") .has_fingerprint -}}
 # Talks to fprintd directly over D-Bus — independent from the PAM password stack,
 # so password input stays responsive even while a scan is in progress.
+# Only emitted on machines with a fingerprint reader (has_fingerprint, set from
+# has_fingerprint_reader() at install time). Enabling it without fprintd installed
+# makes hyprlock hang on a D-Bus timeout AFTER a successful password auth, which
+# wedges the session locked — so this block is gated, not unconditionally on.
 auth {
     fingerprint {
         enabled = true
@@ -78,3 +87,4 @@ auth {
         retry_delay = 250
     }
 }
+{{- end }}
