@@ -1799,18 +1799,31 @@ enable_selected_services() {
         add_user_to_group "input"
     fi
 
-    # Set tailscale operator and authenticate if development is selected and tailscale is installed
+    # Configure Tailscale if development is selected and tailscale is installed.
+    # The tailscaled daemon is enabled above (needed for the manual toggle), but
+    # Tailscale itself is NOT auto-connected — connect on demand via the waybar
+    # module or the Super+Ctrl+N keybind (toggle-tailscale.sh).
     if group_selected development && command -v tailscale &>/dev/null; then
         print_info "Setting Tailscale operator to $USER"
         sudo tailscale set --operator="$USER"
-        print_success "Tailscale operator set (no sudo needed for tailscale commands)"
 
-        # Authenticate if not already logged in
+        # Never let Tailscale override system DNS. Otherwise tailscaled installs
+        # itself as the default DNS route in systemd-resolved; bringing Tailscale
+        # down then leaves a stale, server-less tailscale0 default route that
+        # breaks/slows resolution. Off means our NetworkManager DNS is always used.
+        tailscale set --accept-dns=false
+        print_success "Tailscale operator set; accept-dns disabled (system DNS preserved)"
+
+        # Authenticate once if needed, then leave Tailscale DISCONNECTED so it
+        # never comes up automatically at boot.
         if ! tailscale status &>/dev/null; then
             print_info "Logging into Tailscale (a browser/URL will open for authentication)..."
-            tailscale up
+            tailscale up --accept-dns=false
+            tailscale down
+            print_info "Authenticated. Tailscale left disconnected — toggle it via the waybar module or Super+Ctrl+N."
         else
-            print_info "Tailscale is already authenticated"
+            tailscale down 2>/dev/null || true
+            print_info "Tailscale already authenticated; left disconnected (connect manually)."
         fi
     fi
 
