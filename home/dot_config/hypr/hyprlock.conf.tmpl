@@ -70,10 +70,10 @@ label {
 {{ if and (hasKey . "has_fingerprint") .has_fingerprint -}}
 # Talks to fprintd directly over D-Bus — independent from the PAM password stack,
 # so password input stays responsive even while a scan is in progress.
-# Only emitted on machines with a fingerprint reader (has_fingerprint, set from
-# has_fingerprint_reader() at install time). Enabling it without fprintd installed
-# makes hyprlock hang on a D-Bus timeout AFTER a successful password auth, which
-# wedges the session locked — so this block is gated, not unconditionally on.
+# Only emitted when a fingerprint reader is present and fprintd support was both
+# selected and installed. Enabling it without fprintd installed makes hyprlock
+# hang on a D-Bus timeout AFTER a successful password auth, which wedges the
+# session locked — so this block is gated, not unconditionally on.
 auth {
     fingerprint {
         enabled = true

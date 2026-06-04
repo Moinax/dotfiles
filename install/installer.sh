@@ -1192,6 +1192,11 @@ setup_dotfiles() {
             *) install_vibewatch="false" ;;
         esac
     fi
+
+    local has_hyprlock_fingerprint="false"
+    if [ "$HAS_FINGERPRINT" = "true" ] && group_selected biometric && command_exists fprintd-enroll; then
+        has_hyprlock_fingerprint="true"
+    fi
     
     cat > "$chezmoi_config" << EOF
 # Use this repo's home directory as chezmoi source (so 'chezmoi diff' etc. work without -S)
@@ -1208,7 +1213,7 @@ sourceDir = "$source_dir"
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
     has_nvidia = $HAS_NVIDIA
-    has_fingerprint = $HAS_FINGERPRINT
+    has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
     install_purpose = "$INSTALL_PURPOSE"
