@@ -71,15 +71,19 @@ function xf86(k) {
 # Two source formats coexist (see hyprland.conf vs hyprland.lua): older
 # Hyprland releases (e.g. shipped by Fedora) only understand the .conf
 # syntax; newer releases use the Lua plugin and load binds.lua. Pick the
-# one that's actually deployed.
+# one selected by Hyprland's active entrypoint.
 
 parse_hyprland() {
-    if [ -f "$HOME/.config/hypr/conf/binds.lua" ]; then
+    if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
+        parse_hyprland_lua
+    elif [ -f "$HOME/.config/hypr/hyprland.conf" ]; then
+        parse_hyprland_conf
+    elif [ -f "$HOME/.config/hypr/conf/binds.lua" ]; then
         parse_hyprland_lua
     elif [ -f "$HOME/.config/hypr/conf/binds.conf" ]; then
         parse_hyprland_conf
     else
-        echo "No Hyprland binds file found at conf/binds.{lua,conf}" >&2
+        echo "No Hyprland config found at hyprland.{lua,conf} or conf/binds.{lua,conf}" >&2
         return 1
     fi
 }

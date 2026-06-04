@@ -4,15 +4,16 @@ set -e
 # Directory containing your input layout template files
 LAYOUTS_DIR="$HOME/.config/hypr/conf/input-layouts"
 
-# Detect the deployed flavor (Lua for Hyprland >= 0.55, hyprlang .conf otherwise).
-# We rely on whatever extension chezmoi materialised in the layouts dir.
-if compgen -G "$LAYOUTS_DIR/*.lua" > /dev/null; then
+# Detect the deployed flavor from Hyprland's active entrypoint. The layout
+# directory can contain stale files after switching languages; hyprland.lua vs
+# hyprland.conf is the source of truth.
+if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
     EXT="lua"
-elif compgen -G "$LAYOUTS_DIR/*.conf" > /dev/null; then
+elif [ -f "$HOME/.config/hypr/hyprland.conf" ]; then
     EXT="conf"
 else
-    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "No keyboard layout files found in: $LAYOUTS_DIR (.lua or .conf)"
-    echo "Error: No keyboard layout files found in $LAYOUTS_DIR (.lua or .conf)" >&2
+    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "No Hyprland entrypoint found at ~/.config/hypr/hyprland.{lua,conf}"
+    echo "Error: No Hyprland entrypoint found at ~/.config/hypr/hyprland.{lua,conf}" >&2
     exit 1
 fi
 
@@ -22,6 +23,11 @@ ACTIVE_INPUT_CONF="$HOME/.config/hypr/conf/input.$EXT"
 # --- Discover available layouts and their order ---
 # We'll store full paths for direct copying.
 mapfile -t LAYOUT_FILES < <(find "$LAYOUTS_DIR" -maxdepth 1 -name "*.$EXT" | sort)
+if [ "${#LAYOUT_FILES[@]}" -eq 0 ]; then
+    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "No .$EXT layout files found in: $LAYOUTS_DIR"
+    echo "Error: No .$EXT layout files found in $LAYOUTS_DIR" >&2
+    exit 1
+fi
 
 # --- Prepare layout names for Rofi and map them to their full paths ---
 declare -A layout_paths # Associative array to map display name to file path

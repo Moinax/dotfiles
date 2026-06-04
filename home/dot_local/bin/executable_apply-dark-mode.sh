@@ -32,11 +32,61 @@ echo "$MODE" > "$STATE_FILE"
 
 CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 if [ -f "$CHEZMOI_CONF" ]; then
-    if grep -q 'dark_mode = ' "$CHEZMOI_CONF"; then
-        sed -i 's/dark_mode = .*/dark_mode = "'"$MODE"'"/' "$CHEZMOI_CONF"
-    else
-        sed -i '/^\[data\]/a\    dark_mode = "'"$MODE"'"' "$CHEZMOI_CONF"
-    fi
+    python3 - "$CHEZMOI_CONF" "$MODE" <<'PY' || true
+from pathlib import Path
+import re
+import sys
+import tomllib
+
+path = Path(sys.argv[1])
+mode = sys.argv[2]
+text = path.read_text()
+
+try:
+    tomllib.loads(text)
+except tomllib.TOMLDecodeError as exc:
+    print(f"apply-dark-mode: not updating invalid chezmoi TOML: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+lines = text.splitlines(keepends=True)
+section_re = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
+dark_mode_re = re.compile(r'^(\s*)dark_mode\s*=')
+
+data_start = None
+data_end = len(lines)
+dark_mode_idx = None
+
+for idx, line in enumerate(lines):
+    section = section_re.match(line)
+    if section:
+        if data_start is not None:
+            data_end = idx
+            break
+        if section.group(1).strip() == "data":
+            data_start = idx
+            continue
+    if data_start is not None and dark_mode_re.match(line):
+        dark_mode_idx = idx
+
+if data_start is None:
+    prefix = "" if not text or text.endswith("\n") else "\n"
+    new_text = text + prefix + '[data]\n    dark_mode = "' + mode + '"\n'
+elif dark_mode_idx is not None:
+    indent = dark_mode_re.match(lines[dark_mode_idx]).group(1)
+    lines[dark_mode_idx] = f'{indent}dark_mode = "{mode}"\n'
+    new_text = "".join(lines)
+else:
+    lines.insert(data_end, f'    dark_mode = "{mode}"\n')
+    new_text = "".join(lines)
+
+try:
+    tomllib.loads(new_text)
+except tomllib.TOMLDecodeError as exc:
+    print(f"apply-dark-mode: generated invalid chezmoi TOML: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+path.write_text(new_text)
+PY
 fi
 
 # ---------- KDE color scheme ----------
@@ -72,8 +122,8 @@ fi
 # ---------- Compositor cursor (live) ----------
 # env = XCURSOR_THEME/HYPRCURSOR_THEME in hypr/niri config sets the boot-time
 # theme; this updates the running compositor so Mod+N flips it without re-login.
-# Niri has no runtime cursor command — its `niri msg action load-config-file`
-# below re-reads the env block, but already-spawned children keep the old cursor.
+# Niri has no runtime cursor command; after templated configs are regenerated
+# below, `niri msg action load-config-file` re-reads the env block.
 if is_hyprland; then
     hyprctl setcursor "$CURSOR_THEME" "$CURSOR_SIZE" 2>/dev/null || true
 fi
@@ -137,8 +187,6 @@ if is_hyprland; then
     ACTIVE='{ colors = {"rgba(ff64ff80)", "rgba(9696ffff)"}, angle = 45 }'
     INACTIVE='"rgba(6464ff4d)"'
     hyprctl eval "hl.config({ general = { [\"col.active_border\"] = ${ACTIVE}, [\"col.inactive_border\"] = ${INACTIVE} } })" >/dev/null 2>&1 || true
-elif is_niri; then
-    niri msg action load-config-file 2>/dev/null || true
 fi
 
 # ---------- Neovim ----------
@@ -159,6 +207,12 @@ if command -v chezmoi &>/dev/null; then
         ~/.config/niri/config.kdl \
         ~/.local/share/rofi/themes/wallpaper.rasi \
         2>/dev/null || true
+fi
+
+# Niri's cursor and border colors come from templated config, so reload after
+# chezmoi has written ~/.config/niri/config.kdl.
+if is_niri; then
+    niri msg action load-config-file 2>/dev/null || true
 fi
 
 # ---------- Waybar restart ----------
