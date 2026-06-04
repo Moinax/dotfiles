@@ -79,6 +79,12 @@ install_gum() {
             }
             ;;
         debian)
+            # Fresh Debian/Ubuntu installs may not have the tools needed to add
+            # the external apt repository yet.
+            print_info "Installing apt repository prerequisites..."
+            sudo apt update
+            sudo apt install -y curl gnupg ca-certificates
+
             # Add Charm apt repository and install gum
             print_info "Adding Charm apt repository for gum..."
             sudo mkdir -p /etc/apt/keyrings
