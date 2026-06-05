@@ -7,8 +7,10 @@ environment: desktop
 # No specific dotfiles for gaming
 dotfiles: []
 
-# No services
-services: []
+# Bluetooth — needed to pair wireless controllers (Xbox, etc.). Idempotent
+# with the hyprland/niri groups, which already enable it on desktop installs.
+services:
+  - bluetooth
 
 descriptions:
   steam: Valve game distribution platform
@@ -17,6 +19,39 @@ descriptions:
   gamemode: Game performance optimization daemon
   heroic-games-launcher-bin: Launcher for Epic, GOG, and Amazon Prime games (Arch AUR)
   heroic-games-launcher: Launcher for Epic, GOG, and Amazon Prime games
+  xpadneo-dkms: Advanced Linux driver for Xbox One/Series wireless controllers — Bluetooth + rumble (Arch AUR)
+  xpadneo: Advanced Linux driver for Xbox One/Series wireless controllers (built from source via DKMS)
+  linux-headers: Kernel headers — required to build the xpadneo DKMS module
+  dualsensectl: PS5 DualSense control tool — light bar, player LEDs, battery, mic, adaptive triggers (Arch AUR)
+
+# The PS5 DualSense needs no driver — it is fully supported by the mainline
+# kernel's hid-playstation module (gamepad, touchpad, rumble, LEDs, battery,
+# motion). dualsensectl is only the optional userspace control utility.
+#
+# Two tools are not packaged for Fedora/Debian and are built from source:
+#   - xpadneo: Xbox One/Series driver, via DKMS (skipped on Arch → AUR).
+#   - dualsensectl: DualSense control tool, via make (skipped on Arch → AUR).
+# Fields documented in ai.yaml / development.yaml.
+custom_install:
+  - name: xpadneo
+    distro_skip: [arch]
+    check: modinfo hid-xpadneo
+    install: tmp=$(mktemp -d) && git clone --depth=1 https://github.com/atar-axis/xpadneo.git "$tmp" && sudo "$tmp/install.sh" && rm -rf "$tmp"
+    requires: git
+    requires_packages:
+      # DKMS needs the matching kernel headers present at build time.
+      fedora: [dkms, kernel-devel, git]
+      debian: [dkms, git]  # also needs linux-headers-$(uname -r); pulled by dkms' recommends
+
+  - name: dualsensectl
+    distro_skip: [arch]
+    check: dualsensectl
+    install: tmp=$(mktemp -d) && git clone --depth=1 https://github.com/nowrep/dualsensectl.git "$tmp" && make -C "$tmp" && sudo make -C "$tmp" install && rm -rf "$tmp"
+    requires: git
+    requires_packages:
+      # Build deps: hidapi (hidraw backend), libudev, libdbus, pkg-config, gcc, make.
+      fedora: [hidapi-devel, systemd-devel, dbus-devel, pkgconf-pkg-config, gcc, make, git]
+      debian: [libhidapi-dev, libudev-dev, libdbus-1-dev, pkg-config, build-essential, git]
 
 packages:
   arch:
@@ -25,6 +60,9 @@ packages:
     - mangohud  # Optional: FPS overlay
     - gamemode  # Optional: Game performance optimization
     - heroic-games-launcher-bin  # AUR — Epic/GOG/Amazon Prime games
+    - xpadneo-dkms  # AUR — Xbox One/Series controller driver (Bluetooth + rumble)
+    - linux-headers  # Required to build the xpadneo DKMS module (use linux-lts-headers / linux-zen-headers for other kernels)
+    - dualsensectl  # AUR — PS5 DualSense control (LEDs, battery, mic, adaptive triggers); the driver itself is in-kernel (hid-playstation)
 
   fedora:
     - steam
