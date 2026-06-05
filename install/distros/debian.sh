@@ -6,9 +6,16 @@ _DISTRO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_DISTRO_DIR/../lib/common.sh"
 
 # Update the system
+# Update the system. With "confirm", apt lists the packages to upgrade and asks
+# before applying; otherwise it runs non-interactively (used by the installer).
 update_system() {
-    print_info "Updating system..."
-    sudo apt update && sudo apt upgrade -y
+    if [ "${1:-}" = "confirm" ]; then
+        print_info "Checking for system updates..."
+        sudo apt update && sudo apt upgrade
+    else
+        print_info "Updating system..."
+        sudo apt update && sudo apt upgrade -y
+    fi
 }
 
 # Install packages using apt
@@ -148,6 +155,12 @@ add_tailscale_repo() {
 is_package_installed() {
     local package="$1"
     dpkg -l "$package" 2>/dev/null | grep -q "^ii"
+}
+
+# List every installed package name, one per line. Used to build an in-memory
+# index so callers can test many packages without forking dpkg per package.
+list_installed_packages() {
+    dpkg-query -W -f '${Package}\n' 2>/dev/null
 }
 
 # Install AppImage runtime support using the libfuse2 variant available on the host

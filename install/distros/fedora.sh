@@ -6,9 +6,16 @@ _DISTRO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_DISTRO_DIR/../lib/common.sh"
 
 # Update the system
+# Update the system. With "confirm", dnf lists the packages to upgrade and asks
+# before applying; otherwise it runs non-interactively (used by the installer).
 update_system() {
-    print_info "Updating system..."
-    sudo dnf upgrade -y --refresh
+    if [ "${1:-}" = "confirm" ]; then
+        print_info "Checking for system updates..."
+        sudo dnf upgrade --refresh
+    else
+        print_info "Updating system..."
+        sudo dnf upgrade -y --refresh
+    fi
 }
 
 # Install packages using dnf
@@ -118,6 +125,12 @@ EOF
 is_package_installed() {
     local package="$1"
     rpm -q "$package" &>/dev/null
+}
+
+# List every installed package name, one per line. Used to build an in-memory
+# index so callers can test many packages without forking rpm per package.
+list_installed_packages() {
+    rpm -qa --qf '%{NAME}\n' 2>/dev/null
 }
 
 # Install gum for interactive prompts

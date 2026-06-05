@@ -61,6 +61,66 @@ command_exists() {
     command -v "$1" &> /dev/null
 }
 
+# Escape a string for embedding in a JSON string literal.
+_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
+}
+
+# ── Spinners ─────────────────────────────────────────────────────────────────
+# A single, consistent loader for silent multi-second work (catalogue builds,
+# downloads, extraction). Do NOT wrap commands that print their own progress
+# (pacman/apt/dnf, curl install scripts, chezmoi apply) — that hides output the
+# user needs to see. gum draws the spinner on stderr, so it still animates when
+# stdout is captured (e.g. inside `$(...)`); we gate on stderr being a TTY and
+# otherwise run the command plainly. set -e safe: the command's exit status is
+# captured, never left as a bare failing command.
+
+# Core: run "$@" with stdout redirected to OUTFILE while a spinner titled TITLE
+# shows, then return the command's exit status. Works for shell functions and
+# external commands alike (the command runs in a background job we poll).
+_spin_core() {
+    local title="$1" outfile="$2"
+    shift 2
+    local rc=0
+    if command_exists gum && [ -t 2 ]; then
+        ( "$@" >"$outfile" 2>/dev/null ) &
+        local pid=$!
+        gum spin --spinner dot --title "$title" -- \
+            bash -c "while kill -0 ${pid} 2>/dev/null; do sleep 0.1; done" || true
+        wait "$pid" || rc=$?
+    else
+        "$@" >"$outfile" 2>/dev/null || rc=$?
+    fi
+    return "$rc"
+}
+
+# Capture CMD's stdout into the variable named VAR while showing a spinner.
+# Usage: spin_capture result "Loading packages..." build_json arg1 arg2
+spin_capture() {
+    local __var="$1" __title="$2"
+    shift 2
+    local __tmp __rc=0
+    __tmp=$(mktemp)
+    _spin_core "$__title" "$__tmp" "$@" || __rc=$?
+    printf -v "$__var" '%s' "$(cat "$__tmp")"
+    rm -f "$__tmp"
+    return "$__rc"
+}
+
+# Run CMD (output discarded) while showing a spinner; returns CMD's exit status.
+# Usage: spin_run "Cloning theme..." git clone --depth 1 "$repo" "$dest"
+spin_run() {
+    local __title="$1"
+    shift
+    _spin_core "$__title" /dev/null "$@"
+}
+
 # Get the script directory
 get_script_dir() {
     cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
@@ -81,7 +141,9 @@ parse_packages() {
     local distro="$2"
     
     if command_exists yq; then
-        yq -r ".packages.$distro[]? // \"\"" "$file" 2>/dev/null | grep -v "^#" | grep -v "^$"
+        # grep exits non-zero when a group has no matching lines; tolerate it so
+        # callers running under `set -o pipefail` don't abort on an empty group.
+        yq -r ".packages.$distro[]? // \"\"" "$file" 2>/dev/null | grep -v "^#" | grep -v "^$" || true
     else
         # Fallback: simple grep-based parsing
         local in_section=false
@@ -199,7 +261,7 @@ parse_desktop_only() {
     local file="$1"
 
     if command_exists yq; then
-        yq -r '.desktop_only[]? // ""' "$file" 2>/dev/null | grep -v "^$"
+        yq -r '.desktop_only[]? // ""' "$file" 2>/dev/null | grep -v "^$" || true
     else
         local in_section=false
         while IFS= read -r line; do
@@ -219,6 +281,38 @@ parse_desktop_only() {
     fi
 }
 
+# Read a group's declared hardware requirement (the `requires_hardware:` field),
+# or empty when none is declared. This is a single top-level scalar, so we grep
+# it directly rather than spawning yq — it runs once per group during the
+# pre-selection scan, where yq's startup cost is otherwise visible.
+# Usage: parse_requires_hardware "file.yaml"
+parse_requires_hardware() {
+    local file="$1"
+    local val
+    val=$(grep -m1 '^requires_hardware:' "$file" 2>/dev/null \
+        | sed 's/^requires_hardware:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//')
+    val="${val%\"}"; val="${val#\"}"
+    val="${val%\'}"; val="${val#\'}"
+    printf '%s' "$val"
+}
+
+# Whether the hardware a group requires is present. Groups without a
+# `requires_hardware:` field (or with an unrecognised value) are always
+# available. This is the single gate the installer and the package manager
+# both consult, so hardware-specific groups (e.g. biometric → fingerprint
+# reader) appear in exactly the same machines everywhere.
+# Usage: group_hardware_available "file.yaml"  (returns 0 = available)
+group_hardware_available() {
+    local file="$1"
+    local req
+    req=$(parse_requires_hardware "$file")
+    case "$req" in
+        "" | none)   return 0 ;;
+        fingerprint) has_fingerprint_reader ;;
+        *)           return 0 ;;
+    esac
+}
+
 # Parse custom_install entries and output their names (filtered by distro).
 # Usage: parse_custom_install_names "file.yaml" "debian"
 parse_custom_install_names() {
@@ -226,7 +320,7 @@ parse_custom_install_names() {
     local distro="$2"
 
     if command_exists yq; then
-        yq -r "(.custom_install // [])[] | select((.distro_skip // []) | contains([\"$distro\"]) | not) | .name" "$file" 2>/dev/null | grep -v "^$"
+        yq -r "(.custom_install // [])[] | select((.distro_skip // []) | contains([\"$distro\"]) | not) | .name" "$file" 2>/dev/null | grep -v "^$" || true
     else
         # Fallback: simple parsing
         local in_section=false

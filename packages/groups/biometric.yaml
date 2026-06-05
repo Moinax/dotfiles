@@ -4,9 +4,11 @@ description: Fingerprint reader (fprintd) for login, sudo, and polkit (Bitwarden
 icon: 🫆
 environment: desktop
 
-# Hardware-gated: this group is auto-skipped on machines without a fingerprint
-# reader. See has_fingerprint_reader() in install/lib/detect.sh and the gating
-# in installer.sh main().
+# Hardware-gated: auto-skipped on machines without a fingerprint reader. The
+# requires_hardware field below is honoured by both the installer and the
+# package manager via group_hardware_available() (install/lib/common.sh), which
+# maps "fingerprint" to has_fingerprint_reader() (install/lib/detect.sh).
+requires_hardware: fingerprint
 
 # No dotfiles to manage
 dotfiles: []

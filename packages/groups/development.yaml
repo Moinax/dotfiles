@@ -61,14 +61,14 @@ desktop_only:
 #         families to skip)
 custom_install:
   - name: claude-code
-    check: claude
+    check: command -v claude
     install: curl -fsSL https://claude.ai/install.sh | bash
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
     requires: gh
   - name: cursor
-    check: cursor
+    check: command -v cursor
     install: bash "$DOTFILES_DIR/tools/install-cursor.sh"
     distro_skip:
       - arch

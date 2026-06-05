@@ -246,12 +246,10 @@ clone_theme_repo() {
     local dest="$CLONE_CACHE_DIR/$id"
 
     if [ -d "$dest/.git" ]; then
-        print_info "Updating cached repo for $id..." >&2
-        git -C "$dest" pull --quiet 2>/dev/null || true
+        spin_run "Updating cached repo for $id..." git -C "$dest" pull --quiet || true
     else
-        print_info "Cloning $id theme repo..." >&2
         rm -rf "$dest"
-        git clone --depth 1 --quiet "$repo" "$dest" >&2
+        spin_run "Cloning $id theme repo..." git clone --depth 1 --quiet "$repo" "$dest"
     fi
     echo "$dest"
 }

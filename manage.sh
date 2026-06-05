@@ -57,7 +57,11 @@ do_update() {
     fi
 
     source "$SCRIPT_DIR/install/distros/${family}.sh"
-    update_system
+    # "confirm" → list the available updates and prompt before applying.
+    if ! update_system confirm; then
+        print_info "System update cancelled."
+        return 0
+    fi
 
     if ! command_exists vibewatch; then
         print_info "vibewatch not installed, skipping"
@@ -65,7 +69,8 @@ do_update() {
     fi
 
     local local_sha
-    if local_sha=$(bash "$SCRIPT_DIR/tools/vibewatch-check-current.sh" --print-sha); then
+    if spin_capture local_sha "Checking vibewatch..." \
+        bash "$SCRIPT_DIR/tools/vibewatch-check-current.sh" --print-sha; then
         print_info "vibewatch already up to date (${local_sha:-unknown})"
         return 0
     fi
@@ -270,10 +275,14 @@ do_reconfig() {
         return
     fi
 
-    # Show current flags, let user select which to toggle
+    # Show current flags, let user select which to toggle. A fixed boolean list
+    # is a checkbox picker, not a fuzzy search — gum choose is the right widget
+    # and, unlike gum filter, reacts to ESC instantly (no text-input escape
+    # disambiguation), so cancelling returns to the menu without a lag.
     print_info "Select flags to toggle (space to select, enter to confirm):"
     local selected
-    selected=$(printf '%s\n' "${flags[@]}" | gum filter --no-limit --header "Toggle flags:") || {
+    selected=$(printf '%s\n' "${flags[@]}" \
+        | gum choose --no-limit --cursor.foreground="212" --header "Toggle flags:") || {
         echo "Cancelled."
         return
     }
@@ -361,6 +370,7 @@ do_menu() {
 
         # Build menu options dynamically
         local options=()
+        options+=("Setup")
         options+=("Manage packages")
         if external_apps_available; then
             options+=("External apps")
@@ -375,7 +385,6 @@ do_menu() {
         if [ -f /etc/default/grub ]; then
             options+=("GRUB theme")
         fi
-        options+=("Full installer")
         options+=("Update system")
         options+=("Exit")
 
@@ -385,13 +394,13 @@ do_menu() {
         # A child tool returning non-zero (e.g. missing dependency, user
         # cancelled inside it) must not kill the menu — swallow it here.
         case "$choice" in
+            "Setup")                   do_setup || true ;;
             "Manage packages")         do_packages || true ;;
             "External apps")           do_apps || true ;;
             "Cursor extensions")       do_cursor || true ;;
             "Reconfigure flags")       do_reconfig || true ;;
             "Update whisper model")    do_whisper || true ;;
             "GRUB theme")              do_grub_theme || true ;;
-            "Full installer")          do_setup || true ;;
             "Update system")           do_update || true ;;
             "Exit")                    break ;;
         esac

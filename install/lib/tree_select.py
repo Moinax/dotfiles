@@ -28,6 +28,8 @@ class Package:
     name: str
     desc: str
     selected: bool = True
+    installed: bool = False
+    custom: bool = False
 
 
 @dataclass
@@ -36,7 +38,7 @@ class Group:
     name: str
     icon: str
     packages: list = field(default_factory=list)
-    expanded: bool = True
+    expanded: bool = False
 
     @property
     def check_state(self):
@@ -104,18 +106,40 @@ def total_packages(groups):
     return sum(len(g.packages) for g in groups)
 
 
+def diff_counts(groups):
+    """Return (to_install, to_remove) relative to current installed state."""
+    to_install = sum(
+        1 for g in groups for p in g.packages if p.selected and not p.installed
+    )
+    to_remove = sum(
+        1 for g in groups for p in g.packages if p.installed and not p.selected
+    )
+    return to_install, to_remove
+
+
 # ── Curses TUI ──────────────────────────────────────────────────────────────
 
 
-def run_tui(stdscr, groups):
+def run_tui(stdscr, groups, mode="install", title="Select packages to install"):
     curses.curs_set(0)
     curses.use_default_colors()
 
+    # ncurses waits ESCDELAY ms (default 1000) after a bare ESC to see if it's
+    # the start of an escape sequence (arrow keys, etc.) — that delay makes ESC
+    # feel unresponsive when cancelling. Shrink it to a snappy value.
+    try:
+        curses.set_escdelay(25)
+    except (AttributeError, curses.error):
+        pass  # set_escdelay is Python 3.9+; fall back to the default otherwise
+
     # Light color scheme — single accent, like gum
     curses.init_pair(1, curses.COLOR_MAGENTA, -1)  # accent (cursor indicator)
+    curses.init_pair(2, curses.COLOR_GREEN, -1)  # "installed" tag
 
     COL_ACCENT = curses.color_pair(1) | curses.A_BOLD
+    COL_GREEN = curses.color_pair(2)
     COL_DIM = curses.A_DIM
+    manage = mode == "manage"
 
     cursor = 0
     scroll_offset = 0
@@ -146,8 +170,20 @@ def run_tui(stdscr, groups):
         # Header (line 0)
         sel_count = total_selected(groups)
         tot_count = total_packages(groups)
-        header = "  Select packages to install"
-        counter = f"{sel_count}/{tot_count} selected"
+        header = "  " + title
+        if manage:
+            to_install, to_remove = diff_counts(groups)
+            if to_install == 0 and to_remove == 0:
+                counter = "no changes"
+            else:
+                parts = []
+                if to_install:
+                    parts.append(f"+{to_install} install")
+                if to_remove:
+                    parts.append(f"-{to_remove} remove")
+                counter = "   ".join(parts)
+        else:
+            counter = f"{sel_count}/{tot_count} selected"
         padding = max_x - len(header) - len(counter) - 1
         if padding < 1:
             padding = 1
@@ -224,22 +260,31 @@ def run_tui(stdscr, groups):
                 p = groups[gi].packages[pi]
                 check_str = "[x]" if p.selected else "[ ]"
 
+                # Reserve room on the right for the "installed" tag in manage mode
+                tag = "✓ installed" if (manage and p.installed) else ""
+                tag_x = max_x - len(tag) - 2 if tag else max_x - 1
+
                 try:
                     stdscr.addstr(y, 6, check_str, row_attr)
                     name_str = p.name
-                    stdscr.addnstr(y, 10, name_str, max_x - 11, row_attr)
+                    avail = max(0, tag_x - 10)
+                    stdscr.addnstr(y, 10, name_str, avail, row_attr)
                     if p.desc:
-                        desc_x = 10 + min(len(name_str), max_x - 11)
+                        desc_x = 10 + min(len(name_str), avail)
                         desc_str = f" — {p.desc}"
-                        stdscr.addnstr(y, desc_x, desc_str, max_x - desc_x - 1, COL_DIM if not is_cursor else row_attr)
+                        if tag_x - desc_x - 1 > 0:
+                            stdscr.addnstr(y, desc_x, desc_str, tag_x - desc_x - 1, COL_DIM if not is_cursor else row_attr)
+                    if tag and tag_x > 10:
+                        stdscr.addnstr(y, tag_x, tag, len(tag), row_attr if is_cursor else COL_GREEN)
                 except curses.error:
                     pass
 
         # Status bar (last line)
+        confirm_word = "apply" if manage else "confirm"
         if filter_mode:
-            status = " Type to filter | Space: toggle | Esc: clear filter | Enter: confirm"
+            status = f" Type to filter | Space: toggle | Esc: clear filter | Enter: {confirm_word}"
         else:
-            status = " Space: toggle  ←→: collapse/expand  /: search  a/n: all/none  Enter: confirm  Esc: cancel"
+            status = f" Space: toggle  ←→: collapse/expand  /: search  a/n: all/none  Enter: {confirm_word}  Esc: cancel"
         try:
             stdscr.addstr(max_y - 1, 0, status[: max_x - 1], curses.A_DIM)
         except curses.error:
@@ -372,23 +417,68 @@ def main():
         print(f"Invalid JSON input: {e}", file=sys.stderr)
         sys.exit(2)
 
+    # Input is either a bare list of groups (legacy "install" mode used by the
+    # installer) or an object {mode, title, groups} for the manage view.
+    if isinstance(data, dict):
+        mode = data.get("mode", "install")
+        title = data.get("title", "Select packages to install")
+        group_items = data.get("groups", [])
+    else:
+        mode = "install"
+        title = "Select packages to install"
+        group_items = data
+
     groups = []
-    for item in data:
-        pkgs = [Package(name=p["name"], desc=p.get("desc", "")) for p in item.get("packages", [])]
+    for item in group_items:
+        pkgs = [
+            Package(
+                name=p["name"],
+                desc=p.get("desc", ""),
+                selected=p.get("selected", True),
+                installed=p.get("installed", False),
+                custom=p.get("custom", False),
+            )
+            for p in item.get("packages", [])
+        ]
         groups.append(
             Group(
                 id=item["id"],
                 name=item.get("name", item["id"]),
                 icon=item.get("icon", ""),
                 packages=pkgs,
-                expanded=True,
+                expanded=False,
             )
         )
 
+    def _emit_results():
+        """Write results to the real stdout pipe.
+
+        install mode → one "group<TAB>name" line per selected package.
+        manage mode  → one "op<TAB>group<TAB>name<TAB>custom" line per change.
+        """
+        if mode == "manage":
+            for g in groups:
+                for p in g.packages:
+                    if p.selected and not p.installed:
+                        op = "install"
+                    elif p.installed and not p.selected:
+                        op = "remove"
+                    else:
+                        continue
+                    sys.stdout.write(f"{op}\t{g.id}\t{p.name}\t{1 if p.custom else 0}\n")
+        else:
+            for g in groups:
+                for p in g.packages:
+                    if p.selected:
+                        sys.stdout.write(f"{g.id}\t{p.name}\n")
+
     def _output_all():
-        for g in groups:
-            for p in g.packages:
-                sys.stdout.write(f"{g.id}\t{p.name}\n")
+        # Non-interactive fallback (no tty): keep the installer's "select all"
+        # behaviour; in manage mode this means "no changes".
+        if mode != "manage":
+            for g in groups:
+                for p in g.packages:
+                    sys.stdout.write(f"{g.id}\t{p.name}\n")
 
     # Open /dev/tty for curses since stdin/stdout are pipes
     try:
@@ -416,7 +506,7 @@ def main():
     os.close(tty_fd)
 
     try:
-        confirmed = curses.wrapper(lambda stdscr: run_tui(stdscr, groups))
+        confirmed = curses.wrapper(lambda stdscr: run_tui(stdscr, groups, mode, title))
     finally:
         # Restore original stdout for TSV output
         os.dup2(saved_stdin, 0)
@@ -427,11 +517,8 @@ def main():
     if not confirmed:
         sys.exit(1)
 
-    # Output selected packages as TSV to the original stdout (pipe)
-    for g in groups:
-        for p in g.packages:
-            if p.selected:
-                sys.stdout.write(f"{g.id}\t{p.name}\n")
+    # Output results as TSV to the original stdout (pipe)
+    _emit_results()
 
     sys.exit(0)
 

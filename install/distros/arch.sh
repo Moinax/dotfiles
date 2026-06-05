@@ -74,10 +74,25 @@ ensure_paru() {
     fi
 }
 
-# Update the system
+# Update the system. With "confirm", the package list is shown and confirmed
+# before applying; otherwise it runs non-interactively (used by the installer).
+# Prefer paru so AUR packages are updated alongside repo ones (consistent with
+# install_packages); paru escalates privileges itself, so it takes no sudo. Fall
+# back to pacman (repo only) if paru isn't installed.
 update_system() {
-    print_info "Updating system..."
-    sudo pacman -Syu --noconfirm
+    local mgr=(sudo pacman) scope=""
+    if command_exists paru; then
+        mgr=(paru)
+        scope=" (repo + AUR)"
+    fi
+
+    if [ "${1:-}" = "confirm" ]; then
+        print_info "Checking for system updates${scope}..."
+        "${mgr[@]}" -Syu
+    else
+        print_info "Updating system${scope}..."
+        "${mgr[@]}" -Syu --noconfirm
+    fi
 }
 
 # Install packages using pacman
@@ -151,6 +166,25 @@ remove_packages() {
 is_package_installed() {
     local package="$1"
     pacman -Qi "$package" &>/dev/null
+}
+
+# List every installed package name, one per line. Used to build an in-memory
+# index so callers can test many packages without forking pacman per package.
+#
+# Beyond the real package names (pacman -Qq), this also emits everything those
+# packages Provide/Replace, so virtual or renamed packages resolve the same way
+# a per-package `pacman -Qi <name>` would (e.g. `rofi` provides `rofi-wayland`).
+list_installed_packages() {
+    pacman -Qq 2>/dev/null
+    LC_ALL=C pacman -Qi 2>/dev/null | awk -F': ' '
+        /^(Provides|Replaces)[[:space:]]*:/ {
+            n = split($2, a, /[[:space:]]+/)
+            for (i = 1; i <= n; i++) {
+                p = a[i]
+                sub(/[<>=].*$/, "", p)   # strip version constraints (foo=1.2)
+                if (p != "" && p != "None") print p
+            }
+        }'
 }
 
 # Install gum for interactive prompts

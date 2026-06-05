@@ -193,18 +193,6 @@ select_purpose() {
     esac
 }
 
-# Escape a string for safe inclusion inside a JSON string value.
-# Handles backslash, double-quote, and control characters.
-_json_escape() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\t'/\\t}"
-    s="${s//$'\r'/\\r}"
-    printf '%s' "$s"
-}
-
 # Build JSON array of groups for tree_select.py
 _build_tree_json() {
     local -A pkg_seen=()
@@ -291,6 +279,29 @@ _build_tree_json() {
         printf ']}'
     done
     printf ']'
+}
+
+# Build everything the selector needs in one pass so it can all run under a
+# single spinner. Emits the per-group totals (pre-dedup, for mode detection) on
+# the first line, then the tree JSON on the second:
+#   line 1: "hyprland=31 development=19 ..."
+#   line 2: <tree json>
+_build_tree_payload() {
+    local totals="" group
+    for group in "${SELECTED_GROUP_NAMES[@]}"; do
+        local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
+        [ -f "$group_file" ] || continue
+        local count=0 pkg
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && count=$((count + 1))
+        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && count=$((count + 1))
+        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+        totals+="${group}=${count} "
+    done
+    printf '%s\n' "$totals"
+    _build_tree_json
 }
 
 # Fallback: select packages using gum filter (flat list)
@@ -433,24 +444,22 @@ select_group_packages() {
         GROUP_PACKAGE_MODE["$group"]="all"
     done
 
-    # Track total package counts per group (before dedup, for mode detection)
-    local -A group_total=()
-    for group in "${SELECTED_GROUP_NAMES[@]}"; do
-        local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
-        [ -f "$group_file" ] || continue
-        local count=0
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
-        group_total["$group"]=$count
-    done
+    # Build the per-group totals (pre-dedup, for mode detection) and the tree
+    # JSON in one spinner-covered pass, so the loader appears immediately after
+    # the purpose prompt rather than after a second of silent yq parsing.
+    # Blank line first so the loader isn't jammed against the purpose result,
+    # matching the spacing the manage view gets from its print_header.
+    local payload
+    echo ""
+    spin_capture payload "Loading packages..." _build_tree_payload
 
-    # Build JSON and run interactive tree selector
-    local tree_json
-    tree_json="$(_build_tree_json)"
+    local -A group_total=()
+    local totals_line="${payload%%$'\n'*}"
+    local tree_json="${payload#*$'\n'}"
+    local kv
+    for kv in $totals_line; do
+        [ -n "$kv" ] && group_total["${kv%%=*}"]="${kv#*=}"
+    done
 
     if [ -z "$tree_json" ] || [ "$tree_json" = "[]" ]; then
         print_warning "No $DISTRO packages found for the selected groups."
@@ -2818,9 +2827,10 @@ main() {
                 continue
             fi
         fi
-        # No fingerprint reader → silently skip the biometric group. Bitwarden
-        # itself lives in 'productivity' now, so it still installs without one.
-        if [ "$group_name" = "biometric" ] && [ "$HAS_FINGERPRINT" != "true" ]; then
+        # Skip groups whose required hardware is absent (e.g. biometric with no
+        # fingerprint reader). Bitwarden itself lives in 'productivity' now, so
+        # it still installs without one.
+        if ! group_hardware_available "$group_file"; then
             continue
         fi
         SELECTED_GROUP_NAMES+=("$group_name")
