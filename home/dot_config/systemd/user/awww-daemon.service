@@ -3,8 +3,11 @@ Description=awww wallpaper daemon (renamed swww — animated transitions, IPC)
 Documentation=https://codeberg.org/LGFae/awww
 PartOf=graphical-session.target
 After=graphical-session.target
-Requisite=graphical-session.target
-ConditionEnvironment=WAYLAND_DISPLAY
+# No Requisite=graphical-session.target / ConditionEnvironment=WAYLAND_DISPLAY —
+# both gate on session state that races under uwsm and silently drops the unit
+# at session start (no retry). PartOf= still stops it on logout; Restart= +
+# StartLimitIntervalSec=0 self-heal if it starts before the wayland socket is up.
+StartLimitIntervalSec=0
 
 [Service]
 Slice=background-graphical.slice

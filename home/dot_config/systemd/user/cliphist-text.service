@@ -3,7 +3,11 @@ Description=Clipboard history watcher (text) — wl-paste → cliphist
 Documentation=https://github.com/sentriz/cliphist
 PartOf=graphical-session.target
 After=graphical-session.target
-Requisite=graphical-session.target
+# No Requisite=graphical-session.target — it demands the target already be
+# active when the job runs, which races under uwsm and silently drops the unit
+# at session start (no retry). PartOf= still stops it on logout;
+# StartLimitIntervalSec=0 avoids start-limit-hit on inter-session socket errors.
+StartLimitIntervalSec=0
 
 # Shadows Arch's distro-shipped /usr/lib/systemd/user/cliphist.service so
 # behavior is identical on Fedora (which ships none).
