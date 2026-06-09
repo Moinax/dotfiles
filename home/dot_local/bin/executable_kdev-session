@@ -15,9 +15,11 @@ cat <<EOF
 new_tab Claude
 layout splits
 launch --title kdev-claude claude$claude_args
-launch --title kdev-lazygit --location=vsplit lazygit
+# Split the terminal off first so it spans the full width along the bottom;
+# only then vsplit the top region into claude (left) + lazygit (right).
+launch --title kdev-term --location=hsplit --bias=25
 focus_matching_window title:kdev-claude
-launch --title kdev-term --location=hsplit
+launch --title kdev-lazygit --location=vsplit lazygit
 focus_matching_window title:kdev-claude
 
 new_tab Neovim
