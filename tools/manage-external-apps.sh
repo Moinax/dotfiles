@@ -281,12 +281,21 @@ extract_appimage_metadata() {
         local icon_name=""
         icon_name=$(sed -n 's/^Icon=//p' "$desktop_file" | head -1)
         if [ -n "$icon_name" ]; then
-            APPIMAGE_META_ICON=$(find "$extract_dir" -type f \( -name "${icon_name}.png" -o -name "${icon_name}.svg" -o -name "${icon_name}.xpm" -o -name "${icon_name}" \) | head -1 || true)
+            # Only accept real image extensions; a bare "$icon_name" match is NOT
+            # trusted — Electron apps ship the app *binary* under the same name
+            # (Icon=zulip vs ELF ./zulip), which used to get installed as the icon.
+            # -L follows the symlinks AppImages typically use for root icons.
+            APPIMAGE_META_ICON=$(find -L "$extract_dir" -type f \( -name "${icon_name}.png" -o -name "${icon_name}.svg" -o -name "${icon_name}.xpm" \) | head -1 || true)
         fi
     fi
 
     if [ -z "$APPIMAGE_META_ICON" ]; then
-        APPIMAGE_META_ICON=$(find "$extract_dir" -type f \( -name '*.png' -o -name '*.svg' -o -name '*.xpm' \) | head -1 || true)
+        # .DirIcon is the AppImage-spec icon (a PNG, usually a symlink)
+        if [ -f "$extract_dir/.DirIcon" ]; then
+            APPIMAGE_META_ICON="$extract_dir/.DirIcon"
+        else
+            APPIMAGE_META_ICON=$(find -L "$extract_dir" -type f \( -name '*.png' -o -name '*.svg' -o -name '*.xpm' \) | head -1 || true)
+        fi
     fi
 }
 
@@ -311,7 +320,17 @@ execute_import_appimage() {
 
     local icon_path=""
     if [ -n "$APPIMAGE_META_ICON" ] && [ -f "$APPIMAGE_META_ICON" ]; then
-        local icon_ext="${APPIMAGE_META_ICON##*.}"
+        # Take the extension from the basename only — splitting the full path
+        # used to pick up dots from the temp dir (…/tmp.tAz0vegP2S/zulip →
+        # "tAz0vegP2S/zulip") and create a junk directory under icons/.
+        # Extensionless icons (.DirIcon & friends) are PNG per the AppImage spec.
+        local icon_ext=""
+        case "${APPIMAGE_META_ICON##*/}" in
+            *.png) icon_ext="png" ;;
+            *.svg) icon_ext="svg" ;;
+            *.xpm) icon_ext="xpm" ;;
+            *)     icon_ext="png" ;;
+        esac
         icon_path="$APP_ICON_DIR/${slug}.${icon_ext}"
         install -Dm644 "$APPIMAGE_META_ICON" "$icon_path"
     fi
