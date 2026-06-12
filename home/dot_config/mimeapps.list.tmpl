@@ -15,6 +15,9 @@
 {{-     $browser = "zen-browser.desktop" -}}
 {{-   end -}}
 {{- end -}}
+{{- if stat (joinPath .chezmoi.homeDir ".local/share/applications/helium.desktop") -}}
+{{-   $browser = "helium.desktop" -}}
+{{- end -}}
 [Default Applications]
 # Images
 image/bmp={{ $imageViewer }}

@@ -16,8 +16,9 @@
 | Open terminal (kitty) | `Mod+Return` | `Mod+Return` | |
 | Dev terminal (kitty splits) | `Mod+Alt+Return` | `Mod+Alt+Return` | Rofi directory picker, then 1 top + 2 bottom split layout |
 | App launcher (rofi) | `Mod+Space` | `Mod+Space` | |
-| Open browser (Zen) | `Mod+B` | `Mod+B` | |
-| Open browser (Chrome) | `Mod+Alt+B` | `Mod+Alt+B` | |
+| Open browser (Helium) | `Mod+B` | `Mod+B` | Default browser |
+| Open browser (Zen) | `Mod+Alt+B` | `Mod+Alt+B` | |
+| Open browser (Chrome) | `Mod+Ctrl+B` | `Mod+Ctrl+B` | |
 | File manager (Dolphin) | `Mod+E` | `Mod+E` | |
 | Emoji selector | `Mod+I` | `Mod+I` | rofimoji (clipboard paste) |
 | Switch audio output | `Mod+A` | `Mod+A` | |

@@ -8,8 +8,9 @@ local home = assert(os.getenv("HOME"), "HOME not set")
 hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                  -- Open terminal
 hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd(home .. "/.local/bin/kdev-launch.sh"))                                     -- Pick directory & open dev terminal (kitty splits)
 hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("rofi -show drun"))                                                        -- App launcher
-hl.bind(mod .. " + B",            hl.dsp.exec_cmd("zen-browser"))                                                            -- Open browser (Zen)
-hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("google-chrome-stable --password-store=basic"))                            -- Open browser (Chrome)
+hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/share/AppImages/helium.AppImage"))                         -- Open browser (Helium)
+hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("zen-browser"))                                                            -- Open browser (Zen)
+hl.bind(mod .. " + CTRL + B",     hl.dsp.exec_cmd("google-chrome-stable --password-store=basic"))                            -- Open browser (Chrome)
 hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                                -- Open file manager
 hl.bind(mod .. " + I",            hl.dsp.exec_cmd(home .. "/.local/bin/emoji-picker.sh"))                                    -- Emoji selector
 hl.bind(mod .. " + A",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-audio-switch.sh"))                             -- Switch audio output
