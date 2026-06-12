@@ -15,6 +15,7 @@ APP_DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 APP_ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/external-apps"
 DISTROBOX_STATE_DIR="$STATE_DIR/distrobox"
+SOURCES_STATE_DIR="$STATE_DIR/sources"
 
 usage() {
     cat <<'EOF'
@@ -36,17 +37,38 @@ Commands:
       Update a previously managed Distrobox app using saved metadata. Saved launch args are
       preserved automatically; pass --args to change them (--args "" clears them).
 
+  install-github <owner/repo | github URL> [--name NAME] [--asset GLOB] [--type appimage|package]
+                 [--container NAME] [--app DESKTOP_ID] [--args "FLAGS"] [--non-interactive]
+      Download the latest GitHub release asset and install it (AppImage → launcher
+      import, deb/rpm/pkg.tar → Distrobox install). The source is remembered so the
+      app can be kept current with 'check-updates' / 'update'.
+
+  set-source --name APP --repo <owner/repo | github URL> [--asset GLOB] [--version TAG]
+      Attach a GitHub release source to an already-installed app. Without --version
+      the app reports as updatable until the first 'update' runs.
+
+  check-updates [--porcelain]
+      Compare each app's installed version against its latest GitHub release.
+      --porcelain prints outdated apps as "name|installed|latest" lines.
+
+  update [--name APP | --all]
+      Re-download the latest release asset and reinstall. AppImages are re-imported
+      in place; Distrobox apps are reinstalled in their container with saved launch
+      args preserved.
+
   list
       List all managed apps (AppImages and Distrobox apps).
 
 Run without arguments for an interactive wizard:
-  - Install app: fuzzy-find a file (.AppImage, .deb, .rpm) and auto-detect the install method
-  - Manage installed apps: update or uninstall any managed app
+  - Install app (local file): fuzzy-find a file (.AppImage, .deb, .rpm) and auto-detect the install method
+  - Install from GitHub release: paste a repo/URL, pick the asset, install + track updates
+  - Manage installed apps: update (from GitHub or a local file) or uninstall any managed app
+  - Check for updates: check all tracked apps and pick which to update
 EOF
 }
 
 ensure_dirs() {
-    mkdir -p "$APPIMAGE_DIR" "$APP_DESKTOP_DIR" "$APP_ICON_DIR" "$DISTROBOX_STATE_DIR"
+    mkdir -p "$APPIMAGE_DIR" "$APP_DESKTOP_DIR" "$APP_ICON_DIR" "$DISTROBOX_STATE_DIR" "$SOURCES_STATE_DIR"
 }
 
 command_exists() {
@@ -66,7 +88,7 @@ humanize_appimage_name() {
     # Remove hex hashes (8+ hex chars preceded by separator)
     name=$(printf '%s' "$name" | sed 's/[_-][0-9a-f]\{8,\}//g')
     # Remove arch strings
-    name=$(printf '%s' "$name" | sed 's/[_-]\(x86_64\|aarch64\|arm64\|i686\|armhf\)//gi')
+    name=$(printf '%s' "$name" | sed 's/[_-]\(x86_64\|aarch64\|arm64\|i686\|armhf\|amd64\|x64\)//gi')
     # Remove version patterns (e.g. -0.0.13, _2.1, -v1.2.3)
     name=$(printf '%s' "$name" | sed 's/[_-]v\?[0-9]\+\(\.[0-9]\+\)*//g')
     # Replace separators with spaces and trim
@@ -445,6 +467,12 @@ execute_remove_appimage() {
         rm -f "$icon"
         removed+=("Icon: $icon")
     done
+
+    local source_file="$SOURCES_STATE_DIR/${slug}.env"
+    if [ -f "$source_file" ]; then
+        rm -f "$source_file"
+        removed+=("Update source: $source_file")
+    fi
 
     refresh_desktop_db
     print_success "Removed AppImage"
@@ -1043,6 +1071,7 @@ execute_remove_distrobox() {
     done
 
     rm -f "$metadata_file"
+    rm -f "$(source_file_for_name "$APP_NAME")"
     refresh_desktop_db
 
     print_success "Removed Distrobox app"
@@ -1093,6 +1122,643 @@ do_update_distrobox() {
     execute_update_distrobox "$app_name" "$package_path" "$app_args" "$app_args_set"
 }
 
+# ── GitHub release sources ──────────────────────────────────────────────────
+# Per-app source metadata lives in $SOURCES_STATE_DIR/<slug>.env and records
+# where an app can be re-downloaded from for updates:
+#   APP_NAME       display name (its slug ties it to the AppImage / Distrobox app)
+#   APP_TYPE       appimage | distrobox
+#   SOURCE_REPO    GitHub owner/repo
+#   ASSET_PATTERN  glob matched against release asset filenames
+#   VERSION        installed release tag ('' = unknown → reported as updatable)
+
+source_file_for_name() {
+    printf '%s/%s.env\n' "$SOURCES_STATE_DIR" "$(slugify "$1")"
+}
+
+save_source_metadata() {
+    local app_name="$1" app_type="$2" repo="$3" pattern="$4" version="$5"
+    ensure_dirs
+    {
+        printf 'APP_NAME=%q\n' "$app_name"
+        printf 'APP_TYPE=%q\n' "$app_type"
+        printf 'SOURCE_REPO=%q\n' "$repo"
+        printf 'ASSET_PATTERN=%q\n' "$pattern"
+        printf 'VERSION=%q\n' "$version"
+    } > "$(source_file_for_name "$app_name")"
+}
+
+load_source_metadata() {
+    local app_name="$1"
+    local f=""
+    f=$(source_file_for_name "$app_name")
+    if [ ! -f "$f" ]; then
+        print_error "No update source saved for app: $app_name"
+        print_info "Attach one with: ./manage.sh apps set-source --name \"$app_name\" --repo owner/repo"
+        return 1
+    fi
+    APP_TYPE="" SOURCE_REPO="" ASSET_PATTERN="" VERSION=""
+    # shellcheck disable=SC1090
+    source "$f"
+}
+
+# Accept "owner/repo" or any github.com URL form (releases page, .git, …) and
+# normalize to "owner/repo".
+github_normalize_repo() {
+    local input="$1"
+    local repo="$input"
+    repo="${repo#https://}"
+    repo="${repo#http://}"
+    repo="${repo#www.}"
+    repo="${repo#github.com/}"
+    repo=$(printf '%s' "$repo" | cut -d'/' -f1-2)
+    repo="${repo%.git}"
+    if ! printf '%s' "$repo" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
+        print_error "Not a GitHub repo: $input (expected owner/repo or a github.com URL)"
+        return 1
+    fi
+    printf '%s\n' "$repo"
+}
+
+# Latest release tag only (cheap call for update checks)
+github_latest_tag() {
+    curl -fsSL "https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
+        | grep -m1 '"tag_name"' | cut -d'"' -f4
+}
+
+# Fetch the latest release of a repo; sets GH_RELEASE_TAG + GH_RELEASE_ASSET_URLS[].
+github_fetch_latest_release() {
+    local repo="$1"
+    GH_RELEASE_TAG=""
+    GH_RELEASE_ASSET_URLS=()
+
+    local json=""
+    spin_capture json "Fetching latest release of $repo..." \
+        curl -fsSL "https://api.github.com/repos/$repo/releases/latest" || true
+    GH_RELEASE_TAG=$(printf '%s' "$json" | grep -m1 '"tag_name"' | cut -d'"' -f4 || true)
+    mapfile -t GH_RELEASE_ASSET_URLS < <(printf '%s' "$json" \
+        | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4)
+
+    if [ -z "$GH_RELEASE_TAG" ]; then
+        print_error "Could not fetch the latest release of $repo"
+        return 1
+    fi
+    if [ ${#GH_RELEASE_ASSET_URLS[@]} -eq 0 ]; then
+        print_error "The latest release of $repo ($GH_RELEASE_TAG) has no downloadable assets"
+        return 1
+    fi
+}
+
+# Keywords identifying the current CPU arch in asset filenames, and those of
+# other arches (used to drop e.g. arm64 assets on an x86_64 host).
+current_arch_keywords() {
+    case "$(uname -m)" in
+        x86_64)        echo "x86_64 x86-64 amd64 x64" ;;
+        aarch64|arm64) echo "aarch64 arm64" ;;
+        *)             echo "" ;;
+    esac
+}
+
+other_arch_keywords() {
+    case "$(uname -m)" in
+        x86_64)        echo "aarch64 arm64 armhf armv7 i686 i386" ;;
+        aarch64|arm64) echo "x86_64 x86-64 amd64 x64 armhf armv7 i686 i386" ;;
+        *)             echo "" ;;
+    esac
+}
+
+# Filter the fetched release assets down to installable candidates.
+# $1 = glob pattern ('' = any), $2 = type filter (appimage | package | '')
+# Sidecar files (.zsync, checksums, …) and other-arch assets are dropped;
+# assets naming the current arch are preferred over arch-less ones.
+filter_release_assets() {
+    local pattern="$1" type_filter="$2"
+    local pattern_lower="${pattern,,}"
+    local arch_kw other_kw
+    arch_kw=$(current_arch_keywords)
+    other_kw=$(other_arch_keywords)
+
+    local -a primary=() fallback=()
+    local url name_lower kw
+    for url in "${GH_RELEASE_ASSET_URLS[@]}"; do
+        name_lower="${url##*/}"
+        name_lower="${name_lower,,}"
+
+        # Skip sidecar/metadata assets
+        case "$name_lower" in
+            *.zsync|*.blockmap|*.sha256|*.sha256sum|*.sha512|*.sig|*.asc|*.txt|*.yml|*.yaml|*.json) continue ;;
+        esac
+
+        case "$type_filter" in
+            appimage) [[ "$name_lower" == *.appimage ]] || continue ;;
+            package)  [[ "$name_lower" == *.deb || "$name_lower" == *.rpm || "$name_lower" == *.pkg.tar || "$name_lower" == *.pkg.tar.* ]] || continue ;;
+            *)        [[ "$name_lower" == *.appimage || "$name_lower" == *.deb || "$name_lower" == *.rpm || "$name_lower" == *.pkg.tar || "$name_lower" == *.pkg.tar.* ]] || continue ;;
+        esac
+
+        if [ -n "$pattern_lower" ]; then
+            # shellcheck disable=SC2254
+            case "$name_lower" in
+                $pattern_lower) ;;
+                *) continue ;;
+            esac
+        fi
+
+        # Drop assets that name another arch (unless they also name ours,
+        # e.g. "x64" inside "linux-x64")
+        local skip=false has_arch=false
+        for kw in $arch_kw; do
+            [[ "$name_lower" == *"$kw"* ]] && has_arch=true && break
+        done
+        if [ "$has_arch" = false ]; then
+            for kw in $other_kw; do
+                [[ "$name_lower" == *"$kw"* ]] && skip=true && break
+            done
+        fi
+        [ "$skip" = true ] && continue
+
+        if [ "$has_arch" = true ]; then
+            primary+=("$url")
+        else
+            fallback+=("$url")
+        fi
+    done
+
+    if [ ${#primary[@]} -gt 0 ]; then
+        printf '%s\n' "${primary[@]}"
+    elif [ ${#fallback[@]} -gt 0 ]; then
+        printf '%s\n' "${fallback[@]}"
+    fi
+}
+
+# Turn a concrete asset filename into a reusable glob by replacing the release
+# tag/version with '*' (helium-0.13.3.1-x86_64.AppImage → helium-*-x86_64.AppImage),
+# so the saved pattern keeps matching future releases.
+derive_asset_pattern() {
+    local name="$1" tag="$2"
+    local bare="${tag#v}"
+    local pattern="$name"
+    if [ -n "$bare" ] && [[ "$pattern" == *"$bare"* ]]; then
+        pattern="${pattern//"$bare"/*}"
+    elif [ -n "$tag" ] && [[ "$pattern" == *"$tag"* ]]; then
+        pattern="${pattern//"$tag"/*}"
+    fi
+    printf '%s\n' "$pattern"
+}
+
+# Resolve exactly one asset URL from the fetched release using the saved/given
+# pattern + type filter. With several matches: ask (interactive) or take the
+# first (non-interactive, e.g. update --all). Runs inside $(...) — messages
+# must go to stderr or they'd corrupt the captured URL.
+pick_release_asset() {
+    local pattern="$1" type_filter="$2" interactive="$3"
+    local -a candidates=()
+    mapfile -t candidates < <(filter_release_assets "$pattern" "$type_filter")
+
+    if [ ${#candidates[@]} -eq 0 ]; then
+        print_error "No release asset matches${pattern:+ pattern '$pattern'} (type: ${type_filter:-any})" >&2
+        print_info "Assets in this release:" >&2
+        local u
+        for u in "${GH_RELEASE_ASSET_URLS[@]}"; do
+            echo "  - $(basename "$u")" >&2
+        done
+        return 1
+    fi
+
+    if [ ${#candidates[@]} -eq 1 ]; then
+        printf '%s\n' "${candidates[0]}"
+        return 0
+    fi
+
+    if [ "$interactive" = true ] && command_exists gum; then
+        local -a names=()
+        local c
+        for c in "${candidates[@]}"; do
+            names+=("$(basename "$c")")
+        done
+        local picked=""
+        picked=$(printf '%s\n' "${names[@]}" | gum choose --header "Pick the release asset to install") || return 1
+        for c in "${candidates[@]}"; do
+            if [ "$(basename "$c")" = "$picked" ]; then
+                printf '%s\n' "$c"
+                return 0
+            fi
+        done
+        return 1
+    fi
+
+    print_warning "Multiple assets match; using $(basename "${candidates[0]}") (pass --asset to pin one)" >&2
+    printf '%s\n' "${candidates[0]}"
+}
+
+# Download a release asset into a fresh temp dir, keeping its real filename
+# (package type detection relies on the extension). Sets DOWNLOADED_ASSET_PATH;
+# the caller removes its parent dir when done.
+download_release_asset() {
+    local url="$1"
+    local name=""
+    name=$(basename "$url")
+    local dir=""
+    dir=$(mktemp -d)
+    DOWNLOADED_ASSET_PATH="$dir/$name"
+    if ! spin_run "Downloading $name..." curl -fsSL "$url" -o "$DOWNLOADED_ASSET_PATH"; then
+        print_error "Download failed: $url"
+        rm -rf "$dir"
+        DOWNLOADED_ASSET_PATH=""
+        return 1
+    fi
+}
+
+do_install_github() {
+    local repo_input="" app_name="" asset_pattern="" type_filter="" container="" app_id="" app_args="" interactive=true
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --name) app_name="$2"; shift 2 ;;
+            --asset) asset_pattern="$2"; shift 2 ;;
+            --type)
+                case "$2" in
+                    appimage|package) type_filter="$2" ;;
+                    *) print_error "Invalid --type: $2 (expected appimage or package)"; return 1 ;;
+                esac
+                shift 2 ;;
+            --container) container="$2"; shift 2 ;;
+            --app) app_id="$2"; shift 2 ;;
+            --args) app_args="$2"; shift 2 ;;
+            --non-interactive) interactive=false; shift ;;
+            --help|-h) usage; return 0 ;;
+            *)
+                if [ -z "$repo_input" ]; then
+                    repo_input="$1"
+                else
+                    print_error "Unexpected argument: $1"
+                    return 1
+                fi
+                shift ;;
+        esac
+    done
+
+    if [ -z "$repo_input" ]; then
+        print_error "install-github requires a GitHub repo (owner/repo or URL)"
+        usage
+        return 1
+    fi
+
+    local repo=""
+    repo=$(github_normalize_repo "$repo_input") || return 1
+    github_fetch_latest_release "$repo" || return 1
+    print_info "Latest release of $repo: $GH_RELEASE_TAG"
+
+    # --container implies a distro package install
+    [ -z "$type_filter" ] && [ -n "$container" ] && type_filter="package"
+
+    local asset_url=""
+    asset_url=$(pick_release_asset "$asset_pattern" "$type_filter" "$interactive") || return 1
+    local asset_name=""
+    asset_name=$(basename "$asset_url")
+
+    # Remember a version-agnostic pattern so updates match future releases
+    if [ -z "$asset_pattern" ]; then
+        asset_pattern=$(derive_asset_pattern "$asset_name" "$GH_RELEASE_TAG")
+    fi
+
+    download_release_asset "$asset_url" || return 1
+    local download_dir=""
+    download_dir=$(dirname "$DOWNLOADED_ASSET_PATH")
+
+    local rc=0
+    local app_type=""
+    case "${asset_name,,}" in
+        *.appimage)
+            app_type="appimage"
+            if [ -z "$app_name" ]; then
+                local extract_dir=""
+                extract_dir=$(mktemp -d)
+                extract_appimage_metadata "$DOWNLOADED_ASSET_PATH" "$extract_dir"
+                if [ -n "$APPIMAGE_META_NAME" ]; then
+                    app_name="$APPIMAGE_META_NAME"
+                else
+                    app_name="$(humanize_appimage_name "$asset_name")"
+                fi
+                execute_import_appimage "$DOWNLOADED_ASSET_PATH" "$app_name" "$extract_dir" || rc=1
+                rm -rf "$extract_dir"
+            else
+                execute_import_appimage "$DOWNLOADED_ASSET_PATH" "$app_name" || rc=1
+            fi
+            ;;
+        *.deb|*.rpm|*.pkg.tar|*.pkg.tar.*)
+            app_type="distrobox"
+            if [ -z "$container" ]; then
+                if [ "$interactive" = true ]; then
+                    container=$(pick_existing_distrobox_container) || rc=1
+                else
+                    print_error "Package assets need --container NAME"
+                    rc=1
+                fi
+            fi
+            if [ "$rc" -eq 0 ]; then
+                if [ -z "$app_name" ]; then
+                    app_name=$(humanize_appimage_name "$asset_name")
+                fi
+                execute_install_distrobox "$container" "$DOWNLOADED_ASSET_PATH" "$app_name" "$app_id" "$app_args" || rc=1
+            fi
+            ;;
+        *)
+            print_error "Unsupported asset type: $asset_name"
+            rc=1
+            ;;
+    esac
+
+    rm -rf "$download_dir"
+    [ "$rc" -eq 0 ] || return 1
+
+    save_source_metadata "$app_name" "$app_type" "$repo" "$asset_pattern" "$GH_RELEASE_TAG"
+    print_success "Pinned update source for $app_name"
+    echo "  Repo: $repo"
+    echo "  Version: $GH_RELEASE_TAG"
+    echo "  Asset pattern: $asset_pattern"
+}
+
+execute_set_source() {
+    local app_name="$1" repo_input="$2" asset_pattern="$3" version="$4"
+    ensure_dirs
+
+    local slug=""
+    slug=$(slugify "$app_name")
+
+    # Figure out which kind of installed app this is
+    local app_type=""
+    if [ -f "$APPIMAGE_DIR/${slug}.AppImage" ]; then
+        app_type="appimage"
+    elif [ -f "$DISTROBOX_STATE_DIR/${slug}.env" ]; then
+        app_type="distrobox"
+    else
+        print_error "No installed app named '$app_name' (no AppImage or managed Distrobox app)"
+        print_info "Install it first, or check './manage.sh apps list'"
+        return 1
+    fi
+
+    local repo=""
+    repo=$(github_normalize_repo "$repo_input") || return 1
+    github_fetch_latest_release "$repo" || return 1
+
+    # Make sure the pattern (or the type default) matches something downloadable
+    local type_filter="package"
+    [ "$app_type" = "appimage" ] && type_filter="appimage"
+    local asset_url=""
+    asset_url=$(pick_release_asset "$asset_pattern" "$type_filter" false) || return 1
+    if [ -z "$asset_pattern" ]; then
+        asset_pattern=$(derive_asset_pattern "$(basename "$asset_url")" "$GH_RELEASE_TAG")
+    fi
+
+    save_source_metadata "$app_name" "$app_type" "$repo" "$asset_pattern" "$version"
+    print_success "Saved update source for $app_name"
+    echo "  Repo: $repo"
+    echo "  Asset pattern: $asset_pattern"
+    if [ -n "$version" ]; then
+        echo "  Installed version: $version"
+    else
+        echo "  Installed version: unknown — it will show as updatable until the first 'update' runs"
+    fi
+}
+
+do_set_source() {
+    local app_name="" repo_input="" asset_pattern="" version=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --name) app_name="$2"; shift 2 ;;
+            --repo) repo_input="$2"; shift 2 ;;
+            --asset) asset_pattern="$2"; shift 2 ;;
+            --version) version="$2"; shift 2 ;;
+            --help|-h) usage; return 0 ;;
+            *) print_error "Unexpected argument: $1"; return 1 ;;
+        esac
+    done
+
+    if [ -z "$app_name" ] || [ -z "$repo_input" ]; then
+        print_error "set-source requires --name and --repo"
+        usage
+        return 1
+    fi
+
+    execute_set_source "$app_name" "$repo_input" "$asset_pattern" "$version"
+}
+
+# Compare every app's installed tag against the latest GitHub release.
+# --porcelain prints only outdated apps as "name|installed|latest" lines.
+do_check_updates() {
+    local porcelain=false
+    [ "${1:-}" = "--porcelain" ] && porcelain=true
+    ensure_dirs
+
+    shopt -s nullglob
+    local files=("$SOURCES_STATE_DIR"/*.env)
+    shopt -u nullglob
+
+    if [ ${#files[@]} -eq 0 ]; then
+        [ "$porcelain" = false ] && print_info "No apps have an update source. Use 'install-github' or 'set-source' first."
+        return 0
+    fi
+
+    local outdated=0 failed=0
+    local file
+    for file in "${files[@]}"; do
+        APP_NAME="" APP_TYPE="" SOURCE_REPO="" ASSET_PATTERN="" VERSION=""
+        # shellcheck disable=SC1090
+        source "$file"
+
+        local latest=""
+        if [ "$porcelain" = true ]; then
+            latest=$(github_latest_tag "$SOURCE_REPO" || true)
+        else
+            spin_capture latest "Checking $APP_NAME ($SOURCE_REPO)..." github_latest_tag "$SOURCE_REPO" || true
+        fi
+        if [ -z "$latest" ]; then
+            failed=$((failed + 1))
+            [ "$porcelain" = false ] && print_warning "$APP_NAME: could not fetch the latest release of $SOURCE_REPO"
+            continue
+        fi
+
+        if [ "$VERSION" = "$latest" ]; then
+            [ "$porcelain" = false ] && print_success "$APP_NAME is up to date ($VERSION)"
+        else
+            outdated=$((outdated + 1))
+            if [ "$porcelain" = true ]; then
+                printf '%s|%s|%s\n' "$APP_NAME" "${VERSION:-unknown}" "$latest"
+            else
+                print_warning "$APP_NAME: update available (${VERSION:-unknown} → $latest)"
+            fi
+        fi
+    done
+
+    if [ "$porcelain" = false ]; then
+        if [ "$outdated" -eq 0 ] && [ "$failed" -eq 0 ]; then
+            print_success "All external apps are up to date"
+        elif [ "$outdated" -gt 0 ]; then
+            print_info "Run './manage.sh apps update --all' (or update --name <app>) to update"
+        fi
+    fi
+}
+
+execute_update_from_source() {
+    local lookup_name="$1"
+    load_source_metadata "$lookup_name" || return 1
+    local name="$APP_NAME" app_type="$APP_TYPE" repo="$SOURCE_REPO" pattern="$ASSET_PATTERN" installed="$VERSION"
+
+    github_fetch_latest_release "$repo" || return 1
+
+    if [ "$GH_RELEASE_TAG" = "$installed" ]; then
+        print_info "$name is already up to date ($installed)"
+        return 0
+    fi
+    print_info "Updating $name: ${installed:-unknown} → $GH_RELEASE_TAG"
+
+    local type_filter="package"
+    [ "$app_type" = "appimage" ] && type_filter="appimage"
+
+    local asset_url=""
+    asset_url=$(pick_release_asset "$pattern" "$type_filter" false) || return 1
+
+    download_release_asset "$asset_url" || return 1
+    local download_dir=""
+    download_dir=$(dirname "$DOWNLOADED_ASSET_PATH")
+
+    local rc=0
+    if [ "$app_type" = "appimage" ]; then
+        # Same name → same slug → replaces the AppImage + desktop entry in place
+        execute_import_appimage "$DOWNLOADED_ASSET_PATH" "$name" || rc=1
+    else
+        # Reinstalls in the saved container; launch args are preserved
+        execute_update_distrobox "$name" "$DOWNLOADED_ASSET_PATH" || rc=1
+    fi
+    rm -rf "$download_dir"
+
+    if [ "$rc" -eq 0 ]; then
+        save_source_metadata "$name" "$app_type" "$repo" "$pattern" "$GH_RELEASE_TAG"
+        print_success "$name updated to $GH_RELEASE_TAG"
+    fi
+    return "$rc"
+}
+
+do_update_app() {
+    local app_name="" update_all=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --name) app_name="$2"; shift 2 ;;
+            --all) update_all=true; shift ;;
+            --help|-h) usage; return 0 ;;
+            *)
+                if [ -z "$app_name" ]; then
+                    app_name="$1"
+                else
+                    print_error "Unexpected argument: $1"
+                    return 1
+                fi
+                shift ;;
+        esac
+    done
+
+    if [ "$update_all" = true ]; then
+        shopt -s nullglob
+        local files=("$SOURCES_STATE_DIR"/*.env)
+        shopt -u nullglob
+        if [ ${#files[@]} -eq 0 ]; then
+            print_info "No apps have an update source."
+            return 0
+        fi
+        local file rc=0
+        for file in "${files[@]}"; do
+            APP_NAME=""
+            # shellcheck disable=SC1090
+            source "$file"
+            execute_update_from_source "$APP_NAME" || rc=1
+        done
+        return "$rc"
+    fi
+
+    if [ -z "$app_name" ]; then
+        print_error "update requires --name NAME or --all"
+        usage
+        return 1
+    fi
+
+    execute_update_from_source "$app_name"
+}
+
+interactive_install_github() {
+    local repo_input=""
+    repo_input=$(prompt_with_default "GitHub repo or releases URL" "" "owner/repo or https://github.com/owner/repo") || return 0
+    [ -z "$repo_input" ] && return 0
+    do_install_github "$repo_input"
+}
+
+interactive_set_source() {
+    local app_name="$1"
+    local repo_input=""
+    repo_input=$(prompt_with_default "GitHub repo or releases URL" "" "owner/repo") || return 0
+    [ -z "$repo_input" ] && return 0
+    local version=""
+    version=$(prompt_with_default "Currently installed version tag (optional, e.g. v4.6.2)" "" "Leave empty if unknown" false) || return 0
+    execute_set_source "$app_name" "$repo_input" "" "$version"
+}
+
+interactive_check_updates() {
+    ensure_dirs
+    shopt -s nullglob
+    local files=("$SOURCES_STATE_DIR"/*.env)
+    shopt -u nullglob
+
+    if [ ${#files[@]} -eq 0 ]; then
+        print_info "No apps have an update source yet."
+        print_info "Install via 'Install from GitHub release', or attach one to an installed app under 'Manage installed apps'."
+        return 0
+    fi
+
+    local report=""
+    spin_capture report "Checking ${#files[@]} app(s) for updates..." do_check_updates --porcelain || true
+
+    if [ -z "$report" ]; then
+        print_success "All external apps are up to date"
+        return 0
+    fi
+
+    local -a labels=() names=()
+    local name installed latest
+    while IFS='|' read -r name installed latest; do
+        [ -z "$name" ] && continue
+        labels+=("$name ($installed → $latest)")
+        names+=("$name")
+    done <<< "$report"
+
+    print_warning "${#names[@]} update(s) available"
+
+    local selected=""
+    if command_exists gum; then
+        selected=$(printf '%s\n' "${labels[@]}" | gum choose --no-limit --cursor.foreground="212" \
+            --header "Select apps to update (space to select, enter to confirm)") || return 0
+    else
+        printf '%s\n' "${labels[@]}"
+        local answer=""
+        read -r -p "Update all? [y/N]: " answer
+        [[ "$answer" =~ ^[Yy]$ ]] && selected=$(printf '%s\n' "${labels[@]}")
+    fi
+
+    if [ -z "$selected" ]; then
+        print_info "Nothing selected."
+        return 0
+    fi
+
+    local line i
+    while IFS= read -r line; do
+        for i in "${!labels[@]}"; do
+            if [ "${labels[$i]}" = "$line" ]; then
+                execute_update_from_source "${names[$i]}" || true
+                break
+            fi
+        done
+    done <<< "$selected"
+}
+
 do_list() {
     ensure_dirs
     local found=false
@@ -1104,7 +1770,13 @@ do_list() {
         found=true
         local path
         for path in "${appimages[@]}"; do
-            echo "$(basename "$path" .AppImage) | type=appimage | path=$path"
+            local slug src_field=""
+            slug=$(basename "$path" .AppImage)
+            if [ -f "$SOURCES_STATE_DIR/${slug}.env" ]; then
+                src_field=$(SOURCE_REPO="" VERSION=""; source "$SOURCES_STATE_DIR/${slug}.env" \
+                    && printf ' | source=%s | version=%s' "$SOURCE_REPO" "${VERSION:-unknown}")
+            fi
+            echo "$slug | type=appimage | path=$path$src_field"
         done
     fi
 
@@ -1123,7 +1795,13 @@ do_list() {
             _listed_ids+=("$APP_ID")
             local args_field=""
             [ -n "${APP_ARGS:-}" ] && args_field=" | args=$APP_ARGS"
-            echo "$APP_NAME | type=distrobox | container=$CONTAINER | app=$APP_ID | pkg=$PACKAGE_TYPE$args_field"
+            local src_file src_field=""
+            src_file=$(source_file_for_name "$APP_NAME")
+            if [ -f "$src_file" ]; then
+                src_field=$(SOURCE_REPO="" VERSION=""; source "$src_file" \
+                    && printf ' | source=%s | version=%s' "$SOURCE_REPO" "${VERSION:-unknown}")
+            fi
+            echo "$APP_NAME | type=distrobox | container=$CONTAINER | app=$APP_ID | pkg=$PACKAGE_TYPE$args_field$src_field"
         done
     fi
 
@@ -1294,6 +1972,16 @@ interactive_manage_apps() {
     local app_type="${app_types[$selected_index]}"
     local app_key="${app_keys[$selected_index]}"
 
+    # Does this app have a saved GitHub release source?
+    local source_file=""
+    if [ "$app_type" = "appimage" ]; then
+        source_file="$SOURCES_STATE_DIR/$(basename "$app_key" .AppImage).env"
+    elif [ "$app_type" = "distrobox" ]; then
+        source_file="$SOURCES_STATE_DIR/$(basename "$app_key")"
+    fi
+    local has_source=false
+    [ -n "$source_file" ] && [ -f "$source_file" ] && has_source=true
+
     # Pre-extract unmanaged distrobox info (used by both Update and Uninstall)
     local um_name="" um_container="" um_app_id=""
     if [ "$app_type" = "distrobox-unmanaged" ]; then
@@ -1323,19 +2011,27 @@ interactive_manage_apps() {
             esac
         fi
     else
-        if command_exists gum; then
-            action=$(gum choose "Update" "Uninstall" "Cancel") || return 0
+        local -a actions=()
+        if [ "$has_source" = true ]; then
+            actions+=("Update from GitHub" "Update from local file")
         else
-            echo "1) Update"
-            echo "2) Uninstall"
-            echo "3) Cancel"
-            local achoice
-            read -r -p "Choose [1-3]: " achoice
-            case "$achoice" in
-                1) action="Update" ;;
-                2) action="Uninstall" ;;
-                *) action="Cancel" ;;
-            esac
+            actions+=("Update from local file" "Set GitHub update source")
+        fi
+        actions+=("Uninstall" "Cancel")
+
+        if command_exists gum; then
+            action=$(gum choose "${actions[@]}") || return 0
+        else
+            local i achoice
+            for i in "${!actions[@]}"; do
+                echo "$((i + 1))) ${actions[$i]}"
+            done
+            read -r -p "Choose [1-${#actions[@]}]: " achoice
+            if [[ "$achoice" =~ ^[0-9]+$ ]] && [ "$achoice" -ge 1 ] && [ "$achoice" -le ${#actions[@]} ]; then
+                action="${actions[$((achoice - 1))]}"
+            else
+                action="Cancel"
+            fi
         fi
     fi
 
@@ -1372,7 +2068,21 @@ interactive_manage_apps() {
             echo "  Container: $um_container"
             echo "  Desktop entry: $um_app_id"
             ;;
-        "Update")
+        "Update from GitHub")
+            local src_name=""
+            src_name=$(APP_NAME=""; source "$source_file" && printf '%s' "$APP_NAME")
+            execute_update_from_source "${src_name:-$(basename "$source_file" .env)}"
+            ;;
+        "Set GitHub update source")
+            local target_name=""
+            if [ "$app_type" = "appimage" ]; then
+                target_name=$(basename "$app_key" .AppImage)
+            else
+                target_name=$(APP_NAME=""; source "$app_key" && printf '%s' "$APP_NAME")
+            fi
+            interactive_set_source "$target_name"
+            ;;
+        "Update from local file")
             if [ "$app_type" = "appimage" ]; then
                 local current_name
                 current_name=$(basename "$app_key" .AppImage)
@@ -1474,27 +2184,39 @@ main_menu() {
 
         if command_exists gum; then
             action=$(gum choose \
-                "Install app" \
+                "Install app (local file)" \
+                "Install from GitHub release" \
                 "Manage installed apps" \
+                "Check for updates" \
                 "Cancel") || action="Cancel"
         else
-            echo "1) Install app"
-            echo "2) Manage installed apps"
-            echo "3) Cancel"
-            read -r -p "Choose an option [1-3]: " choice
+            echo "1) Install app (local file)"
+            echo "2) Install from GitHub release"
+            echo "3) Manage installed apps"
+            echo "4) Check for updates"
+            echo "5) Cancel"
+            read -r -p "Choose an option [1-5]: " choice
             case "$choice" in
-                1) action="Install app" ;;
-                2) action="Manage installed apps" ;;
+                1) action="Install app (local file)" ;;
+                2) action="Install from GitHub release" ;;
+                3) action="Manage installed apps" ;;
+                4) action="Check for updates" ;;
                 *) action="Cancel" ;;
             esac
         fi
 
         case "$action" in
-            "Install app")
+            "Install app (local file)")
                 interactive_install_app || true
+                ;;
+            "Install from GitHub release")
+                interactive_install_github || true
                 ;;
             "Manage installed apps")
                 interactive_manage_apps || true
+                ;;
+            "Check for updates")
+                interactive_check_updates || true
                 ;;
             *)
                 print_info "Cancelled."
@@ -1520,6 +2242,26 @@ case "${1:-}" in
     update-distrobox)
         shift
         do_update_distrobox "$@"
+        ;;
+    install-github)
+        shift
+        do_install_github "$@"
+        ;;
+    set-source)
+        shift
+        do_set_source "$@"
+        ;;
+    check-updates)
+        shift
+        if [ "${1:-}" = "--interactive" ]; then
+            interactive_check_updates
+        else
+            do_check_updates "$@"
+        fi
+        ;;
+    update)
+        shift
+        do_update_app "$@"
         ;;
     list)
         do_list

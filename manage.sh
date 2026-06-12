@@ -70,6 +70,11 @@ do_update() {
         return 0
     fi
 
+    update_vibewatch || true
+    update_external_apps || true
+}
+
+update_vibewatch() {
     if ! command_exists vibewatch; then
         print_info "vibewatch not installed, skipping"
         return 0
@@ -92,6 +97,13 @@ do_update() {
     if systemctl --user restart vibewatch.service 2>/dev/null; then
         print_success "vibewatch.service restarted"
     fi
+}
+
+# Check external apps (AppImages / Distrobox) with a saved GitHub release
+# source and offer to update the outdated ones (confirm-first, like packages).
+update_external_apps() {
+    is_desktop_install || return 0
+    "$SCRIPT_DIR/tools/manage-external-apps.sh" check-updates --interactive
 }
 
 # Read a string value from chezmoi.toml [data] section

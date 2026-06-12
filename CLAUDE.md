@@ -21,6 +21,10 @@ Personal dotfiles for Arch Linux, Fedora, and Debian/Ubuntu, managed with [Chezm
 ./manage.sh cursor export       # save current Cursor extensions list
 ./manage.sh cursor install      # install Cursor extensions from saved list
 ./manage.sh apps import-appimage ~/Downloads/App.AppImage
+./manage.sh apps install-github owner/repo --name App          # install latest GitHub release (AppImage or deb/rpm) + track updates
+./manage.sh apps set-source --name App --repo owner/repo       # attach a release source to an already-installed app
+./manage.sh apps check-updates                                 # compare installed versions vs latest GitHub releases
+./manage.sh apps update --all                                  # update all tracked apps (or --name App)
 ./manage.sh apps remove-appimage --name App
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
