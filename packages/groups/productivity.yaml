@@ -30,6 +30,7 @@ descriptions:
   telegram-desktop: Telegram messaging app
   bitwarden: Bitwarden password manager desktop app (Arch)
   bitwarden-flatpak: Bitwarden Desktop via Flathub (Fedora / Debian — no native package)
+  helium: Helium web browser (AppImage, cross-distro, set as default)
   zen-browser-bin: Zen Browser (Arch AUR)
   zen-browser: Zen Browser (Fedora / Debian)
   google-chrome: Google Chrome web browser (Arch AUR)
@@ -164,6 +165,27 @@ packages:
     - google-chrome
 
 custom_install:
+  # Helium ships only as an AppImage. install-github resolves the latest release,
+  # picks the asset for the current arch, imports it via the AppImage mechanism
+  # (~/.local/share/AppImages/helium.AppImage + helium.desktop launcher that
+  # mimeapps.list points at as the default browser), and records the release
+  # source so './manage.sh apps check-updates / update' keep it current.
+  # --name helium is load-bearing: slugify lowercases it to "helium", so the
+  # resulting helium.AppImage / helium.desktop match the binds + mimeapps refs.
+  - name: helium
+    check: '[ -x "$HOME/.local/share/AppImages/helium.AppImage" ]'
+    requires: curl
+    # FUSE is needed to *run* the AppImage (extraction during import does not).
+    # Desktop installs already pull this in via install_appimage_support; declared
+    # here too so selecting Helium alone still works.
+    requires_packages:
+      arch: [fuse2]
+      fedora: [fuse]
+      debian: [libfuse2]
+    install: |
+      "$DOTFILES_DIR/tools/manage-external-apps.sh" install-github imputnet/helium-linux \
+        --name helium --type appimage --non-interactive
+
   - name: bitwarden-flatpak
     check: flatpak info com.bitwarden.desktop
     requires: flatpak
