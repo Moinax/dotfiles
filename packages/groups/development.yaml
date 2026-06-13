@@ -21,6 +21,7 @@ services:
 
 descriptions:
   neovim: Hyperextensible text editor
+  tree-sitter-cli: Tree-sitter CLI — compiles parsers for nvim-treesitter's main branch (required since AstroNvim v6)
   cursor-bin: AI-powered code editor (Arch AUR)
   cursor: AI-powered code editor
   git: Distributed version control system
@@ -82,6 +83,7 @@ packages:
   arch:
     # Editors
     - neovim
+    - tree-sitter-cli  # nvim-treesitter main-branch parser compiler (AstroNvim v6+)
     - cursor-bin  # AUR
     
     # Git tools
