@@ -22,6 +22,7 @@ bind = SUPER ALT, C, exec, kcalc # Open calculator
 bind = SUPER SHIFT, P, exec, hyprpicker # Color picker
 bind = SUPER, R, exec, rofi-theme-selector # Theme selector
 bind = SUPER, M, exec, ~/.local/bin/toggle-monitors.sh # Toggle individual monitors on/off
+bind = SUPER ALT, M, dpms, off # Power off monitors / screen off (wake by moving mouse / pressing a key)
 {{- if .install_ai }}
 bind = SUPER, D, exec, ~/.local/bin/toggle-dictation.sh # Toggle dictation (speech-to-text)
 {{- end }}

@@ -11,9 +11,10 @@
 # check-hypridle-pin.sh and the project memory).
 #
 # Mitigation: skip DPMS-off whenever hyprlock is running (== session locked).
-# hypridle locks at 300s and would DPMS-off at 330s, so in the normal idle path
-# the screen now stays on (showing hyprlock) instead of risking the crash.
-# DPMS-off still fires normally when the screen idles while unlocked.
+# The idle path no longer auto-locks (see hypridle.conf), so normally hyprlock
+# is absent and DPMS-off fires as intended, waking on input. But if you manually
+# lock (Mod+Alt+L) and then go idle, hyprlock IS running, so this skips DPMS-off
+# and the screen stays lit on the lock screen instead of risking the crash.
 #
 # We key on `pidof hyprlock` rather than logind's LockedHint because hypridle
 # runs as a session-agnostic user service (no XDG_SESSION_ID), and hyprlock's

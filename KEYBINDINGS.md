@@ -45,7 +45,7 @@
 | Overview | — | `Mod+Ctrl+O` | Niri only |
 | Center column | — | `Mod+Alt+C` | Niri only |
 | Center visible columns | — | `Mod+Ctrl+C` | Niri only |
-| Maximize column | — | `Mod+Alt+M` | Niri only |
+| Maximize column | — | `Mod+Ctrl+M` | Niri only |
 | Preset column widths | — | `Mod+W` | Niri only |
 | Preset column widths (reverse) | — | `Mod+Alt+W` | Niri only (preset window heights) |
 | Preset window heights | — | `Mod+Alt+W` | Niri only |
@@ -228,7 +228,7 @@
 | Toggle Tailscale VPN | `Mod+Ctrl+N` | `Mod+Ctrl+N` | Connect/disconnect Tailscale |
 | Quit compositor | `Mod+Shift+Q` | `Mod+Shift+Q` | |
 | Quit (alt) | — | `Ctrl+Alt+Delete` | Niri only |
-| Power off monitors | — | `Mod+Alt+P` | Niri only |
+| Power off monitors | `Mod+Alt+M` | `Mod+Alt+M` | DPMS off; wake by moving the mouse or pressing a key |
 | Keybinding help (rofi) | `Mod+H` | `Mod+H` | rofi-keybindings |
 | Toggle notification center | `Mod+U` | `Mod+U` | `swaync-client -t` |
 | Toggle DND | `Mod+Alt+U` | `Mod+Alt+U` | `swaync-client -d` |
