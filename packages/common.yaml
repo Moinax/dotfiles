@@ -29,11 +29,13 @@ tools:
     description: Terminal fuzzy finder (file picker, history search)
     install: curl -fsSL https://alexpasmantier.github.io/television/install.sh | bash
 
-  - name: tpm
-    description: Tmux Plugin Manager
-    type: git
-    url: https://github.com/tmux-plugins/tpm
-    dest: ~/.tmux/plugins/tpm
+  - name: zellij
+    description: Terminal workspace / multiplexer (packaged on Arch & Fedora; binary elsewhere)
+    install: |
+      arch=$(uname -m)
+      curl -fsSL "https://github.com/zellij-org/zellij/releases/latest/download/zellij-${arch}-unknown-linux-musl.tar.gz" \
+        | sudo tar xz -C /usr/local/bin
+      sudo chmod +x /usr/local/bin/zellij
 
   - name: hyprvoice
     description: Voice-powered typing for Wayland desktops

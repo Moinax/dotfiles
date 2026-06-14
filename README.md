@@ -215,12 +215,11 @@ Yes, but it is not the default behavior.
 After running the installer:
 
 1. **Log out and back in** for shell changes to take effect
-2. **Start tmux** and press `Ctrl+b I` to install tmux plugins
-3. **Add SSH key** to GitHub/GitLab (displayed during setup)
-4. **Hyprland users**: Press `Super+?` to see keybindings
-5. **Niri users**: Log out, choose Niri in your display manager, log back in
-6. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte
-7. **Plymouth**: Reboot to see the boot splash (if configured during install)
+2. **Add SSH key** to GitHub/GitLab (displayed during setup)
+3. **Hyprland users**: Press `Super+?` to see keybindings
+4. **Niri users**: Log out, choose Niri in your display manager, log back in
+5. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte
+6. **Plymouth**: Reboot to see the boot splash (if configured during install)
 
 ## Included Configurations
 
@@ -228,7 +227,7 @@ After running the installer:
 - **Terminal**: kitty
 - **Editor**: Neovim (AstroNvim-based), Cursor
 - **Git**: delta for diffs, lazygit
-- **Multiplexer**: tmux with TPM
+- **Multiplexer**: Zellij
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout
 - **Niri**: niri with waybar, rofi, swaync, wlogout (scrollable tiling Wayland compositor)

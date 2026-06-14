@@ -1,0 +1,25 @@
+// Zellij configuration
+// Managed by chezmoi — edit via `chezmoi edit ~/.config/zellij/config.kdl`
+// Docs: https://zellij.dev/documentation/
+
+// Catppuccin, following the global light/dark preference (Mocha dark, Latte light)
+theme "catppuccin-{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}"
+
+// Use the same shell Zellij was launched from
+default_shell "zsh"
+
+// Keep the helpful keybinding hint bar visible while learning Zellij.
+// Switch to "compact" later for a slimmer status bar.
+default_layout "default"
+
+// Draw borders around panes so splits are easy to tell apart
+pane_frames true
+
+// Wayland clipboard integration
+copy_command "wl-copy"
+copy_on_select true
+
+// Edit scrollback / open the pager in the editor
+scrollback_editor "nvim"
+
+mouse_mode true

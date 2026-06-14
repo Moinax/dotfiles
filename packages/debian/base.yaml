@@ -7,7 +7,6 @@ packages:
     - zsh
     - zsh-autosuggestions
     - zsh-syntax-highlighting
-    - tmux
 
     # Core utilities
     - git

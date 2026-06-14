@@ -937,13 +937,19 @@ install_common_tools() {
         fi
     fi
 
-    # Install TPM (Tmux Plugin Manager)
-    if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
-        install_git_repo "TPM" "https://github.com/tmux-plugins/tpm" "$HOME/.tmux/plugins/tpm"
-        TMUX_PLUGINS_INSTALLED=true
-        print_info "Run tmux and press Ctrl+b I to install plugins"
+    # Install Zellij on distros that don't package it (Arch & Fedora install it
+    # natively via base.yaml; everything else gets the upstream musl binary).
+    if ! command_exists zellij; then
+        local zellij_arch
+        case "$(uname -m)" in
+            x86_64)  zellij_arch="x86_64" ;;
+            aarch64) zellij_arch="aarch64" ;;
+            *)       zellij_arch="$(uname -m)" ;;
+        esac
+        install_curl_tool "zellij" \
+            "curl -fsSL https://github.com/zellij-org/zellij/releases/latest/download/zellij-${zellij_arch}-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin && sudo chmod +x /usr/local/bin/zellij"
     else
-        print_info "TPM is already installed"
+        print_info "zellij is already installed"
     fi
 
     # Install rofi themes when a Wayland compositor group is selected
@@ -1077,7 +1083,6 @@ cleanup_stow_symlinks() {
     
     local stow_patterns=(
         "$HOME/.zshrc"
-        "$HOME/.tmux.conf"
         "$HOME/.gitconfig"
         "$HOME/Wallpapers"
         "$HOME/completion-for-pnpm.bash"
@@ -1137,10 +1142,10 @@ setup_dotfiles() {
     dotfiles_to_install+=(
         "dot_zshrc"
         "dot_zsh"
-        "dot_tmux.conf"
         "dot_gitconfig"
         "dot_config/starship.toml"
         "dot_config/yazi"
+        "dot_config/zellij"
         "completion-for-pnpm.bash"
     )
 
@@ -2706,11 +2711,6 @@ show_completion() {
         next_step=$((next_step + 1))
     fi
 
-    if [ "$TMUX_PLUGINS_INSTALLED" = true ]; then
-        steps+=("  $next_step. Run 'tmux' and press Ctrl+b I (install plugins)")
-        next_step=$((next_step + 1))
-    fi
-
     if [ "$SSH_KEY_GENERATED" = true ]; then
         steps+=("  $next_step. Add your SSH key to GitHub/GitLab")
         next_step=$((next_step + 1))
@@ -2781,7 +2781,6 @@ main() {
     BTRFS_SNAPSHOTS_CONFIGURED=false
     SHELL_CHANGED=false
     SSH_KEY_GENERATED=false
-    TMUX_PLUGINS_INSTALLED=false
     unset GROUP_PACKAGE_MODE GROUP_CUSTOM_PACKAGE_LIST
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()
@@ -2841,7 +2840,10 @@ main() {
     confirm_installation
     
     # Run installation steps
-    update_system
+    # A failed system upgrade (e.g. an AUR build error or a held/pinned-package
+    # conflict) must not abort the whole installer under `set -e` — otherwise we
+    # never reach the package installs below. Warn and continue.
+    update_system || track_warning "System update failed; continuing with package installation"
     install_base_packages
     install_group_packages
     install_common_tools
