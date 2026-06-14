@@ -1,55 +1,47 @@
 #!/bin/bash
 
-# Toggle every Hyprland window to opacity 1 and back.
+# Globally enable/disable window opacity in Hyprland.
 #
-# Tags every mapped window with `force_full_opacity`, which is matched by a
-# windowrule in windowrules.lua that sets `opacity 1 override`. A second press
-# removes the tag and restores the configured per-window opacity.
+# Flips the decoration opacity values for the whole session: first press sets
+# active/inactive opacity to 1 (transparency off), second press restores the
+# configured defaults. Unlike per-window tagging, this affects every window —
+# including ones opened while opacity is disabled.
 #
-# Hyprland 0.55+ rejects `hyprctl keyword decoration:active_opacity` (non-legacy
-# parser), so we can't toggle the global decoration values dynamically; tagging
-# is the supported path.
+# Two parsers, two mechanisms (both global):
+#   * New Lua parser (Hyprland 0.55+): `hyprctl keyword` is rejected, so we push
+#     the values through `hyprctl eval` running the same hl.config() Lua as
+#     conf/decoration.lua.
+#   * Legacy parser (older Hyprland, e.g. Fedora): `eval`/hl.config is absent, so
+#     we fall back to `hyprctl keyword`, which only works on the legacy parser.
 
 set -euo pipefail
 
-STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-all-opacity-state"
-TAG="force_full_opacity"
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-opacity-disabled"
 
-# Capture in a single shell substitution so a failure in `hyprctl clients` or
-# the parser propagates (process substitution would swallow it).
-addrs_raw=$(hyprctl clients -j | python3 -c '
-import json, sys
-for c in json.load(sys.stdin):
-    if c.get("mapped"):
-        print(c["address"])
-')
+# Keep in sync with conf/decoration.lua and conf/decoration.conf.
+ACTIVE_DEFAULT=0.99
+INACTIVE_DEFAULT=0.90
 
-if [[ -z "$addrs_raw" ]]; then
-    notify-send -u low "Opacity" "No mapped windows" || true
-    exit 0
-fi
-
-mapfile -t ADDRS <<< "$addrs_raw"
+set_opacity() { # $1 = active, $2 = inactive
+    # Prefer the Lua parser; "ok" on stdout means it took effect.
+    if hyprctl eval \
+        "hl.config({ decoration = { active_opacity = $1, inactive_opacity = $2 } })" \
+        2>/dev/null | grep -qx ok; then
+        return
+    fi
+    # Legacy parser fallback.
+    hyprctl keyword decoration:active_opacity "$1" >/dev/null 2>&1
+    hyprctl keyword decoration:inactive_opacity "$2" >/dev/null 2>&1
+}
 
 if [[ -f "$STATE_FILE" ]]; then
-    op="-"
-    msg="Restored per-window opacity"
-else
-    op="+"
-    msg="All windows → opacity 1"
-fi
-
-for addr in "${ADDRS[@]}"; do
-    hyprctl dispatch "hl.dsp.window.tag({ tag = '${op}${TAG}', window = 'address:${addr}' })" >/dev/null
-done
-
-# Flip the state file only after the dispatch loop succeeds, so a mid-loop
-# failure (e.g. a window closed between the clients query and the dispatch)
-# leaves both the tags and the state file in their previous coherent state.
-if [[ "$op" == "+" ]]; then
-    touch "$STATE_FILE"
-else
+    set_opacity "$ACTIVE_DEFAULT" "$INACTIVE_DEFAULT"
     rm -f "$STATE_FILE"
+    msg="Opacity on (${ACTIVE_DEFAULT}/${INACTIVE_DEFAULT})"
+else
+    set_opacity 1 1
+    touch "$STATE_FILE"
+    msg="Opacity off (all windows solid)"
 fi
 
-notify-send -u low "Opacity" "$msg (${#ADDRS[@]} windows)" || true
+notify-send -u low "Opacity" "$msg" || true

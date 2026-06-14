@@ -175,9 +175,11 @@ bindm = SUPER, mouse:272, movewindow # Move window
 bindm = SUPER, mouse:273, resizewindow # Resize window
 
 # ── 16. Opacity ───────────────────────────────────────────────────
-bind = SUPER, o, tagwindow, switch_opacity
+bind = SUPER, o, tagwindow, switch_opacity                              # focused window → opaque
 windowrulev2 = opacity 1 override, tag:switch_opacity
-bind = SUPER SHIFT, o, tagwindow, switch_opacity_half
+bind = SUPER CTRL, o, tagwindow, switch_opacity_half                    # focused window → 50%
 windowrulev2 = opacity 0.5 override, tag:switch_opacity_half
-# SUPER ALT + O (toggle all windows to opacity 1) lives in binds.lua.tmpl only —
-# its helper script uses Lua-dispatch syntax that legacy-parser Hyprland rejects.
+# Global opacity on/off. The helper prefers Lua `eval`; on the legacy parser it
+# falls back to `hyprctl keyword`, which only works here — so this is global on
+# both new and old Hyprland.
+bind = SUPER ALT, o, exec, ~/.local/bin/toggle-all-opacity.sh
