@@ -13,6 +13,37 @@ alias lg="lazygit"
 alias ld="lazydocker"
 alias dash="gh dash"
 
+# Zellij — the multiplexer behind `dev`/`wts` agent sessions
+if command -v zellij &> /dev/null; then
+  alias z="zellij"                        # raw session list is `z ls`
+  alias za="zellij attach"                # za <name> — reattach to an agent session
+  alias zk="zellij kill-session"          # zk <name> — stop a running session
+  alias zd="zellij delete-session"        # zd <name> — drop an exited session (force a clean rebuild)
+  alias zka="zellij kill-all-sessions"    # stop every running session
+  alias zda="zellij delete-all-sessions"  # clear all exited/resurrectable sessions
+
+  # zls / zj — fuzzy-pick a session and attach (resurrects exited ones), via television.
+  # Run from a bare shell; inside a session use Zellij's own switcher (Ctrl+o w).
+  zj() {
+    if [[ -n "$ZELLIJ" ]]; then
+      echo "Already inside a Zellij session — use Ctrl+o w to switch." >&2; return 1
+    fi
+    if ! command -v tv &> /dev/null; then
+      zellij ls; return
+    fi
+    local list sel
+    list=$(zellij ls -n 2>/dev/null)
+    if [[ -z "$list" || "$list" == *"No active"* ]]; then
+      echo "No Zellij sessions." >&2; return 1
+    fi
+    # television reads keys from stdin, so feed the list via --source-command
+    # (not a pipe) and hand it the tty; the chosen line prints to stdout.
+    sel=$(tv --source-command 'zellij ls -n' --inline --no-status-bar --input-header 'attach' < /dev/tty) || return
+    [[ -n "$sel" ]] && zellij attach "${sel%% *}"
+  }
+  alias zls=zj
+fi
+
 # Top 10 biggest entries (incl. hidden) in CWD
 alias big="sudo du -sh *(D) | sort -rh | head -n 10"
 

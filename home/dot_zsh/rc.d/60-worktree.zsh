@@ -7,15 +7,20 @@ fi
 # Stays a function (not a script) because `wt switch` requires shell integration.
 #   -n <name>  override the kitty title / Claude session name
 #   -s         auto-run `/start <branch>` in the Claude pane on launch
+#   -z         persistent, detachable Zellij session (default)
+#   -k         kitty native splits (no persistence; keeps the image protocol)
 wtstart() {
   local name_override=""
   local send_start=false
+  local backend="zellij"
   while [[ "$1" == -* ]]; do
     case "$1" in
       -n)
         [[ -z "$2" || "$2" == -* ]] && { echo "wtstart: -n requires a name" >&2; return 1; }
         name_override="$2"; shift 2 ;;
       -s) send_start=true; shift ;;
+      -z) backend="zellij"; shift ;;
+      -k) backend="kitty"; shift ;;
       --) shift; break ;;
       *) echo "wtstart: unknown option $1" >&2; return 1 ;;
     esac
@@ -63,7 +68,11 @@ wtstart() {
     fi
   fi
 
-  kitty --title "$name" --directory "$dir" --session <(kdev-session "${claude_args[@]}") &>/dev/null & disown
+  if [[ "$backend" == zellij ]]; then
+    kitty --title "$name" --directory "$dir" -e dev-zellij -n "$name" -d "$dir" -- "${claude_args[@]}" &>/dev/null & disown
+  else
+    kitty --title "$name" --directory "$dir" --session <(dev-kitty-session "${claude_args[@]}") &>/dev/null & disown
+  fi
 
   builtin cd -- "$orig_dir"
 }

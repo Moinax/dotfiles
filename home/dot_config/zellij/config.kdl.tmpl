@@ -23,3 +23,29 @@ copy_on_select true
 scrollback_editor "nvim"
 
 mouse_mode true
+
+// Quick "scratch" terminal: Alt+f toggles the floating-pane layer in/out of
+// view over whatever layout you're in (run a throwaway command, then hide it
+// again). New panes opened while the layer is visible become floating.
+keybinds {
+    shared_except "locked" {
+        bind "Alt f" { ToggleFloatingPanes; }
+
+        // Direct tab jump. Bound on BOTH the US digit and the AZERTY unshifted
+        // symbol on the same physical key, so it works on us *and* fr/be: the
+        // AZERTY number row needs Shift, so the bare key emits & é " ' ( …
+        // The 1–5 symbols (& é " ' () are identical across fr and be, so they
+        // cover both. 6–9 keep only the US digit — the fr/be symbols there
+        // diverge (§ vs - …) and some collide with defaults (Alt+- = resize).
+        // (Alt+arrow keeps its default MoveFocusOrTab — left untouched.)
+        bind "Alt 1" "Alt &"  { GoToTab 1; }
+        bind "Alt 2" "Alt é"  { GoToTab 2; }
+        bind "Alt 3" "Alt \"" { GoToTab 3; }
+        bind "Alt 4" "Alt '"  { GoToTab 4; }
+        bind "Alt 5" "Alt ("  { GoToTab 5; }
+        bind "Alt 6" { GoToTab 6; }
+        bind "Alt 7" { GoToTab 7; }
+        bind "Alt 8" { GoToTab 8; }
+        bind "Alt 9" { GoToTab 9; }
+    }
+}

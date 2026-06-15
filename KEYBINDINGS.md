@@ -14,7 +14,7 @@
 | Action | Hyprland | Niri | Notes |
 |---|---|---|---|
 | Open terminal (kitty) | `Mod+Return` | `Mod+Return` | |
-| Dev terminal (kitty splits) | `Mod+Alt+Return` | `Mod+Alt+Return` | Rofi directory picker, then 1 top + 2 bottom split layout |
+| Dev terminal (Zellij session) | `Mod+Alt+Return` | `Mod+Alt+Return` | Rofi directory picker, then a persistent Zellij dev session (agent + nvim tabs) |
 | App launcher (rofi) | `Mod+Space` | `Mod+Space` | |
 | Open browser (Helium) | `Mod+B` | `Mod+B` | Default browser |
 | Open browser (Zen) | `Mod+Alt+B` | `Mod+Alt+B` | |

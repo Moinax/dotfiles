@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Attach to — or create — a persistent Zellij dev session for a project.
+# This is the detachable counterpart to the kitty-splits `dev -k` layout: closing
+# the window (or detaching) leaves the agent running for later reattachment.
+#
+# Run as a kitty command:
+#   kitty -e dev-zellij -n NAME -d DIR -- <claude args>
+set -euo pipefail
+
+name=""; dir="$PWD"; claude_args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n) name="$2"; shift 2 ;;
+    -d) dir="$2"; shift 2 ;;
+    --) shift; claude_args=("$@"); break ;;
+    *)  shift ;;
+  esac
+done
+dir="$(cd "$dir" && pwd)"
+[[ -z "$name" ]] && name="$(basename "$dir")"
+
+# Zellij session names can't contain spaces, slashes, dots, etc.
+session="$(printf '%s' "$name" | tr -cs 'A-Za-z0-9_-' '-')"
+
+# Decide how to handle an existing session of this name.
+#  - RUNNING (merely detached): reattach live so the agent keeps running, and
+#    vibewatch's per-window focus keeps pointing at one live session per project.
+#  - EXITED (resurrectable): DON'T resurrect. Zellij serializes command panes by
+#    walking the pane's process tree, and for the "claude" pane it captures a
+#    child MCP process (e.g. `npm exec chrome-devtools-mcp`) instead of `claude`
+#    itself — so resurrection re-runs the wrong command. Discard the dead session
+#    and rebuild it fresh from our known-good layout below.
+existing="$(zellij list-sessions --no-formatting 2>/dev/null || true)"
+if printf '%s\n' "$existing" | grep -qE "^${session} .*\(EXITED"; then
+  zellij delete-session --force "$session" 2>/dev/null || true
+elif printf '%s\n' "$existing" | grep -qE "^${session} "; then
+  exec zellij attach "$session"
+fi
+
+layout_file="$(mktemp --tmpdir "dev-zellij-${session}.XXXXXX.kdl")"
+trap 'rm -f "$layout_file"' EXIT
+dev-zellij-session -d "$dir" "${claude_args[@]+"${claude_args[@]}"}" > "$layout_file"
+
+# No exec here: when the session detaches/exits, control returns so the trap
+# can remove the temp layout file before the kitty window closes.
+# (`--session` + `--layout` *attaches* and adds a tab; `--new-session-with-layout`
+#  is what actually creates a fresh named session from a layout.)
+zellij --session "$session" --new-session-with-layout "$layout_file"

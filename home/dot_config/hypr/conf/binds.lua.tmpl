@@ -6,7 +6,7 @@ local home = assert(os.getenv("HOME"), "HOME not set")
 
 -- ── 1. Application Shortcuts ──────────────────────────────────────
 hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                  -- Open terminal
-hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd(home .. "/.local/bin/kdev-launch.sh"))                                     -- Pick directory & open dev terminal (kitty splits)
+hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd(home .. "/.local/bin/dev-launch.sh"))                                      -- Pick directory & open dev terminal (Zellij session)
 hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("rofi -show drun"))                                                        -- App launcher
 hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/share/AppImages/helium.AppImage"))                         -- Open browser (Helium)
 hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("zen-browser"))                                                            -- Open browser (Zen)

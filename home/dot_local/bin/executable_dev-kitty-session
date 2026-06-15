@@ -1,6 +1,6 @@
 #!/bin/bash
-# Emit kitty session config for the kdev/wts dev layout.
-# Usage: kdev-session [extra-claude-args...]
+# Emit kitty session config for the `dev -k`/`wts -k` dev layout.
+# Usage: dev-kitty-session [extra-claude-args...]
 #
 # Args are re-quoted with printf %q: kitty re-tokenizes every `launch` line
 # with shell-style splitting, so an unquoted `-n "my name"` would split into
@@ -14,13 +14,13 @@ done
 cat <<EOF
 new_tab Claude
 layout splits
-launch --title kdev-claude claude$claude_args
+launch --title dev-claude claude$claude_args
 # Split the terminal off first so it spans the full width along the bottom;
 # only then vsplit the top region into claude (left) + lazygit (right).
-launch --title kdev-term --location=hsplit --bias=25
-focus_matching_window title:kdev-claude
-launch --title kdev-lazygit --location=vsplit lazygit
-focus_matching_window title:kdev-claude
+launch --title dev-term --location=hsplit --bias=25
+focus_matching_window title:dev-claude
+launch --title dev-lazygit --location=vsplit lazygit
+focus_matching_window title:dev-claude
 
 new_tab Neovim
 launch nvim

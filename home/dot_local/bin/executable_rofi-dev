@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# rofi-kdev — fuzzy directory picker that launches kitty dev layout
+# rofi-dev — fuzzy directory picker that launches the dev layout.
+# Defaults to the persistent Zellij session (same default as the `dev` function).
 # Uses dmenu mode so rofi closes immediately after selection.
 
 # Detect fd binary (Arch/Fedora: fd, Debian: fdfind)
@@ -8,7 +9,7 @@ if command -v fd &>/dev/null; then
 elif command -v fdfind &>/dev/null; then
     FD_CMD="fdfind"
 else
-    notify-send -u critical "rofi-kdev" "fd not found"
+    notify-send -u critical "rofi-dev" "fd not found"
     exit 1
 fi
 
@@ -19,5 +20,5 @@ selection=$($FD_CMD --type d --max-depth 2 \
 if [ -n "$selection" ]; then
     dir="$HOME/Projects/$selection"
     name="$(basename "$dir")"
-    kitty --title "$name" --directory "$dir" --session <(kdev-session) &>/dev/null & disown
+    kitty --title "$name" --directory "$dir" -e dev-zellij -n "$name" -d "$dir" &>/dev/null & disown
 fi
