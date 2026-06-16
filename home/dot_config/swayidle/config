@@ -1,6 +1,7 @@
 timeout 250 'notify-send "Your computer will be locked due to inactivity"'
 timeout 300 'loginctl lock-session'
 timeout 330 'niri msg action power-off-monitors' resume 'niri msg action power-on-monitors'
+# Auto-suspend uses s2idle for now; S3/deep hangs this desktop.
 timeout 1800 'systemctl suspend'
 before-sleep 'loginctl lock-session'
 lock 'pidof hyprlock || hyprlock'

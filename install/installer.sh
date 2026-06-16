@@ -1591,9 +1591,11 @@ setup_nvidia() {
 
     # --- Common configuration (required regardless of driver version) ---
 
-    # Configure modprobe for NVIDIA suspend/resume.
-    local modprobe_conf="/etc/modprobe.d/nvidia.conf"
-    local nvidia_modprobe_options="NVreg_PreserveVideoMemoryAllocations=1"
+    # Configure modprobe for NVIDIA suspend/resume. Use a late filename so the
+    # desktop-local suspend choice overrides nvidia-utils' package default in
+    # /usr/lib/modprobe.d/nvidia-sleep.conf.
+    local modprobe_conf="/etc/modprobe.d/zz-nvidia-local.conf"
+    local nvidia_modprobe_options="NVreg_PreserveVideoMemoryAllocations=1 NVreg_UseKernelSuspendNotifiers=0"
     local modprobe_changed=false
 
     if ! grep -qs '^options[[:space:]]\+nvidia[[:space:]]' "$modprobe_conf"; then
@@ -1619,12 +1621,6 @@ setup_nvidia() {
         else
             print_success "NVIDIA modprobe options already configured"
         fi
-    fi
-    if grep -qs 'NVreg_UseKernelSuspendNotifiers=0' "$modprobe_conf"; then
-        print_info "Removing local NVIDIA kernel suspend notifier override (package default applies)"
-        sudo sed -i 's/[[:space:]]*NVreg_UseKernelSuspendNotifiers=0//g' "$modprobe_conf"
-        modprobe_changed=true
-        print_success "Local NVIDIA kernel suspend notifier override removed from $modprobe_conf"
     fi
     if ! grep -rqs '^options[[:space:]]\+nvidia-drm.*modeset=1' /etc/modprobe.d/; then
         echo "options nvidia-drm modeset=1" | sudo tee -a "$modprobe_conf" > /dev/null
@@ -1681,7 +1677,7 @@ setup_nvidia() {
 
 # Configure kernel parameters in GRUB for NVIDIA suspend/resume support
 # Ensures: nvidia-drm.modeset=1, nvidia-drm.fbdev=1,
-#          nvidia.NVreg_PreserveVideoMemoryAllocations=1, mem_sleep_default=deep
+#          nvidia.NVreg_PreserveVideoMemoryAllocations=1, mem_sleep_default=s2idle
 # Idempotent: only modifies GRUB and regenerates config when changes are needed
 configure_nvidia_kernel_params() {
     local grub_default="/etc/default/grub"
@@ -1704,17 +1700,17 @@ configure_nvidia_kernel_params() {
         fi
     }
 
-    # Replace s2idle with deep for proper S3 suspend (desktop hardware)
-    if echo "$current_cmdline" | grep -q 'mem_sleep_default=s2idle'; then
-        # Remove all occurrences of mem_sleep_default=s2idle
-        current_cmdline=$(echo "$current_cmdline" | sed 's/mem_sleep_default=s2idle//g')
+    # S3/deep currently hangs this desktop at "PM: suspend entry (deep)".
+    # Prefer s2idle until we revisit the kernel/firmware/NVIDIA regression.
+    if echo "$current_cmdline" | grep -q 'mem_sleep_default=deep'; then
+        current_cmdline=$(echo "$current_cmdline" | sed 's/mem_sleep_default=deep//g')
         updated=true
     fi
 
     ensure_kparam "nvidia-drm.modeset=1"
     ensure_kparam "nvidia-drm.fbdev=1"
     ensure_kparam "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
-    ensure_kparam "mem_sleep_default=deep"
+    ensure_kparam "mem_sleep_default=s2idle"
 
     if [ "$updated" = true ]; then
         # Collapse multiple spaces and trim
