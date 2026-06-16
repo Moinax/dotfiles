@@ -25,7 +25,7 @@ hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("kcalc"))                     
 hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                             -- Color picker
 hl.bind(mod .. " + R",            hl.dsp.exec_cmd("rofi-theme-selector"))                                                    -- Theme selector
 hl.bind(mod .. " + M",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-monitors.sh"))                                 -- Toggle monitors on/off
-hl.bind(mod .. " + ALT + M",      hl.dsp.dpms("off"))                                                                        -- Power off monitors / screen off (wake by moving mouse / pressing a key)
+hl.bind(mod .. " + ALT + M",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dpms.sh"))                                      -- Toggle monitor DPMS off/on
 {{- if .install_ai }}
 hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh"))                                -- Toggle dictation
 {{- end }}
