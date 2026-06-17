@@ -13,7 +13,7 @@ gdbus monitor --system \
 while read -r line; do
     if [[ "$line" == *"PrepareForSleep"*"false"* ]]; then
         # Wait for user to unlock before restarting
-        while pidof hyprlock > /dev/null 2>&1; do
+        while pidof swaylock hyprlock > /dev/null 2>&1; do
             sleep 1
         done
         # Preserve caffeine mode: when caffeine is on, toggle-caffeine.sh

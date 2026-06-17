@@ -1,6 +1,11 @@
 .config/waybar/config
 .config/hypr/scripts/toggle-monitor-layout.sh
 .config/hypr/conf/monitor-layouts
+.config/systemd/user/check-hypridle-pin.service
+.config/systemd/user/check-hypridle-pin.timer
+.local/bin/check-hypridle-pin.sh
+.local/bin/hypridle-dpms-guard.sh
+.local/bin/hypridle-dpms-resume-guard.sh
 
 {{/*
 Remove the inactive Hyprland config language so runtime scripts cannot pick

@@ -4,4 +4,4 @@ timeout 330 'niri msg action power-off-monitors' resume 'niri msg action power-o
 # Auto-suspend uses s2idle for now; S3/deep hangs this desktop.
 timeout 1800 'systemctl suspend'
 before-sleep 'loginctl lock-session'
-lock 'pidof hyprlock || hyprlock'
+lock 'pidof swaylock || swaylock'
