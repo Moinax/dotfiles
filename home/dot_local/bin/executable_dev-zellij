@@ -4,15 +4,16 @@
 # the window (or detaching) leaves the agent running for later reattachment.
 #
 # Run as a kitty command:
-#   kitty -e dev-zellij -n NAME -d DIR -- <claude args>
+#   kitty -e dev-zellij -n NAME -d DIR -p PROVIDER -- <prompt>
 set -euo pipefail
 
-name=""; dir="$PWD"; claude_args=()
+name=""; dir="$PWD"; provider="claude"; prompt=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n) name="$2"; shift 2 ;;
     -d) dir="$2"; shift 2 ;;
-    --) shift; claude_args=("$@"); break ;;
+    -p) provider="$2"; shift 2 ;;
+    --) shift; prompt="${1:-}"; break ;;
     *)  shift ;;
   esac
 done
@@ -21,6 +22,10 @@ dir="$(cd "$dir" && pwd)"
 
 # Zellij session names can't contain spaces, slashes, dots, etc.
 session="$(printf '%s' "$name" | tr -cs 'A-Za-z0-9_-' '-')"
+# Provider is part of the session identity: claude keeps the bare project name
+# (back-compat with existing sessions + vibewatch), other agents get a suffix so
+# `dev -p codex foo` opens its own session instead of reattaching foo's claude.
+[[ "$provider" != claude ]] && session="${session}-${provider}"
 
 # Decide how to handle an existing session of this name.
 #  - RUNNING (merely detached): reattach live so the agent keeps running, and
@@ -39,7 +44,7 @@ fi
 
 layout_file="$(mktemp --tmpdir "dev-zellij-${session}.XXXXXX.kdl")"
 trap 'rm -f "$layout_file"' EXIT
-dev-zellij-session -d "$dir" "${claude_args[@]+"${claude_args[@]}"}" > "$layout_file"
+dev-zellij-session -d "$dir" -p "$provider" -n "$name" -- "$prompt" > "$layout_file"
 
 # No exec here: when the session detaches/exits, control returns so the trap
 # can remove the temp layout file before the kitty window closes.

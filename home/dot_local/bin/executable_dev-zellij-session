@@ -11,22 +11,30 @@
 # rather than auto-run so reattaching/resurrecting a session never silently
 # double-binds a port.
 #
-# Usage: dev-zellij-session -d DIR [extra-claude-args...]
+# Usage: dev-zellij-session -d DIR -p PROVIDER -n NAME [-- PROMPT]
 set -euo pipefail
 
-dir="$PWD"
-if [[ "${1:-}" == "-d" ]]; then
-  dir="$2"; shift 2
-fi
+dir="$PWD"; provider="claude"; name=""; prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d) dir="$2"; shift 2 ;;
+    -p) provider="$2"; shift 2 ;;
+    -n) name="$2"; shift 2 ;;
+    --) shift; prompt="${1:-}"; break ;;
+    *)  shift ;;
+  esac
+done
 dir="$(cd "$dir" && pwd)"
 
 # --- KDL string escaping -------------------------------------------------
 kdl_escape() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s' "$s"; }
 
-# claude args -> KDL `args "a" "b"`
-claude_args_kdl=""
-for a in "$@"; do
-  claude_args_kdl+=" \"$(kdl_escape "$a")\""
+# Resolve provider -> argv (first line = command, rest = args).
+mapfile -t agent_argv < <(dev-agent-argv "$provider" "$name" "$prompt")
+agent_cmd="${agent_argv[0]}"
+agent_args_kdl=""
+for a in "${agent_argv[@]:1}"; do
+  agent_args_kdl+=" \"$(kdl_escape "$a")\""
 done
 
 # --- detect a web dev-server command (package manager from lockfile) -----
@@ -39,14 +47,16 @@ if [[ -f "$dir/package.json" ]] && grep -Eq '"dev"[[:space:]]*:' "$dir/package.j
   fi
 fi
 
-# --- claude pane (block only when there are args) ------------------------
-# No size: claude + lazygit split the top region 50/50 (like the kitty vsplit).
-if [[ -n "$claude_args_kdl" ]]; then
-  claude_pane="                pane name=\"claude\" command=\"claude\" {
-                    args$claude_args_kdl
+# --- agent pane (block only when there are args) -------------------------
+# No size: agent + lazygit split the top region 50/50 (like the kitty vsplit).
+# Pane name = provider so the frame reads claude/codex/opencode at a glance.
+pane_name="$(kdl_escape "$provider")"
+if [[ -n "$agent_args_kdl" ]]; then
+  agent_pane="                pane name=\"$pane_name\" command=\"$(kdl_escape "$agent_cmd")\" {
+                    args$agent_args_kdl
                 }"
 else
-  claude_pane='                pane name="claude" command="claude"'
+  agent_pane="                pane name=\"$pane_name\" command=\"$(kdl_escape "$agent_cmd")\""
 fi
 
 # --- bottom row: terminal, or a dev-server pane that replaces it ----------
@@ -80,7 +90,7 @@ layout {
     tab name="agent" focus=true {
         pane split_direction="horizontal" {
             pane split_direction="vertical" size="72%" {
-$claude_pane
+$agent_pane
                 pane name="git" command="lazygit"
             }
 $bottom_row

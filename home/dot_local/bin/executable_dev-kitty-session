@@ -1,26 +1,35 @@
 #!/bin/bash
 # Emit kitty session config for the `dev -k`/`wts -k` dev layout.
-# Usage: dev-kitty-session [extra-claude-args...]
+# Usage: dev-kitty-session -p PROVIDER -n NAME [-- PROMPT]
 #
-# Args are re-quoted with printf %q: kitty re-tokenizes every `launch` line
-# with shell-style splitting, so an unquoted `-n "my name"` would split into
-# separate words and the trailing words would leak into claude's positional
-# [prompt] -- launching claude with that text as an initial prompt.
-claude_args=""
-for arg in "$@"; do
-  claude_args+=" $(printf '%q' "$arg")"
+# The agent argv is re-quoted with printf %q: kitty re-tokenizes every `launch`
+# line with shell-style splitting, so an unquoted `-n "my name"` would split into
+# separate words and the trailing words would leak into the agent's positional
+# [prompt] -- launching the agent with that text as an initial prompt.
+provider="claude"; name=""; prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p) provider="$2"; shift 2 ;;
+    -n) name="$2"; shift 2 ;;
+    --) shift; prompt="${1:-}"; break ;;
+    *)  shift ;;
+  esac
 done
 
+# Resolve provider -> argv, then shell-quote each token for kitty's launch line.
+agent_cmd=""
+while IFS= read -r tok; do agent_cmd+=" $(printf '%q' "$tok")"; done < <(dev-agent-argv "$provider" "$name" "$prompt")
+
 cat <<EOF
-new_tab Claude
+new_tab Agent
 layout splits
-launch --title dev-claude claude$claude_args
+launch --title dev-agent$agent_cmd
 # Split the terminal off first so it spans the full width along the bottom;
-# only then vsplit the top region into claude (left) + lazygit (right).
+# only then vsplit the top region into agent (left) + lazygit (right).
 launch --title dev-term --location=hsplit --bias=25
-focus_matching_window title:dev-claude
+focus_matching_window title:dev-agent
 launch --title dev-lazygit --location=vsplit lazygit
-focus_matching_window title:dev-claude
+focus_matching_window title:dev-agent
 
 new_tab Neovim
 launch nvim
