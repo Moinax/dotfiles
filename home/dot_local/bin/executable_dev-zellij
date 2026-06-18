@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Attach to — or create — a persistent Zellij dev session for a project.
-# This is the detachable counterpart to the kitty-splits `dev -k` layout: closing
-# the window (or detaching) leaves the agent running for later reattachment.
+# Closing the window (or detaching) leaves the agent running for later
+# reattachment.
 #
 # Run as a kitty command:
 #   kitty -e dev-zellij -n NAME -d DIR -p PROVIDER -- <prompt>
@@ -19,6 +19,16 @@ while [[ $# -gt 0 ]]; do
 done
 dir="$(cd "$dir" && pwd)"
 [[ -z "$name" ]] && name="$(basename "$dir")"
+
+# Pin the kitty *window* title (what Hyprland shows on the grouped tab) to the
+# project name. A permanent set-window-title also locks out zellij's own title
+# updates, so the tab stays clean instead of flapping to "<session> | <cmd>".
+# We deliberately do NOT launch kitty with --title: that sets the OS window's
+# disallow_override_title flag, which would freeze the title forever — including
+# against the Ctrl+Alt+R (set_window_title) rename shortcut. Setting it from here
+# keeps it renameable on the fly.
+title="$name"; [[ "$provider" != claude ]] && title="$name ($provider)"
+[[ -n "${KITTY_WINDOW_ID:-}" ]] && kitten @ set-window-title "$title" 2>/dev/null || true
 
 # Zellij session names can't contain spaces, slashes, dots, etc.
 session="$(printf '%s' "$name" | tr -cs 'A-Za-z0-9_-' '-')"

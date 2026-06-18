@@ -20,5 +20,6 @@ selection=$($FD_CMD --type d --max-depth 2 \
 if [ -n "$selection" ]; then
     dir="$HOME/Projects/$selection"
     name="$(basename "$dir")"
-    kitty --title "$name" --directory "$dir" -e dev-zellij -n "$name" -d "$dir" &>/dev/null & disown
+    # No --title: dev-zellij pins the window title itself (renameable on the fly).
+    kitty --directory "$dir" -e dev-zellij -n "$name" -d "$dir" &>/dev/null & disown
 fi

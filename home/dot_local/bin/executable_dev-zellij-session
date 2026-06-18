@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Emit a Zellij layout for the dev/wts dev environment — the persistent,
-# detachable counterpart to dev-kitty-session's kitty splits.
+# Emit a Zellij layout for the dev/wts dev environment (persistent, detachable).
 #
-# Layout mirrors the kitty version:
+# Layout:
 #   tab "agent": claude (top-left) + lazygit (top-right), terminal across the bottom
 #   tab "nvim":  a full-window nvim
 # For web projects (a package.json with a "dev" script) the bottom terminal is

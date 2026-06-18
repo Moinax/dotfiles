@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Resolve an AI-agent provider to its launch argv — the single source of truth
-# shared by both dev environment backends (dev-zellij-session + dev-kitty-session).
+# used by dev-zellij-session.
 #
 # Each provider has its own CLI shape:
 #   claude   -> claude -n NAME [prompt]   (-n = display name; prompt auto-submits)

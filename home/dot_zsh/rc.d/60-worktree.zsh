@@ -8,12 +8,9 @@ fi
 #   -n <name>  override the kitty title / agent session name
 #   -s         auto-run `/start <branch>` in the agent pane on launch (claude only)
 #   -p <prov>  AI agent provider: claude (default), codex, opencode
-#   -z         persistent, detachable Zellij session (default)
-#   -k         kitty native splits (no persistence; keeps the image protocol)
 wtstart() {
   local name_override=""
   local send_start=false
-  local backend="zellij"
   local provider="claude"
   while [[ "$1" == -* ]]; do
     case "$1" in
@@ -24,8 +21,6 @@ wtstart() {
         [[ "$2" != (claude|codex|opencode) ]] && { echo "wtstart: -p must be claude|codex|opencode" >&2; return 1; }
         provider="$2"; shift 2 ;;
       -s) send_start=true; shift ;;
-      -z) backend="zellij"; shift ;;
-      -k) backend="kitty"; shift ;;
       --) shift; break ;;
       *) echo "wtstart: unknown option $1" >&2; return 1 ;;
     esac
@@ -76,12 +71,9 @@ wtstart() {
     fi
   fi
 
-  local title="$name"; [[ "$provider" != claude ]] && title="$name ($provider)"
-  if [[ "$backend" == zellij ]]; then
-    kitty --title "$title" --directory "$dir" -e dev-zellij -n "$name" -d "$dir" -p "$provider" -- "$prompt" &>/dev/null & disown
-  else
-    kitty --title "$title" --directory "$dir" --session <(dev-kitty-session -p "$provider" -n "$name" -- "$prompt") &>/dev/null & disown
-  fi
+  # No --title: dev-zellij pins the window title itself (so it stays renameable
+  # on the fly via Ctrl+Alt+R). See the note in dev-zellij.
+  kitty --directory "$dir" -e dev-zellij -n "$name" -d "$dir" -p "$provider" -- "$prompt" &>/dev/null & disown
 
   builtin cd -- "$orig_dir"
 }
