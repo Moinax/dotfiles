@@ -205,6 +205,14 @@
     },
     "on-click-right": "loginctl lock-session",
   },
+  // HDR/SDR toggle for the HDR-capable monitor (desktop DP-3)
+  "custom/hdr": {
+    "exec": "~/.local/bin/waybar-hdr.sh",
+    "return-type": "json",
+    "signal": 9,
+    "interval": 5,
+    "on-click": "~/.local/bin/toggle-hdr.sh",
+  },
   // Dark/Light mode toggle
   "custom/dark-mode": {
     "exec": "~/.local/bin/waybar-dark-mode.sh",

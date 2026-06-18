@@ -229,6 +229,7 @@
 | Quit compositor | `Mod+Shift+Q` | `Mod+Shift+Q` | |
 | Quit (alt) | — | `Ctrl+Alt+Delete` | Niri only |
 | Power off monitors | `Mod+Alt+M` | `Mod+Alt+M` | DPMS off; wake by mouse/key, or press shortcut again |
+| Toggle HDR (10-bit) | `Mod+Alt+H` | — | Desktop only; flips DP-3 between SDR (default) and 10-bit HDR, reverts on reload |
 | Keybinding help (rofi) | `Mod+H` | `Mod+H` | rofi-keybindings |
 | Toggle notification center | `Mod+U` | `Mod+U` | `swaync-client -t` |
 | Toggle DND | `Mod+Alt+U` | `Mod+Alt+U` | `swaync-client -d` |

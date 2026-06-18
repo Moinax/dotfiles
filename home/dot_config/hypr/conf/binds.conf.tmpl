@@ -23,6 +23,9 @@ bind = SUPER SHIFT, P, exec, hyprpicker # Color picker
 bind = SUPER, R, exec, rofi-theme-selector # Theme selector
 bind = SUPER, M, exec, ~/.local/bin/toggle-monitors.sh # Toggle individual monitors on/off
 bind = SUPER ALT, M, exec, ~/.local/bin/toggle-dpms.sh # Toggle monitor DPMS off/on
+{{- if eq .chezmoi.hostname "moinax-desktop" }}
+bind = SUPER ALT, H, exec, ~/.local/bin/toggle-hdr.sh # Toggle 10-bit HDR on DP-3
+{{- end }}
 {{- if .install_ai }}
 bind = SUPER, D, exec, ~/.local/bin/toggle-dictation.sh # Toggle dictation (speech-to-text)
 {{- end }}

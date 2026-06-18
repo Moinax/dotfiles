@@ -95,6 +95,8 @@ tooltip label {
 }
 #custom-dark-mode.light { color: #f9e2af; }
 #custom-dark-mode.dark { color: #b4befe; }
+#custom-hdr.hdr { color: #a6e3a1; }
+#custom-hdr.sdr { color: #6c7086; }
 #custom-exit {
   margin-right: 20px;
 }
