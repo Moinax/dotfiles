@@ -333,7 +333,7 @@ binds {
     Mod+Alt+L hotkey-overlay-title="Lock Screen" { spawn-sh "loginctl lock-session"; }
     Mod+Ctrl+L hotkey-overlay-title="Suspend" { spawn-sh "systemctl suspend"; }
     Mod+Shift+L hotkey-overlay-title="Logout" { spawn-sh "~/.local/bin/compositor-logout.sh"; }
-    Mod+Alt+M { power-off-monitors; }  // wake by moving mouse / pressing a key
+    Mod+Alt+M hotkey-overlay-title="Lock + screen off" { spawn-sh "~/.local/bin/lock-dpms-off.sh"; }  // wake by mouse/key, then unlock
     Mod+H hotkey-overlay-title="Keybinding Help: rofi" { spawn "rofi-keybindings"; }
     Mod+U hotkey-overlay-title="Toggle Notification Center" { spawn-sh "swaync-client -t"; }
     Mod+Alt+U hotkey-overlay-title="Toggle Do Not Disturb" { spawn-sh "swaync-client -d"; }
