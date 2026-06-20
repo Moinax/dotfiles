@@ -14,6 +14,8 @@
 [alias]
 	cleanup = "!sh -c 'git fetch -p && git for-each-ref --format \"%(refname:short) %(upstream:track)\" refs/heads/ | awk \"/\\\\[gone\\\\]/ {print \\$1}\" | xargs -r -n 1 git branch -D; git branch --merged main --format \"%(refname:short)\" | grep -v \"^main$\" | xargs -r -n 1 git branch -d'"
 	fp = push --force-with-lease
+	pr = pull --rebase
+	cm = checkout main
 [init]
 	defaultBranch = main
 [color]
