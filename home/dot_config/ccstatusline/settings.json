@@ -7,9 +7,13 @@
     ],
     [
       { "id": "2", "type": "context-percentage", "color": "hex:FAB387" },
-      { "id": "3", "type": "session-cost", "color": "hex:F9E2AF" },
+      { "id": "3", "type": "session-cost", "color": "hex:F9E2AF" }
+    ],
+    [
       { "id": "u2", "type": "session-usage", "color": "hex:A6E3A1" },
-      { "id": "u3", "type": "weekly-usage", "color": "hex:89B4FA" }
+      { "id": "rt1", "type": "reset-timer", "rawValue": true, "color": "hex:A6E3A1", "metadata": { "compact": "true" } },
+      { "id": "u3", "type": "weekly-usage", "color": "hex:89B4FA" },
+      { "id": "rt2", "type": "weekly-reset-timer", "rawValue": true, "color": "hex:89B4FA", "metadata": { "compact": "true" } }
     ],
     [
       { "id": "6", "type": "git-root-dir", "color": "hex:1E1E2E", "backgroundColor": "hex:F9E2AF" },
@@ -25,10 +29,10 @@
   "globalBold": false,
   "powerline": {
     "enabled": true,
-    "separators": ["\ue0b4", " ", " ", " ", "\ue0b4"],
-    "separatorInvertBackground": [false, false, false, false, false],
-    "startCaps": ["\ue0b6", "", "\ue0b6"],
-    "endCaps": ["\ue0b4", "", "\ue0b4"],
+    "separators": ["", " ", " ", " ", " ", "", ""],
+    "separatorInvertBackground": [false, false, false, false, false, false, false],
+    "startCaps": ["", "", "", ""],
+    "endCaps": ["", "", "", ""],
     "theme": "custom",
     "autoAlign": false
   }
