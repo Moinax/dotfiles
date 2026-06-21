@@ -36,8 +36,8 @@ hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-di
 -- ── 2. Window Management ──────────────────────────────────────────
 hl.bind(mod .. " + Q",       hl.dsp.window.close())                                       -- Close window
 hl.bind(mod .. " + T",       hl.dsp.window.float({ action = "toggle" }))                  -- Toggle floating
-hl.bind(mod .. " + F",       hl.dsp.window.fullscreen({ mode = "maximized" }))            -- Fullscreen (with bar)
-hl.bind(mod .. " + ALT + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))           -- True fullscreen
+hl.bind(mod .. " + F",       hl.dsp.window.fullscreen({ mode = "fullscreen" }))           -- True fullscreen
+hl.bind(mod .. " + ALT + F", hl.dsp.window.fullscreen({ mode = "maximized" }))            -- Fullscreen (with bar)
 hl.bind(mod .. " + P",       hl.dsp.window.pin())                                         -- Pin window
 
 -- ── 3. Focus Navigation ──────────────────────────────────────────

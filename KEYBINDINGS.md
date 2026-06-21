@@ -39,8 +39,8 @@
 |---|---|---|---|
 | Close window | `Mod+Q` | `Mod+Q` | |
 | Toggle floating | `Mod+T` | `Mod+T` | |
-| Fullscreen | `Mod+F` | `Mod+F` | |
-| Maximize | `Mod+Alt+F` | `Mod+Alt+F` | |
+| Fullscreen | `Mod+Alt+F` | `Mod+Alt+F` | |
+| Maximize | `Mod+F` | `Mod+F` | |
 | Pin window | `Mod+P` | — | Hyprland only (sticky across workspaces) |
 | Overview | — | `Mod+Ctrl+O` | Niri only |
 | Center column | — | `Mod+Alt+C` | Niri only |
