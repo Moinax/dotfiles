@@ -11,7 +11,8 @@ tools:
     install: curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
     post_install:
       - fnm install --lts
-      - npm install -g yarn@1 pnpm
+      # hunkdiff provides `hunk`, the git pager configured unconditionally in ~/.gitconfig
+      - npm install -g yarn@1 pnpm hunkdiff
 
   - name: eza
     description: Modern replacement for ls

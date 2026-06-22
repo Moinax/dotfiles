@@ -894,16 +894,21 @@ install_common_tools() {
         # Source fnm for this session
         eval "$(fnm env --use-on-cd --shell bash)"
 
-        # Install Node.js LTS and global packages
+        # Install Node.js LTS
         if command_exists fnm; then
             print_info "Installing Node.js LTS via fnm..."
             fnm install --lts || track_warning "Failed to install Node.js LTS"
             fnm default lts-latest
-            print_info "Installing global npm packages..."
-            npm install -g yarn@1 pnpm || track_warning "Failed to install global npm packages"
         fi
     else
         print_info "fnm is already installed"
+    fi
+
+    # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
+    # hunkdiff provides `hunk`, the git pager configured unconditionally in ~/.gitconfig.
+    if command_exists npm; then
+        print_info "Installing global npm packages..."
+        npm install -g yarn@1 pnpm hunkdiff || track_warning "Failed to install global npm packages"
     fi
     
     # Tools below are packaged for Arch; install from upstream on other distros.
