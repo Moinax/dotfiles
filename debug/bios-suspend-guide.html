@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BIOS — Veille silencieuse & suspend · Z790 AORUS MASTER X</title>
+<style>
+  :root{
+    --base:#eff1f5; --mantle:#e6e9ef; --crust:#dce0e8;
+    --text:#4c4f69; --subtext:#6c6f85; --overlay:#8c8fa1;
+    --blue:#1e66f5; --green:#40a02b; --yellow:#df8e1d; --red:#d20f39;
+    --mauve:#8839ef; --teal:#179299; --peach:#fe640b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--base); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5; padding:28px 22px 60px; max-width:880px; margin:0 auto;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1{font-size:1.5rem; margin:0 0 4px; color:var(--mauve);}
+  .sub{color:var(--subtext); font-size:.92rem; margin:0 0 18px;}
+  h2{font-size:1.18rem; margin:26px 0 10px; padding:8px 12px; border-radius:10px;
+     background:var(--mantle); border-left:5px solid var(--blue); color:var(--blue);}
+  h2.fan{border-color:var(--teal); color:var(--teal);}
+  h2.other{border-color:var(--peach); color:var(--peach);}
+  h2.s3{border-color:var(--red); color:var(--red);}
+  h2.nav{border-color:var(--green); color:var(--green);}
+  .why{background:var(--mantle); border:1px solid var(--crust); border-radius:12px;
+       padding:14px 16px; margin:0 0 8px; font-size:.95rem;}
+  .why b{color:var(--peach);}
+  .path{display:inline-block; font-family:"JetBrains Mono","Fira Code",ui-monospace,monospace;
+        background:var(--crust); color:var(--mauve); padding:3px 8px; border-radius:6px;
+        font-size:.88rem; font-weight:600;}
+  table{width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:.95rem;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--crust); vertical-align:top;}
+  th{color:var(--overlay); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em;}
+  td.opt{font-family:"JetBrains Mono","Fira Code",ui-monospace,monospace; font-weight:600; color:var(--text); white-space:nowrap;}
+  td.val{font-weight:700; color:var(--green); white-space:nowrap;}
+  td.val.note{color:var(--yellow); font-weight:600;}
+  td.cmt{color:var(--subtext); font-size:.88rem;}
+  .star{color:var(--yellow);}
+  ul{margin:6px 0 0; padding-left:20px;}
+  li{margin:3px 0;}
+  code{font-family:"JetBrains Mono","Fira Code",ui-monospace,monospace;
+       background:var(--crust); padding:2px 6px; border-radius:5px; font-size:.85rem; color:var(--teal);}
+  .warn{background:rgba(210,15,57,.08); border:1px solid var(--red);
+        border-radius:10px; padding:10px 14px; margin:10px 0; color:var(--red); font-size:.9rem;}
+  .pill{display:inline-block; background:var(--blue); color:#fff; font-size:.72rem;
+        font-weight:700; padding:2px 8px; border-radius:20px; vertical-align:middle; margin-left:8px;}
+  .foot{margin-top:30px; padding-top:12px; border-top:1px solid var(--crust);
+        color:var(--overlay); font-size:.82rem;}
+</style>
+</head>
+<body>
+
+<h1>BIOS — Veille silencieuse & suspend</h1>
+<p class="sub">Gigabyte Z790 AORUS MASTER X · manuel officiel BIOS Intel série 700 · entrer dans le BIOS : touche <code>Suppr</code> au démarrage, mode <b>Advanced</b> (<code>F2</code> bascule Easy/Advanced)</p>
+
+<div class="why">
+  <b>Pourquoi :</b> sous Linux, le CPU ne dispose que des C-states <code>C1/C2/C3</code> (fallback ACPI) — jamais les états profonds <code>C6/C8/C10</code>. Il ne se met donc jamais en veille profonde, même au repos → il reste chaud → ventilos audibles, éveillé comme en s2idle. <b>Cause quasi certaine : les C-States sont désactivés/capés dans le BIOS.</b> Les réactiver = idle froid + (avec Fan Stop) veille réellement silencieuse, sans dépendre du deep/S3 qui plante.
+</div>
+
+<h2>① C-States — le vrai correctif ventilos <span class="pill">PRIORITAIRE</span></h2>
+<p><span class="path">Tweaker ▸ Advanced CPU Settings ▸ C-States Control</span></p>
+<table>
+  <tr><th>Option (nom exact BIOS)</th><th>Régler sur</th><th>Note</th></tr>
+  <tr><td class="opt">C-States Control</td><td class="val">Enabled</td><td class="cmt">Interrupteur parent — débloque toutes les lignes ci-dessous</td></tr>
+  <tr><td class="opt">CPU Enhanced Halt (C1E)</td><td class="val">Enabled</td><td class="cmt">Baisse fréquence + tension à l'arrêt</td></tr>
+  <tr><td class="opt">C6/C7 State Support</td><td class="val">Enabled</td><td class="cmt">État plus profond que C3</td></tr>
+  <tr><td class="opt">C8 State Support</td><td class="val">Enabled</td><td class="cmt">(ou Auto)</td></tr>
+  <tr><td class="opt">C10 State Support</td><td class="val">Enabled</td><td class="cmt">État le plus profond</td></tr>
+  <tr><td class="opt">Package C State limit</td><td class="val">Auto</td><td class="cmt">(ou C10) — laisse le package descendre profond</td></tr>
+</table>
+<p style="margin:10px 0 4px"><b>Toujours dans <span class="path">Advanced CPU Settings</span></b> (mêmes bénéfices idle/tension) :</p>
+<table>
+  <tr><th>Option</th><th>Régler sur</th><th>Note</th></tr>
+  <tr><td class="opt">Intel(R) Speed Shift Technology</td><td class="val">Enabled</td><td class="cmt">Gestion fine fréquence par le CPU (réactivité + éco)</td></tr>
+  <tr><td class="opt">CPU EIST Function</td><td class="val">Enabled</td><td class="cmt">SpeedStep — baisse tension/fréq selon charge (ou Auto)</td></tr>
+  <tr><td class="opt">Race To Halt (RTH)/Energy Efficient Turbo</td><td class="val note">Auto</td><td class="cmt">Éco d'énergie — laisser Auto/Enabled</td></tr>
+</table>
+
+<h2 class="fan">② Smart Fan 6 — pour que les ventilos s'arrêtent vraiment <span class="pill" style="background:var(--teal)">SILENCE</span></h2>
+<p>Depuis n'importe quel écran BIOS, appuie sur <span class="path">F6</span> (ou barre d'accès rapide ▸ Smart Fan 6). Régler <b>pour chaque ventilo</b> : CPU_FAN, CPU_OPT, SYS_FAN1…5, pompes.</p>
+<table>
+  <tr><th>Option (nom exact BIOS)</th><th>Régler sur</th><th>Note</th></tr>
+  <tr><td class="opt">FAN/PUMP Stop</td><td class="val">Enabled</td><td class="cmt"><b>La clé.</b> Le ventilo s'arrête sous la température limite de la courbe</td></tr>
+  <tr><td class="opt">Fan Speed Control</td><td class="val note">Silent</td><td class="cmt">(ou Normal) — profil calme</td></tr>
+  <tr><td class="opt">FAN/PUMP Mode</td><td class="val note">Slope</td><td class="cmt">Montée linéaire, pas par paliers brusques</td></tr>
+  <tr><td class="opt">Temperature Interval</td><td class="val note">— </td><td class="cmt">Intervalle large = moins de variations de régime</td></tr>
+</table>
+<p style="font-size:.9rem;color:var(--subtext)">Sur la courbe : amène le point de départ (0 RPM / « Stop ») vers <b>~50 °C</b> pour le CPU et le boîtier → repos & veille = ventilos coupés. Pense à <code>TUNE ALL</code> pour appliquer à tous les headers, puis <code>Save Fan Profile</code>.</p>
+
+<h2 class="other">③ Autres réglages liés au suspend — à vérifier / noter</h2>
+<p><span class="path">Settings ▸ Platform Power</span></p>
+<table>
+  <tr><th>Option (nom exact BIOS)</th><th>Conseil</th><th>Note</th></tr>
+  <tr><td class="opt">S3 Save Mode</td><td class="val note">noter sa valeur</td><td class="cmt">Mode d'éco en état S3 — directement lié au deep/S3 qui plante. Photographie sa valeur actuelle.</td></tr>
+  <tr><td class="opt">Power Loading</td><td class="val">Enabled</td><td class="cmt">Évite que le PSU haut de gamme se coupe à très faible charge (idle profond / veille)</td></tr>
+  <tr><td class="opt">PEG ASPM</td><td class="val note">Auto</td><td class="cmt">Éco PCIe (lien GPU). Auto = sûr. Lié à conso idle + stabilité resume.</td></tr>
+  <tr><td class="opt">PCH ASPM / DMI ASPM</td><td class="val note">Auto</td><td class="cmt">Idem côté chipset / lien DMI</td></tr>
+  <tr><td class="opt">Native ASPM</td><td class="val note">Auto</td><td class="cmt">Laisse l'OS/BIOS gérer l'ASPM</td></tr>
+  <tr><td class="opt">RC6 (Render Standby)</td><td class="val">Enabled</td><td class="cmt">Standby du GPU intégré (inoffensif)</td></tr>
+  <tr><td class="opt">ErP</td><td class="val note">à ton choix</td><td class="cmt">Enabled = conso mini en S5 (éteint), mais désactive « Resume by Alarm »</td></tr>
+</table>
+
+<h2 class="s3">④ Si un jour tu veux retenter le deep/S3 — leviers anti-hang</h2>
+<div class="warn">⚠️ Le deep/S3 fige actuellement le PC (LED carte mère figée à <b>03</b>, hard reboot obligatoire). Ne le retente que volontairement, travail sauvegardé. Le faisceau pointe vers un S3 cassé au niveau firmware/plateforme — pas garanti réparable côté OS.</div>
+<p><span class="path">Settings ▸ IO Ports</span> — coupables classiques de hang au resume NVIDIA :</p>
+<table>
+  <tr><th>Option</th><th>Test</th><th>Note</th></tr>
+  <tr><td class="opt">Re-Size BAR Support</td><td class="val note">tester Disabled</td><td class="cmt">ReBAR est un suspect récurrent des hangs resume NVIDIA</td></tr>
+  <tr><td class="opt">Above 4G Decoding</td><td class="val note">tester Disabled</td><td class="cmt">Va de pair avec ReBAR (le couper coûte un peu de perf GPU)</td></tr>
+</table>
+<ul>
+  <li>Vérifie aussi que le <b>BIOS est à jour</b> (actuellement F11) : <span class="path">Save &amp; Exit / Q-Flash</span> — un correctif S3 vient parfois d'une révision firmware.</li>
+  <li>Côté Linux (de mon côté) : passer le driver <code>nvidia-open</code> → <code>nvidia</code> propriétaire permettrait <code>NVreg_EnableGpuFirmware=0</code> (fix S3 classique, impossible sur les modules open). À garder pour plus tard.</li>
+</ul>
+
+<h2 class="nav">⑤ Navigation BIOS & vérif au retour</h2>
+<ul>
+  <li><span class="path">Suppr</span> au boot = entrer · <span class="path">F2</span> = Easy/Advanced · <span class="path">F10</span> = sauver &amp; quitter</li>
+  <li><span class="path">Alt + F</span> = <b>Option Search</b> : tape <code>C State</code>, <code>ASPM</code>, <code>S3</code>… pour sauter direct au réglage (anglais)</li>
+  <li><span class="path">F11</span> = Favoris · <span class="path">Insert</span> sur une option = l'ajouter aux favoris (<span class="star">★</span>)</li>
+  <li><b>Après reboot</b>, je relance le check : <code>cat /sys/devices/system/cpu/cpu0/cpuidle/state*/name</code> doit afficher <code>C6/C8/C10</code> via <code>intel_idle</code> (au lieu des <code>C*_ACPI</code> actuels) → preuve que l'idle profond est actif.</li>
+</ul>
+
+<p class="foot">Sources : manuel BIOS Gigabyte Intel série 700 (download.gigabyte.com) · page produit Z790 AORUS MASTER. Les libellés exacts peuvent varier d'une révision BIOS à l'autre — utilise Option Search (Alt+F) en cas de doute.</p>
+
+</body>
+</html>
