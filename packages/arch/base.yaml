@@ -27,6 +27,7 @@ packages:
     - rsync
     - unzip
     - fontconfig
+    - downgrade  # AUR — roll a package back to a cached/ALA version + offer to pin it via IgnorePkg
 
     # File management
     - yazi
