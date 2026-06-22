@@ -46,7 +46,11 @@ enabled = false                  # Set to true + configure a provider below for 
 
 # ── Text Injection ──────────────────────────────────────────────
 [injection]
-backends = ["wtype", "clipboard"]  # wtype is Wayland-native; clipboard as fallback
+backends = ["wtype", "clipboard"]  # wtype auto-types; clipboard (copy-only) is a fallback.
+                                 # NB: bare /usr/bin/wtype races the virtual-keymap upload
+                                 # on Hyprland and injects number-row garbage ("12345…").
+                                 # Fixed by the ~/.local/bin/wtype wrapper (adds `-s` sleep),
+                                 # which shadows it in the service PATH. Keep that wrapper.
 wtype_timeout = "5s"
 clipboard_timeout = "3s"
 

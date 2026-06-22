@@ -1,0 +1,48 @@
+#!/bin/sh
+# wtype wrapper.
+#
+# Why: on this Hyprland + AZERTY (fr) setup, /usr/bin/wtype's character-by-
+# character typing drops spaces (verified: hyprvoice calls `wtype -- <text>`
+# with spaces, wtype types them out without). Upstream regression (libxkbcommon
+# 1.13.2 / Hyprland 0.55.4 — "it worked before"). So for plain-text typing we
+# inject the text by other means instead of synthesizing each character.
+#
+# Real flag/modifier/stdin calls (`wtype -M ctrl v` for an actual paste,
+# `wtype -` for cliphist) MUST pass straight through, or we'd recurse.
+
+# hyprvoice calls `wtype -- <text>`; drop the leading `--` so $1 becomes text.
+[ "$1" = "--" ] && shift
+
+case "$1" in
+    -* | '')
+        exec /usr/bin/wtype "$@"
+        ;;
+esac
+
+text=$*
+
+# Inspect the focused window once.
+info=$(hyprctl activewindow -j 2>/dev/null)
+class=$(printf '%s' "$info" | jq -r '.class // empty' 2>/dev/null)
+pid=$(printf '%s' "$info"  | jq -r '.pid // empty'  2>/dev/null)
+
+# kitty: paste shortcuts are remapped by the `splits` layout, so use kitty's
+# remote control (allow_remote_control + listen_on unix:/tmp/kitty-{pid}) to
+# inject the text directly into the focused window. No clipboard, no shortcut.
+if [ "$class" = "kitty" ] && [ -S "/tmp/kitty-$pid" ]; then
+    if printf '%s' "$text" | kitty @ --to "unix:/tmp/kitty-$pid" send-text --stdin 2>/dev/null; then
+        exit 0
+    fi
+fi
+
+# Everything else: copy + paste (reliable here — same path as the emoji picker).
+# `-k v` sends the V *key* (not the character, which mistypes under Shift).
+printf '%s' "$text" | wl-copy
+case "$class" in
+    foot | Alacritty | *[Ww]ezterm* | *[Tt]erm* | *[Tt]erminal*)
+        exec /usr/bin/wtype -M ctrl -M shift -k v -m shift -m ctrl
+        ;;
+    *)
+        exec /usr/bin/wtype -M ctrl -k v -m ctrl
+        ;;
+esac
