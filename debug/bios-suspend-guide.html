@@ -97,7 +97,7 @@
   <tr><th>Option (nom exact BIOS)</th><th>Conseil</th><th>Note</th></tr>
   <tr><td class="opt">S3 Save Mode</td><td class="val note">noter sa valeur</td><td class="cmt">Mode d'éco en état S3 — directement lié au deep/S3 qui plante. Photographie sa valeur actuelle.</td></tr>
   <tr><td class="opt">Power Loading</td><td class="val">Enabled</td><td class="cmt">Évite que le PSU haut de gamme se coupe à très faible charge (idle profond / veille)</td></tr>
-  <tr><td class="opt">PEG ASPM</td><td class="val note">Auto</td><td class="cmt">Éco PCIe (lien GPU). Auto = sûr. Lié à conso idle + stabilité resume.</td></tr>
+  <tr><td class="opt">PEG ASPM</td><td class="val">Disabled</td><td class="cmt"><b>⚠ sur cette carte NVIDIA : Disabled.</b> Activé (Auto/L1), le lien GPU ne se ré-entraîne pas au réveil → écrans noirs jusqu'à un modeset forcé (bascule TTY). Coût conso négligeable.</td></tr>
   <tr><td class="opt">PCH ASPM / DMI ASPM</td><td class="val note">Auto</td><td class="cmt">Idem côté chipset / lien DMI</td></tr>
   <tr><td class="opt">Native ASPM</td><td class="val note">Auto</td><td class="cmt">Laisse l'OS/BIOS gérer l'ASPM</td></tr>
   <tr><td class="opt">RC6 (Render Standby)</td><td class="val">Enabled</td><td class="cmt">Standby du GPU intégré (inoffensif)</td></tr>
