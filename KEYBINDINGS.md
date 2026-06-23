@@ -228,7 +228,7 @@
 | Toggle Tailscale VPN | `Mod+Ctrl+N` | `Mod+Ctrl+N` | Connect/disconnect Tailscale |
 | Quit compositor | `Mod+Shift+Q` | `Mod+Shift+Q` | |
 | Quit (alt) | — | `Ctrl+Alt+Delete` | Niri only |
-| Lock + screen off | `Mod+Alt+M` | `Mod+Alt+M` | Locks (swaylock), then powers the screen off; wake by mouse/key, then unlock |
+| Lock + screen off | `Mod+Alt+M` | `Mod+Alt+M` | Locks the session, then powers the screen off; wake by mouse/key, then unlock |
 | Toggle HDR (10-bit) | `Mod+Alt+H` | — | Desktop only; flips DP-3 between SDR (default) and 10-bit HDR, reverts on reload |
 | Keybinding help (rofi) | `Mod+H` | `Mod+H` | rofi-keybindings |
 | Toggle notification center | `Mod+U` | `Mod+U` | `swaync-client -t` |

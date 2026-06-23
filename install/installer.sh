@@ -1408,43 +1408,6 @@ apply_dark_mode_defaults() {
     fi
 }
 
-# Remove legacy NVIDIA systemd suspend services that conflict with kernel suspend notifiers (driver 595+).
-# See the version-dependent suspend comment in setup_nvidia() for why these must be disabled.
-# Idempotent: safe to call even when the services were never installed.
-cleanup_legacy_nvidia_suspend_services() {
-    # Disable the NVIDIA oneshot services (do NOT use --now; they are oneshot/not running)
-    # Only disable, do NOT delete — these unit files are owned by the NVIDIA driver package
-    for svc in nvidia-suspend.service nvidia-resume.service nvidia-hibernate.service; do
-        if systemctl is-enabled "$svc" &>/dev/null; then
-            print_info "Disabling legacy service: $svc (kernel notifiers replace it)"
-            sudo systemctl disable "$svc" 2>/dev/null || true
-        fi
-    done
-
-    # Disable and remove installer-created compositor STOP/CONT services
-    local needs_reload=false
-    for prefix in hyprland niri; do
-        for suffix in suspend resume; do
-            local svc="${prefix}-${suffix}.service"
-            local unit_file="/etc/systemd/system/${svc}"
-            if systemctl is-enabled "$svc" &>/dev/null; then
-                print_info "Disabling legacy service: $svc"
-                sudo systemctl disable "$svc" 2>/dev/null || true
-            fi
-            if [ -f "$unit_file" ]; then
-                print_info "Removing legacy unit file: $unit_file"
-                sudo rm -f "$unit_file"
-                needs_reload=true
-            fi
-        done
-    done
-
-    if [ "$needs_reload" = true ]; then
-        sudo systemctl daemon-reload
-    fi
-    print_success "Legacy NVIDIA suspend services cleaned up"
-}
-
 # Install NVIDIA driver packages (Arch: prebuilt open modules for mainline + LTS)
 # Uses prebuilt (non-DKMS) modules for fast upgrades, plus linux-lts as a fallback
 # kernel with its matching nvidia-open-lts module package.
@@ -1565,11 +1528,7 @@ setup_nvidia() {
     nvidia_major=$(get_nvidia_driver_version) || nvidia_major="unknown"
     print_info "NVIDIA driver version detected: ${nvidia_major}"
 
-    # NVIDIA's kernel suspend notifier path is not reliable on this desktop:
-    # logs showed hard resets after "PM: suspend entry (deep)" when the legacy
-    # services were removed, while the service-based path resumed correctly.
-    # Keep the explicit systemd suspend/resume path even on driver 595+.
-    print_info "Using NVIDIA systemd suspend/resume services"
+    print_info "Using NVIDIA's documented systemd suspend/resume integration"
 
     # Enable NVIDIA suspend/resume/hibernate services for GPU memory preservation.
     # Use enable without --now: these are oneshot services meant to run only during actual suspend/resume.
@@ -1586,22 +1545,20 @@ setup_nvidia() {
         fi
     done
 
-    # Install compositor STOP/CONT services to prevent GPU/compositor deadlocks during suspend.
-    if group_selected hyprland; then
-        install_compositor_suspend_services "Hyprland" "hyprland"
-    fi
-    if group_selected niri; then
-        install_compositor_suspend_services "niri" "niri"
-    fi
-
     # --- Common configuration (required regardless of driver version) ---
 
-    # Configure modprobe for NVIDIA suspend/resume. Use a late filename so the
-    # desktop-local suspend choice overrides nvidia-utils' package default in
-    # /usr/lib/modprobe.d/nvidia-sleep.conf.
-    local modprobe_conf="/etc/modprobe.d/zz-nvidia-local.conf"
-    local nvidia_modprobe_options="NVreg_PreserveVideoMemoryAllocations=1 NVreg_UseKernelSuspendNotifiers=0"
+    local modprobe_conf="/etc/modprobe.d/nvidia.conf"
+    local nvidia_modprobe_options="NVreg_PreserveVideoMemoryAllocations=1"
     local modprobe_changed=false
+
+    # Older local experiments disabled the package default notifier path. Current
+    # nvidia-utils ships nvidia-sleep.conf with the supported defaults, including
+    # NVreg_UseKernelSuspendNotifiers=1 and NVreg_TemporaryFilePath=/var/tmp.
+    while IFS= read -r stale_conf; do
+        print_info "Removing stale NVIDIA suspend override from $stale_conf"
+        sudo sed -i 's/[[:space:]]*NVreg_UseKernelSuspendNotifiers=0//g' "$stale_conf"
+        modprobe_changed=true
+    done < <(grep -rl 'NVreg_UseKernelSuspendNotifiers=0' /etc/modprobe.d/ 2>/dev/null || true)
 
     if ! grep -qs '^options[[:space:]]\+nvidia[[:space:]]' "$modprobe_conf"; then
         print_info "Configuring NVIDIA modprobe options..."
@@ -1627,46 +1584,13 @@ setup_nvidia() {
             print_success "NVIDIA modprobe options already configured"
         fi
     fi
-    if ! grep -rqs '^options[[:space:]]\+nvidia-drm.*modeset=1' /etc/modprobe.d/; then
-        echo "options nvidia-drm modeset=1" | sudo tee -a "$modprobe_conf" > /dev/null
+    if ! grep -rEqs '^options[[:space:]]+nvidia[-_]drm.*modeset=1' /etc/modprobe.d/; then
+        echo "options nvidia_drm modeset=1" | sudo tee -a "$modprobe_conf" > /dev/null
         modprobe_changed=true
-    fi
-    if ! grep -rqs '^options[[:space:]]\+nvidia-drm.*fbdev=1' /etc/modprobe.d/; then
-        echo "options nvidia-drm fbdev=1" | sudo tee -a "$modprobe_conf" > /dev/null
-        modprobe_changed=true
-    fi
-
-    # Disable vblank semaphore control to prevent GPU-accelerated app hangs after suspend.
-    # Driver 595 no longer accepts this parameter, so remove stale copies on newer branches.
-    if [ "$nvidia_major" != "unknown" ] && [ "$nvidia_major" -ge 595 ] 2>/dev/null; then
-        if grep -qs 'vblank_sem_control=0' "$modprobe_conf"; then
-            print_info "Removing obsolete NVIDIA vblank_sem_control option"
-            sudo sed -i '/vblank_sem_control=0/d' "$modprobe_conf"
-            modprobe_changed=true
-            print_success "Obsolete NVIDIA vblank_sem_control option removed from $modprobe_conf"
-        fi
-    elif ! grep -rqs 'vblank_sem_control=0' /etc/modprobe.d/; then
-        print_info "Adding vblank_sem_control=0 to prevent post-suspend rendering hangs..."
-        echo "options nvidia_modeset vblank_sem_control=0" | sudo tee -a "$modprobe_conf" > /dev/null
-        modprobe_changed=true
-        print_success "vblank_sem_control=0 added to $modprobe_conf"
     fi
 
     # Configure GRUB kernel parameters for NVIDIA + proper suspend
     configure_nvidia_kernel_params
-
-    # Blacklist spd5118 DDR5 temp sensor — causes cascading resume failures.
-    # The module enters a broken state after the first successful resume (error -6 / ENXIO),
-    # then poisons subsequent resume cycles causing NVIDIA GSP heartbeat timeouts (no display).
-    # First resume works, second resume fails. Do NOT remove this blacklist.
-    if ! grep -rqs 'blacklist spd5118' /etc/modprobe.d/; then
-        print_info "Blacklisting spd5118 module (DDR5 temp sensor — causes S3 resume failures)..."
-        echo "blacklist spd5118" | sudo tee /etc/modprobe.d/blacklist-spd5118.conf > /dev/null
-        modprobe_changed=true
-        print_success "spd5118 module blacklisted"
-    else
-        print_success "spd5118 module already blacklisted"
-    fi
 
     if [ "$modprobe_changed" = true ] && command -v mkinitcpio &>/dev/null; then
         print_info "Rebuilding initramfs so early-loaded NVIDIA modules use updated modprobe options..."
@@ -1681,8 +1605,8 @@ setup_nvidia() {
 }
 
 # Configure kernel parameters in GRUB for NVIDIA suspend/resume support
-# Ensures: nvidia-drm.modeset=1, nvidia-drm.fbdev=1,
-#          nvidia.NVreg_PreserveVideoMemoryAllocations=1, mem_sleep_default=s2idle
+# Ensures the documented NVIDIA Wayland/suspend parameters are present without
+# forcing a platform sleep mode.
 # Idempotent: only modifies GRUB and regenerates config when changes are needed
 configure_nvidia_kernel_params() {
     local grub_default="/etc/default/grub"
@@ -1705,17 +1629,19 @@ configure_nvidia_kernel_params() {
         fi
     }
 
-    # S3/deep currently hangs this desktop at "PM: suspend entry (deep)".
-    # Prefer s2idle until we revisit the kernel/firmware/NVIDIA regression.
-    if echo "$current_cmdline" | grep -q 'mem_sleep_default=deep'; then
-        current_cmdline=$(echo "$current_cmdline" | sed 's/mem_sleep_default=deep//g')
+    # Leave the kernel/firmware to choose the default sleep state. If a platform
+    # needs s2idle or deep, choose it outside the dotfiles baseline.
+    if echo "$current_cmdline" | grep -q 'mem_sleep_default='; then
+        current_cmdline=$(echo "$current_cmdline" | sed 's/mem_sleep_default=[^[:space:]]*//g')
+        updated=true
+    fi
+    if echo "$current_cmdline" | grep -qwF "nvidia-drm.fbdev=1"; then
+        current_cmdline=$(echo "$current_cmdline" | sed 's/nvidia-drm\.fbdev=1//g')
         updated=true
     fi
 
     ensure_kparam "nvidia-drm.modeset=1"
-    ensure_kparam "nvidia-drm.fbdev=1"
     ensure_kparam "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
-    ensure_kparam "mem_sleep_default=s2idle"
 
     if [ "$updated" = true ]; then
         # Collapse multiple spaces and trim
@@ -1730,67 +1656,6 @@ configure_nvidia_kernel_params() {
     else
         print_success "GRUB kernel parameters already configured"
     fi
-}
-
-# Install STOP/CONT systemd services for a Wayland compositor
-# $1: process name to signal (e.g. "Hyprland", "niri")
-# $2: service name prefix (e.g. "hyprland", "niri")
-install_compositor_suspend_services() {
-    local process_name="$1"
-    local service_prefix="$2"
-    local suspend_svc="/etc/systemd/system/${service_prefix}-suspend.service"
-    local resume_svc="/etc/systemd/system/${service_prefix}-resume.service"
-
-    if [ -f "$suspend_svc" ] && [ -f "$resume_svc" ]; then
-        print_info "${process_name} suspend/resume services already installed"
-        for svc in "${service_prefix}-suspend.service" "${service_prefix}-resume.service"; do
-            if ! systemctl is-enabled "$svc" &>/dev/null; then
-                if ! sudo systemctl enable "$svc"; then
-                    print_warning "Failed to enable $svc"
-                fi
-            fi
-        done
-        return 0
-    fi
-
-    print_info "Installing ${process_name} suspend/resume services..."
-
-    sudo tee "$suspend_svc" > /dev/null << EOF
-[Unit]
-Description=Suspend ${process_name} before NVIDIA driver suspends
-Before=nvidia-suspend.service
-Before=nvidia-hibernate.service
-
-[Service]
-Type=oneshot
-ExecStart=-/usr/bin/pkill -STOP -x ${process_name}
-
-[Install]
-WantedBy=systemd-suspend.service
-WantedBy=systemd-hibernate.service
-WantedBy=systemd-suspend-then-hibernate.service
-EOF
-
-    sudo tee "$resume_svc" > /dev/null << EOF
-[Unit]
-Description=Resume ${process_name} after NVIDIA driver resumes
-After=nvidia-resume.service
-
-[Service]
-Type=oneshot
-ExecStart=-/usr/bin/pkill -CONT -x ${process_name}
-
-[Install]
-WantedBy=systemd-suspend.service
-WantedBy=systemd-hibernate.service
-WantedBy=systemd-suspend-then-hibernate.service
-EOF
-
-    # Use enable without --now: these are oneshot services that should only run during actual suspend/resume
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${service_prefix}-suspend.service" 2>/dev/null
-    sudo systemctl enable "${service_prefix}-resume.service" 2>/dev/null
-    print_success "${process_name} suspend/resume services installed"
 }
 
 # Enable services
