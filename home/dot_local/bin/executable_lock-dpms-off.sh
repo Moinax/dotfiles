@@ -22,9 +22,20 @@ screen_off() {
     fi
 }
 
-# Wait up to ~3s for the locker to appear before blanking.
+# Settle delay before blanking — DO NOT remove.
+#
+# aquamarine drops a DPMS-off atomic commit that lands while a page-flip is still
+# pending ("drm: Cannot commit when a page-flip is awaiting"), so blanking the
+# instant the locker's PID appears races its first paint and silently no-ops —
+# the screen stays lit and you only get a lock. hypridle dodges this with a 30s
+# gap between lock (300s) and DPMS-off (330s); we wait for hyprlock to go static.
+# See memory: project_dpms_off_dp_link_dead.
+SETTLE_SECS=2
+
+# Wait up to ~3s for the locker to appear, then let it finish painting before blanking.
 for ((i = 0; i < 30; i++)); do
     if pidof hyprlock swaylock >/dev/null 2>&1; then
+        sleep "$SETTLE_SECS"
         screen_off
         exit 0
     fi
