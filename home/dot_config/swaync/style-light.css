@@ -368,7 +368,6 @@ scrollbar trough {
   margin: 4px 0;
   border-radius: var(--border-radius);
   border: 1px solid var(--cc-border);
-  overflow: hidden;
 }
 
 .widget-mpris .widget-mpris-player .mpris-background {
