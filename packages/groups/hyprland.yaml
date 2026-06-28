@@ -25,7 +25,8 @@ descriptions:
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
   hyprpaper: Wallpaper manager for Hyprland (kept as fallback)
-  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
+  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions [Arch]
+  swww: Animated wallpaper daemon (pre-rename name still shipped by Fedora copr) [Fedora]
   hyprpicker: Color picker for Hyprland
   polkit-kde-agent: Polkit authentication agent (KDE)
   hyprshot: Screenshot tool for Hyprland
@@ -118,6 +119,7 @@ packages:
     - hypridle
     - hyprlock
     - hyprpaper
+    - swww  # animated wallpaper daemon (Arch ships it as awww; copr still ships swww)
     - hyprpicker
     - polkit-kde
     - hyprshot

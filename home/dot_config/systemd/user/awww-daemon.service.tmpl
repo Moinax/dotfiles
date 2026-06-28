@@ -1,5 +1,6 @@
+{{- $wp := ternary "swww" "awww" (eq .chezmoi.osRelease.id "fedora") -}}
 [Unit]
-Description=awww wallpaper daemon (renamed swww — animated transitions, IPC)
+Description={{ $wp }} wallpaper daemon (animated transitions, IPC)
 Documentation=https://codeberg.org/LGFae/awww
 PartOf=graphical-session.target
 After=graphical-session.target
@@ -7,12 +8,13 @@ After=graphical-session.target
 # both gate on session state that races under uwsm and silently drops the unit
 # at session start (no retry). PartOf= still stops it on logout; Restart= +
 # StartLimitIntervalSec=0 self-heal if it starts before the wayland socket is up.
+# Binary differs by distro: Arch ships awww (renamed swww), Fedora's copr still ships swww.
 StartLimitIntervalSec=0
 
 [Service]
 Slice=background-graphical.slice
 Type=exec
-ExecStart=/usr/bin/awww-daemon
+ExecStart=/usr/bin/{{ $wp }}-daemon
 Restart=on-failure
 RestartSec=2
 
