@@ -13,10 +13,12 @@ monitor=DP-3,3440x1440@174.96,0x0,1
 monitor=DP-1,2560x1440,3440x-500,1,transform,1
 {{- else if eq .chezmoi.hostname "moinax-laptop" }}
 # Internal laptop panel (eDP-1): 3840x2400 4K.
-# scale=1.75 → Hyprland snaps to ~1.667 (closest scale giving integer logical
-# width: 3840/1.667 = 2304). Niri uses 1.75 literally; tiny visual delta
-# between compositors is acceptable.
-monitor=eDP-1,preferred,auto,1.75
+# Hyprland rejects scale=1.75 ("Invalid scale passed to monitor, 1.75 found
+# suggestion 1.6666666") because 3840/1.75 isn't an integer number of logical
+# pixels. Use Hyprland's own suggestion, 1.6666666 → 3840/1.6666666 = 2304
+# logical width, which applies cleanly with no reload warning. Niri takes 1.75
+# literally in its own config; the tiny visual delta between compositors is fine.
+monitor=eDP-1,preferred,auto,1.6666666
 # Fallback for any external display plugged into the laptop.
 monitor=,preferred,auto,1
 {{- else }}
