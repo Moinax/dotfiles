@@ -80,14 +80,14 @@ update_vibewatch() {
         return 0
     fi
 
-    local local_sha
-    if spin_capture local_sha "Checking vibewatch..." \
-        bash "$SCRIPT_DIR/tools/vibewatch-check-current.sh" --print-sha; then
-        print_info "vibewatch already up to date (${local_sha:-unknown})"
+    local local_ver
+    if spin_capture local_ver "Checking vibewatch..." \
+        bash "$SCRIPT_DIR/tools/vibewatch-check-current.sh" --print-version; then
+        print_info "vibewatch already up to date (${local_ver:-unknown})"
         return 0
     fi
 
-    print_info "Refreshing vibewatch (from ${local_sha:-unknown})..."
+    print_info "Refreshing vibewatch (from ${local_ver:-unknown})..."
     if ! curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh; then
         print_warning "vibewatch refresh failed (system update already applied)"
         return 0
