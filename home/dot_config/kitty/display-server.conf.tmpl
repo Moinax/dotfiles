@@ -1,6 +1,2 @@
-# Rendered per-distro by chezmoi from display-server.conf.tmpl — see kitty.conf.
-{{ if eq .chezmoi.osRelease.id "fedora" -}}
+# Rendered by chezmoi from display-server.conf.tmpl — see kitty.conf.
 linux_display_server wayland
-{{- else -}}
-linux_display_server x11
-{{- end }}
