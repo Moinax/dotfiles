@@ -5,7 +5,7 @@ fi
 
 # Create/switch worktree, then launch a kitty dev environment in it.
 # Stays a function (not a script) because `wt switch` requires shell integration.
-#   -n <name>  override the kitty title / agent session name
+#   -n <name>  append " - <name>" after the "<project>.<branch>" title
 #   -s         auto-run `/start <branch>` in the agent pane on launch (claude only)
 #   -p <prov>  AI agent provider: claude (default), codex, opencode
 wtstart() {
@@ -29,6 +29,16 @@ wtstart() {
   local branch="$1"
   local is_new=false
   local orig_dir="$PWD"
+
+  # Project name = main repo dir name (resolved before switching; works from the
+  # repo root or an existing worktree). Used to prefix the title as "<project>.<branch>".
+  local git_common project
+  git_common="$(git rev-parse --git-common-dir 2>/dev/null)"
+  if [[ -n "$git_common" ]]; then
+    project="$(basename "$(cd "$(dirname "$git_common")" && pwd)")"
+  else
+    project="$(basename "$orig_dir")"
+  fi
 
   if [[ -z "$branch" ]]; then
     wt switch || return 1
@@ -54,7 +64,9 @@ wtstart() {
   fi
 
   local resolved_branch="${branch:-$(git branch --show-current)}"
-  local name="${name_override:-$resolved_branch}"
+  # Always lead with "<project>.<branch>"; -n appends " - <name>" after it.
+  local name="$project.$resolved_branch"
+  [[ -n "$name_override" ]] && name="$name - $name_override"
   local dir="$PWD"
 
   # A non-empty prompt is auto-submitted to the agent on launch; -s uses that to
