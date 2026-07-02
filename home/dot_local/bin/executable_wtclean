@@ -14,6 +14,18 @@
 #     or that has gained new commits since its PR was merged.
 set -euo pipefail
 
+# Self-heal stale worktrees: if a worktree's directory has vanished (e.g. the
+# repo or a parent folder was moved/deleted), git flags it as "prunable" with
+# no main_state, so the merge filters below skip it entirely. Prune those admin
+# records first — it only drops registrations whose dir is already gone and
+# leaves the branches intact.
+pruned=$(git worktree prune -v 2>/dev/null || true)
+if [[ -n "$pruned" ]]; then
+  echo "Pruned stale worktree records (directory no longer exists):"
+  printf '%s\n' "$pruned" | sed 's/^Removing worktrees\// - /'
+  echo
+fi
+
 json=$(wt list --format=json 2>/dev/null || true)
 
 # Branches whose merge is visible in the commit graph — no GitHub needed.
