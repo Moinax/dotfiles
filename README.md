@@ -155,10 +155,7 @@ basis; non-Arch distros are rejected by the installer.
 
 ## Manual Chezmoi Usage
 
-If you previously used GNU Stow, this is the main behavior change to keep in mind:
-
-- **Stow mental model**: repo files are symlinked into `$HOME`, so editing the repo is "live" immediately.
-- **Chezmoi mental model**: repo files are the **source state** and your home directory is the **target state**. Changes are applied when you run `chezmoi apply` (or related commands).
+The key mental model: repo files are the **source state** and your home directory is the **target state**. Editing the repo is not "live" — changes are applied when you run `chezmoi apply` (or related commands).
 
 ### First-time setup
 

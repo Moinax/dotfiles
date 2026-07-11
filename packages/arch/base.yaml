@@ -12,7 +12,6 @@ packages:
 
     # Core utilities
     - git
-    - stow
     - bat
     - eza
     - fd

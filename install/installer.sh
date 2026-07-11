@@ -915,53 +915,10 @@ install_common_tools() {
     print_success "Common tools installed"
 }
 
-# Clean up old stow symlinks before applying chezmoi
-cleanup_stow_symlinks() {
-    print_info "Cleaning up old symlinks..."
-    
-    local stow_patterns=(
-        "$HOME/.zshrc"
-        "$HOME/.gitconfig"
-        "$HOME/Wallpapers"
-        "$HOME/completion-for-pnpm.bash"
-        "$HOME/.config/hypr"
-        "$HOME/.config/waybar"
-        "$HOME/.config/rofi"
-        "$HOME/.config/kitty"
-        "$HOME/.config/nvim"
-        "$HOME/.config/swaync"
-        "$HOME/.local/share/rofi/themes"
-        "$HOME/.cursor/argv.json"
-    )
-    
-    local removed_count=0
-    for path in "${stow_patterns[@]}"; do
-        if [ -L "$path" ]; then
-            if rm -f "$path" 2>/dev/null || sudo rm -f "$path"; then
-                removed_count=$((removed_count + 1))
-            else
-                print_warning "Could not remove symlink: $path"
-            fi
-        fi
-    done
-    
-    # Clean up broken symlinks in .cursor/extensions (from old stow setup)
-    if [ -d "$HOME/.cursor/extensions" ]; then
-        find "$HOME/.cursor/extensions" -maxdepth 1 -type l ! -exec test -e {} \; -delete 2>/dev/null
-    fi
-    
-    if [ $removed_count -gt 0 ]; then
-        print_info "Removed $removed_count old symlinks"
-    fi
-}
-
 # Setup chezmoi and apply dotfiles
 setup_dotfiles() {
     print_header "Setting Up Dotfiles"
-    
-    # Clean up old stow symlinks first
-    cleanup_stow_symlinks
-    
+
     # Warn if running inside Hyprland session
     if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
         print_info "Running inside Hyprland session"
