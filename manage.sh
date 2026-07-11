@@ -26,7 +26,6 @@ Commands:
   whisper     Update whisper model for hyprvoice dictation
   setup       Run full installer (bootstrap + interactive setup)
   update      Update system packages and refresh vibewatch from source
-  grub-theme  Manage GRUB bootloader themes
   gaming      Gaming helpers (HDR launch string for Steam)
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
@@ -358,10 +357,6 @@ do_apps() {
     "$SCRIPT_DIR/tools/manage-external-apps.sh" "$@"
 }
 
-do_grub_theme() {
-    "$SCRIPT_DIR/tools/manage-grub-theme.sh" "$@"
-}
-
 do_gaming() {
     # Only HDR-launch for now; dispatch on subcommand so it can grow later.
     case "${1:-hdr-launch}" in
@@ -413,9 +408,6 @@ do_menu() {
         if command_exists hyprvoice; then
             options+=("Update whisper model")
         fi
-        if [ -f /etc/default/grub ]; then
-            options+=("GRUB theme")
-        fi
         if hdr_monitor_available; then
             options+=("Gaming HDR launch")
         fi
@@ -434,7 +426,6 @@ do_menu() {
             "Cursor extensions")       do_cursor || true ;;
             "Reconfigure flags")       do_reconfig || true ;;
             "Update whisper model")    do_whisper || true ;;
-            "GRUB theme")              do_grub_theme || true ;;
             "Gaming HDR launch")       do_gaming || true ;;
             "Update system")           do_update || true ;;
             "Exit")                    break ;;
@@ -452,7 +443,6 @@ case "${1:-}" in
     packages)   shift; do_packages "$@" ;;
     cursor)     shift; do_cursor "$@" ;;
     apps)       shift; do_apps "$@" ;;
-    grub-theme) shift; do_grub_theme "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
     lazy-lock)  do_lazy_lock ;;
     help|--help|-h) usage ;;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Toggle speech-to-text dictation via hyprvoice
-# Bound to Mod+D in both Hyprland and Niri
+# Bound to Mod+D in Hyprland
 
 if ! command -v hyprvoice &>/dev/null; then
     notify-send -u critical "Dictation" "hyprvoice is not installed"

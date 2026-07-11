@@ -16,8 +16,7 @@ monitor=DP-1,2560x1440,3440x-500,1,transform,1
 # Hyprland rejects scale=1.75 ("Invalid scale passed to monitor, 1.75 found
 # suggestion 1.6666666") because 3840/1.75 isn't an integer number of logical
 # pixels. Use Hyprland's own suggestion, 1.6666666 → 3840/1.6666666 = 2304
-# logical width, which applies cleanly with no reload warning. Niri takes 1.75
-# literally in its own config; the tiny visual delta between compositors is fine.
+# logical width, which applies cleanly with no reload warning.
 monitor=eDP-1,preferred,auto,1.6666666
 # Fallback for any external display plugged into the laptop.
 monitor=,preferred,auto,1

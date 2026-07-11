@@ -12,13 +12,11 @@ LICENSE
 .config/hypr/hyprland.lua
 .config/hypr/hypridle.conf
 .config/hypr/hyprpaper.conf
+.config/hypr/hyprlock.conf
 .config/hypr/conf
 .config/hypr/conf/**
 .config/hypr/scripts
 .config/hypr/scripts/**
-{{- end }}
-{{- if and (not .install_hyprland) (not .install_niri) }}
-.config/hypr/hyprlock.conf
 {{- end }}
 
 # Hyprland 0.55 switched configuration from hyprlang (.conf) to Lua (.lua).
@@ -86,21 +84,10 @@ LICENSE
 {{-   end }}
 {{- end }}
 
-# Ignore Niri configs if not selected
-{{- if not .install_niri }}
-.config/niri
-.config/niri/**
-.config/swayidle
-.config/swayidle/**
-.local/bin/swayidle-resume-reset.sh
-{{- end }}
-{{- if and (not .install_hyprland) (not .install_niri) }}
+# Ignore Wayland desktop components if Hyprland is not selected
+{{- if not .install_hyprland }}
 .config/xdg-desktop-portal
 .config/xdg-desktop-portal/**
-{{- end }}
-
-# Ignore shared Wayland desktop components if neither compositor is selected
-{{- if and (not .install_hyprland) (not .install_niri) }}
 .config/waybar
 .config/waybar/**
 .config/rofi

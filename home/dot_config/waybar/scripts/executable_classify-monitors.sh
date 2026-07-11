@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-COMPOSITOR="${1:?compositor arg required: hyprland or niri}"
+COMPOSITOR="${1:?compositor arg required: hyprland}"
 
 case "$COMPOSITOR" in
   hyprland)
@@ -15,20 +15,8 @@ case "$COMPOSITOR" in
       { wide:   [$active[] | select((eff) >= 1920) | .name],
         narrow: [$active[] | select((eff) <  1920) | .name] }'
     ;;
-  niri)
-    # niri's `logical` rect is already post-scale and post-rotation, so we use
-    # it directly. `current_mode` is an integer index into `modes`, not an
-    # object — don't try to deref fields on it.
-    niri msg -j outputs | jq -c '
-      [to_entries[] | select(.value.logical != null) | {
-        name: .key,
-        eff: .value.logical.width
-      }] |
-      { wide:   [.[] | select(.eff >= 1920) | .name],
-        narrow: [.[] | select(.eff <  1920) | .name] }'
-    ;;
   *)
-    echo "unknown compositor: $COMPOSITOR (expected hyprland or niri)" >&2
+    echo "unknown compositor: $COMPOSITOR (expected hyprland)" >&2
     exit 2
     ;;
 esac

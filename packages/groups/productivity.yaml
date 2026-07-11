@@ -23,7 +23,6 @@ descriptions:
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
   snapper: BTRFS snapshot manager
   snap-pac: Auto-snapshot on pacman upgrades
-  grub-btrfs: GRUB entries for BTRFS snapshots
   slack-desktop: Team communication app (AUR)
   telegram-desktop: Telegram messaging app
   bitwarden: Bitwarden password manager desktop app
@@ -49,10 +48,10 @@ packages:
     - okular
     - ark
 
-    # Backup and snapshots
+    # Backup and snapshots (boot-entry sync for snapshots is handled by
+    # CachyOS's limine-snapper-sync)
     - snapper
     - snap-pac
-    - grub-btrfs
 
     # Communication
     - slack-desktop  # AUR

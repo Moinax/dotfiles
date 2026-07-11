@@ -43,10 +43,6 @@
       "state": "transient",
       "summary": "^Hyprpaper$"
     },
-    "niri-status": {
-      "state": "transient",
-      "summary": "^Niri$"
-    },
     "rofi-info": {
       "state": "transient",
       "summary": "^Rofi$"

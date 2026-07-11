@@ -1,6 +1,6 @@
 # Loaded by uwsm's prepare-env.sh after it sets compositor-specific defaults.
 # We override XDG_MENU_PREFIX here (rather than only in environment.d) because
-# uwsm hardcodes XDG_MENU_PREFIX=<compositor>- (e.g. hyprland-, niri-) in
+# uwsm hardcodes XDG_MENU_PREFIX=<compositor>- (e.g. hyprland-) in
 # prepare-env.sh and exports it to the systemd user manager, clobbering
 # whatever environment.d had loaded at PAM login.
 #

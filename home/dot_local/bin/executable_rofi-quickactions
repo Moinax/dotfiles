@@ -30,17 +30,9 @@ else
         *"Lock Screen"*)
             loginctl lock-session ;;
         *"Reload Waybar"*)
-            if is_niri; then
-                killall -9 waybar 2>/dev/null; ~/.config/waybar/launch-waybar.sh &
-            else
-                ~/.config/hypr/scripts/reload-waybar.sh
-            fi ;;
+            ~/.config/hypr/scripts/reload-waybar.sh ;;
         *"Reload Compositor"*)
-            if is_niri; then
-                niri msg action load-config-file && notify-send -u low 'Niri' 'Config reloaded'
-            else
-                ~/.config/hypr/scripts/reload-hyprland.sh
-            fi ;;
+            ~/.config/hypr/scripts/reload-hyprland.sh ;;
         *"Open File Manager"*)
             dolphin & ;;
         *"Open Terminal"*)

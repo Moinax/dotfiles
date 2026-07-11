@@ -42,7 +42,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # not the `chpwd_functions+=(__zoxide_hook)` line from `zoxide init`, so the
 # doctor sees a missing hook on every command. Zoxide still works fine.
 export _ZO_DOCTOR=0
-{{- if or .install_hyprland .install_niri }}
+{{- if .install_hyprland }}
 # Rofi scripts
 export PATH="$HOME/.config/rofi/scripts:$PATH"
 {{- end }}

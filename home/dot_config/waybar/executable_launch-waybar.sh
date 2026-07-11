@@ -6,10 +6,9 @@
 
 if is_hyprland; then
     COMPOSITOR="hyprland"
-elif is_niri; then
-    COMPOSITOR="niri"
 else
-    COMPOSITOR="niri"
+    echo "Error: no supported compositor detected (Hyprland expected)" >&2
+    exit 1
 fi
 
 # kded6 StatusNotifierWatcher is required for system tray on standalone WMs.

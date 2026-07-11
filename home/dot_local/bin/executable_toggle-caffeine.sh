@@ -2,12 +2,8 @@
 
 # Toggle caffeine mode: prevent the session from going idle (lock/dpms/suspend).
 #
-# Strategy differs per compositor:
-#   - Hyprland: start a wl_surface-backed idle inhibitor; Hyprland honors it
-#     even when the surface is unmapped, so hypridle stops receiving idle events.
-#   - Niri: follows the idle-inhibit spec strictly and ignores inhibitors on
-#     unmapped surfaces, so the same trick is silently ineffective. Instead,
-#     stop swayidle while caffeine is on and respawn it when turning off.
+# Hyprland: start a wl_surface-backed idle inhibitor; Hyprland honors it
+# even when the surface is unmapped, so hypridle stops receiving idle events.
 
 . "$HOME/.local/lib/compositor.sh"
 
@@ -31,14 +27,6 @@ if is_hyprland; then
     else
         nohup "$INHIBITOR" &>/dev/null & disown
         turn_on
-    fi
-elif is_niri; then
-    if pgrep -x swayidle >/dev/null; then
-        pkill -x swayidle || true
-        turn_on
-    else
-        nohup swayidle -w &>/dev/null & disown
-        turn_off
     fi
 else
     notify-send -u critical "Caffeine" "Unsupported compositor: ${XDG_CURRENT_DESKTOP:-unknown}" || true

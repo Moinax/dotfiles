@@ -14,12 +14,7 @@ set -euo pipefail
 loginctl lock-session
 
 screen_off() {
-    # Niri uses its own action; Hyprland uses the documented DPMS dispatcher.
-    if [ -n "${NIRI_SOCKET:-}" ]; then
-        niri msg action power-off-monitors
-    else
-        hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })'
-    fi
+    hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })'
 }
 
 # Settle delay before blanking — DO NOT remove.
@@ -34,7 +29,7 @@ SETTLE_SECS=2
 
 # Wait up to ~3s for the locker to appear, then let it finish painting before blanking.
 for ((i = 0; i < 30; i++)); do
-    if pidof hyprlock swaylock >/dev/null 2>&1; then
+    if pidof hyprlock >/dev/null 2>&1; then
         sleep "$SETTLE_SECS"
         screen_off
         exit 0

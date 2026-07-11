@@ -1,5 +1,5 @@
 #!/bin/bash
-# Toggle connected monitors on/off via rofi. Supports Hyprland and Niri.
+# Toggle connected monitors on/off via rofi (Hyprland).
 # Bound to SUPER+M / Mod+M.
 #
 # Single-select: each invocation toggles exactly one monitor. The menu
@@ -20,32 +20,13 @@ abort() {
 
 . "$HOME/.local/lib/compositor.sh"
 
-if is_hyprland; then
-    COMPOSITOR=hyprland
-elif is_niri; then
-    COMPOSITOR=niri
-else
-    abort "Unsupported compositor: ${XDG_CURRENT_DESKTOP:-unknown}"
-fi
+is_hyprland || abort "Unsupported compositor: ${XDG_CURRENT_DESKTOP:-unknown}"
 
 command -v rofi >/dev/null || abort "rofi not found"
 
 # Emit tab-separated rows: <name>\t<enabled 0|1>\t<label>
 query_outputs() {
-    if [[ "$COMPOSITOR" == "niri" ]]; then
-        niri msg --json outputs | jq -r '
-            to_entries
-            | sort_by(.key)
-            | .[]
-            | [
-                .key,
-                (if .value.current_mode == null then "0" else "1" end),
-                ((.value.make // "") + " " + (.value.model // "") | ltrimstr(" ") | rtrimstr(" "))
-              ]
-            | @tsv
-        '
-    else
-        hyprctl -j monitors all | jq -r '
+    hyprctl -j monitors all | jq -r '
             sort_by(.name)
             | .[]
             | [
@@ -55,7 +36,6 @@ query_outputs() {
               ]
             | @tsv
         '
-    fi
 }
 
 mapfile -t rows < <(query_outputs)
@@ -103,17 +83,9 @@ hypr_spec_for() {
 }
 
 if [[ "${state_of[$name]}" == "1" ]]; then
-    if [[ "$COMPOSITOR" == "niri" ]]; then
-        niri msg output "$name" off >/dev/null || abort "Failed to disable $name"
-    else
-        hyprctl keyword monitor "${name},disable" >/dev/null || abort "Failed to disable $name"
-    fi
+    hyprctl keyword monitor "${name},disable" >/dev/null || abort "Failed to disable $name"
     notify "Disabled $name"
 else
-    if [[ "$COMPOSITOR" == "niri" ]]; then
-        niri msg output "$name" on >/dev/null || abort "Failed to enable $name"
-    else
-        hyprctl keyword monitor "$(hypr_spec_for "$name")" >/dev/null || abort "Failed to enable $name"
-    fi
+    hyprctl keyword monitor "$(hypr_spec_for "$name")" >/dev/null || abort "Failed to enable $name"
     notify "Enabled $name"
 fi

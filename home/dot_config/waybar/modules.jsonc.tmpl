@@ -10,11 +10,6 @@
 //
 {
   // Workspaces
-{{ if .install_niri }}
-  "niri/workspaces": {
-    "on-click": "activate",
-  },
-{{ end }}
 {{ if .install_hyprland }}
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -47,10 +42,6 @@
   },
 {{ end }}
   // Focused window
-{{ if .install_niri }}
-  "niri/window": {
-  },
-{{ end }}
 {{ if .install_hyprland }}
   "hyprland/window": {
     "rewrite": {
@@ -125,7 +116,7 @@
     "interval": 2,
     "format": "⌨ {}",
     "tooltip": false,
-    "on-click": "if pgrep -xi niri &>/dev/null; then ~/.local/bin/niri-switch-layout.sh; else ~/.config/hypr/scripts/toggle-keyboard-layout.sh; fi",
+    "on-click": "~/.config/hypr/scripts/toggle-keyboard-layout.sh",
   },
   "group/stats": {
     "orientation": "horizontal",

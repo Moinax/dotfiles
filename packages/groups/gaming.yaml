@@ -8,7 +8,7 @@ environment: desktop
 dotfiles: []
 
 # Bluetooth — needed to pair wireless controllers (Xbox, etc.). Idempotent
-# with the hyprland/niri groups, which already enable it on desktop installs.
+# with the hyprland group, which already enables it on desktop installs.
 services:
   - bluetooth
 

@@ -120,10 +120,8 @@ if command -v gsettings &>/dev/null; then
 fi
 
 # ---------- Compositor cursor (live) ----------
-# env = XCURSOR_THEME/HYPRCURSOR_THEME in hypr/niri config sets the boot-time
+# env = XCURSOR_THEME/HYPRCURSOR_THEME in the hypr config sets the boot-time
 # theme; this updates the running compositor so Mod+N flips it without re-login.
-# Niri has no runtime cursor command; after templated configs are regenerated
-# below, `niri msg action load-config-file` re-reads the env block.
 if is_hyprland; then
     hyprctl setcursor "$CURSOR_THEME" "$CURSOR_SIZE" 2>/dev/null || true
 fi
@@ -204,15 +202,8 @@ if command -v chezmoi &>/dev/null; then
         ~/.config/gh-dash/config.yml \
         ~/.config/starship.toml \
         ~/.config/yazi/theme.toml \
-        ~/.config/niri/config.kdl \
         ~/.local/share/rofi/themes/wallpaper.rasi \
         2>/dev/null || true
-fi
-
-# Niri's cursor and border colors come from templated config, so reload after
-# chezmoi has written ~/.config/niri/config.kdl.
-if is_niri; then
-    niri msg action load-config-file 2>/dev/null || true
 fi
 
 # ---------- Waybar restart ----------

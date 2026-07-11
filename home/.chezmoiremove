@@ -6,6 +6,11 @@
 .local/bin/check-hypridle-pin.sh
 .local/bin/hypridle-dpms-guard.sh
 .local/bin/hypridle-dpms-resume-guard.sh
+# Niri support removed — clean previously-applied companion configs
+.config/swaylock
+.config/swaylock/**
+.config/waybar/config-niri
+.local/bin/niri-switch-layout.sh
 
 {{/*
 Remove the inactive Hyprland config language so runtime scripts cannot pick

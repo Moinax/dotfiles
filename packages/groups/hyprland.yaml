@@ -19,8 +19,6 @@ services:
   - bluetooth
 
 descriptions:
-  sddm: Display manager (login screen)
-  weston: Fallback SDDM greeter compositor (used when kwin_wayland is absent)
   hyprland: Dynamic tiling Wayland compositor
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
@@ -53,10 +51,6 @@ descriptions:
 
 packages:
   arch:
-    # Display manager (kwin_wayland preferred if present, weston as fallback)
-    - sddm
-    - weston
-
     # Hyprland core
     - hyprland
     - hypridle

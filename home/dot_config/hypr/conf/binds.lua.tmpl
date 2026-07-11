@@ -97,7 +97,7 @@ local azerty_top_row = {
 for ws, key in pairs(azerty_top_row) do
     hl.bind(mod .. " + " .. key, hl.dsp.focus({ workspace = tostring(ws) }))
 end
--- Relative prev/next workspace (Niri-style up/down). `r±1` walks rule-defined
+-- Relative prev/next workspace (scrolling up/down). `r±1` walks rule-defined
 -- workspaces on the current monitor including empty ones — so on DP-3 (WS 1-5)
 -- it cycles 1→2→3→4→5 even before those workspaces have any windows. `e±1`
 -- would skip empty workspaces and jump straight to whatever's populated.

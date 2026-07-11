@@ -37,11 +37,6 @@ HYPRVOICE_MODEL="small"
 HYPRVOICE_PROVIDER="whisper-cpp"
 INSTALL_PURPOSE="desktop"
 
-regenerate_grub_config() {
-    print_info "Regenerating GRUB config..."
-    sudo grub-mkconfig -o /boot/grub/grub.cfg
-}
-
 # Check if root filesystem is BTRFS
 is_root_btrfs() {
     local fstype
@@ -81,17 +76,6 @@ is_btrfs_snapshots_configured() {
     allow_users=$(snapper_root_config_value "ALLOW_USERS") || return 1
     if ! printf '%s\n' "$allow_users" | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -Fxq "$USER"; then
         return 1
-    fi
-
-    if systemctl list-unit-files grub-btrfsd.service &>/dev/null; then
-        if ! systemctl is-enabled --quiet grub-btrfsd.service \
-            && ! systemctl is-active --quiet grub-btrfsd.service; then
-            return 1
-        fi
-        # Verify grub-btrfsd is watching /.snapshots (snapper), not --timeshift-auto
-        if ! systemctl cat grub-btrfsd.service 2>/dev/null | grep -q 'ExecStart=.*/\.snapshots'; then
-            return 1
-        fi
     fi
 
     return 0
@@ -837,8 +821,8 @@ install_common_tools() {
         npm install -g yarn@1 pnpm hunkdiff || track_warning "Failed to install global npm packages"
     fi
     
-    # Install rofi themes when a Wayland compositor group is selected
-    if group_selected hyprland || group_selected niri; then
+    # Install rofi themes when the Hyprland group is selected
+    if group_selected hyprland; then
         print_info "Installing Rofi themes collection..."
         local temp_dir="/tmp/rofi-themes-collection"
         local themes_dir="$HOME/.local/share/rofi/themes"
@@ -941,7 +925,6 @@ cleanup_stow_symlinks() {
         "$HOME/Wallpapers"
         "$HOME/completion-for-pnpm.bash"
         "$HOME/.config/hypr"
-        "$HOME/.config/niri"
         "$HOME/.config/waybar"
         "$HOME/.config/rofi"
         "$HOME/.config/kitty"
@@ -1032,7 +1015,6 @@ setup_dotfiles() {
 
     # Determine boolean flags for groups
     local install_hyprland="false"
-    local install_niri="false"
     local install_development="false"
     local install_gaming="false"
     local install_multimedia="false"
@@ -1042,7 +1024,6 @@ setup_dotfiles() {
     for group in "${SELECTED_GROUP_NAMES[@]}"; do
         case "$group" in
             hyprland) install_hyprland="true" ;;
-            niri) install_niri="true" ;;
             development) install_development="true" ;;
             gaming) install_gaming="true" ;;
             multimedia) install_multimedia="true" ;;
@@ -1073,7 +1054,6 @@ sourceDir = "$source_dir"
 [data]
     distro = "$DISTRO"
     install_hyprland = $install_hyprland
-    install_niri = $install_niri
     install_development = $install_development
     install_gaming = $install_gaming
     install_multimedia = $install_multimedia
@@ -1100,7 +1080,7 @@ EOF
 
 # Migrate from old notification daemons (mako/dunst) to swaync
 migrate_notification_daemon() {
-    if ! group_selected hyprland && ! group_selected niri; then
+    if ! group_selected hyprland; then
         return 0
     fi
 
@@ -1255,8 +1235,8 @@ enable_selected_services() {
         add_user_to_group "docker"
     fi
 
-    # Add user to input group for swayosd caps-lock detection (Hyprland/Niri)
-    if group_selected hyprland || group_selected niri; then
+    # Add user to input group for swayosd caps-lock detection (Hyprland)
+    if group_selected hyprland; then
         add_user_to_group "input"
     fi
 
@@ -1292,7 +1272,7 @@ enable_selected_services() {
 }
 
 # Trim services that gate the system graphical.target so uwsm can launch the
-# compositor sooner after SDDM login.
+# compositor sooner after display-manager login.
 #
 # Diagnosed via `systemd-analyze critical-chain`:
 #   graphical.target @25.6s
@@ -1301,7 +1281,7 @@ enable_selected_services() {
 #         └─network-online.target @20.7s
 #           └─NetworkManager-wait-online.service @5.4s +15.3s
 #
-# Net result: ~12s of black screen between SDDM login and Hyprland appearing.
+# Net result: ~12s of black screen between login and Hyprland appearing.
 tune_boot_performance() {
     if [ "$INSTALL_PURPOSE" != "desktop" ]; then
         return 0
@@ -1440,39 +1420,26 @@ setup_biometric() {
         fi
     fi
 
-    # Hyprlock / swaylock PAM stacks default to `auth include login`, which pulls in
+    # The hyprlock PAM stack defaults to `auth include login`, which pulls in
     # system-auth where pam_fprintd sits before pam_unix — so typing a password waits
     # for the fprintd timeout (~10s) before falling through. Switch to password-auth
     # (no fprintd) for instant password fallback. Fingerprint at the lockscreen is
     # handled by hyprlock natively via D-Bus (auth.fingerprint in hyprlock.conf),
     # independently from this PAM stack.
-    local pam_file ts
+    local pam_file=/etc/pam.d/hyprlock ts
     ts=$(date +%s)
-    for pam_file in /etc/pam.d/hyprlock /etc/pam.d/swaylock; do
-        [ -f "$pam_file" ] || continue
+    if [ -f "$pam_file" ]; then
         if grep -qE '^auth\s+include\s+password-auth\s*$' "$pam_file"; then
             print_info "$(basename "$pam_file") PAM already uses password-auth"
-            continue
-        fi
-        if ! grep -qE '^auth\s+include\s+login\s*$' "$pam_file"; then
+        elif ! grep -qE '^auth\s+include\s+login\s*$' "$pam_file"; then
             print_info "$(basename "$pam_file") PAM uses a non-default stack — leaving as is"
-            continue
+        else
+            print_info "Patching $pam_file to skip fprintd timeout on password"
+            sudo cp "$pam_file" "${pam_file}.bak.${ts}"
+            sudo sed -i 's|^auth\s\+include\s\+login\s*$|auth        include      password-auth|' "$pam_file"
+            print_success "$pam_file patched (backup: ${pam_file}.bak.${ts})"
         fi
-        print_info "Patching $pam_file to skip fprintd timeout on password"
-        sudo cp "$pam_file" "${pam_file}.bak.${ts}"
-        sudo sed -i 's|^auth\s\+include\s\+login\s*$|auth        include      password-auth|' "$pam_file"
-        print_success "$pam_file patched (backup: ${pam_file}.bak.${ts})"
-    done
-
-    # SDDM (display manager) is left untouched. Enabling fingerprint at the
-    # greeter requires switching the auth stack to one that includes
-    # pam_fprintd, but PAM is serial (cf. man pam_fprintd) and SDDM lacks
-    # GDM-style parallel auth UI — so any fprintd timeout becomes either a
-    # short fingerprint window (silent, since the Breeze theme gives no
-    # scanning feedback) or a multi-second wait after typing a password.
-    # Neither trade-off is worth it given hyprlock already provides
-    # fingerprint at the lockscreen via native D-Bus. Reboots fall back to
-    # password at the SDDM greeter.
+    fi
 
     # Bitwarden Flatpak needs talk access to the Secret Service (libsecret) — the
     # desktop stores its biometric-unlock key there. Browser integration is NOT
@@ -1550,222 +1517,6 @@ setup_ssh() {
     fi
 }
 
-# Setup SDDM (wallpaper, Wayland compositor, display manager)
-setup_sddm() {
-    # Only run if a compositor group was selected
-    if ! group_selected niri && ! group_selected hyprland; then
-        return
-    fi
-
-    if ! command_exists sddm; then
-        return
-    fi
-
-    print_header "SDDM Setup"
-
-    # --- Wallpaper ---
-    local wallpaper="$DOTFILES_DIR/home/Wallpapers/colorful.jpg"
-    local theme
-    theme=$(grep -rh "^Current=" /etc/sddm.conf /etc/sddm.conf.d/ 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-    if [ -z "$theme" ]; then
-        theme=$(ls /usr/share/sddm/themes/ 2>/dev/null | head -1)
-    fi
-
-    if [ -n "$theme" ] && [ -d "/usr/share/sddm/themes/$theme" ] && [ -f "$wallpaper" ]; then
-        print_info "Setting wallpaper on '$theme' theme..."
-        sudo cp "$wallpaper" "/usr/share/sddm/themes/$theme/wallpaper.jpg"
-        sudo tee "/usr/share/sddm/themes/$theme/theme.conf.user" > /dev/null <<EOF
-[General]
-background=/usr/share/sddm/themes/$theme/wallpaper.jpg
-EOF
-    fi
-
-    # --- SDDM configuration (theme + Wayland) ---
-    sudo mkdir -p /etc/sddm.conf.d
-
-    # Compositor priority: distro-provided config > kwin_wayland > weston > fallback.
-    # KDE-based installs already ship kwin_wayland which handles multi-monitor
-    # natively. Weston is the lightweight fallback for non-KDE systems.
-    local sddm_compositor="none"
-    if [ -f /usr/lib/sddm/sddm.conf.d/plasma-wayland.conf ]; then
-        # Distro (e.g. Fedora) ships its own SDDM Wayland config — only set theme
-        sddm_compositor="distro"
-        print_info "Detected distro-provided SDDM Wayland config — only setting theme"
-        sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
-[Theme]
-Current=${theme:-breeze}
-Font="Noto Sans"
-EOF
-    elif command_exists kwin_wayland; then
-        sddm_compositor="kwin"
-        print_info "Using kwin_wayland as SDDM compositor"
-        sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
-[Theme]
-Current=${theme:-breeze}
-
-[General]
-DisplayServer=wayland
-
-[Wayland]
-CompositorCommand=kwin_wayland --no-global-shortcuts --no-lockscreen --locale1
-EOF
-    elif command_exists weston; then
-        sddm_compositor="weston"
-        print_info "Using weston as SDDM compositor"
-        sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
-[Theme]
-Current=${theme:-breeze}
-
-[General]
-DisplayServer=wayland
-
-[Wayland]
-CompositorCommand=weston --shell=kiosk -c /etc/sddm/weston.ini
-EOF
-    else
-        print_info "No Wayland compositor found for SDDM greeter — using default display server"
-        sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
-[Theme]
-Current=${theme:-breeze}
-Font="Noto Sans"
-EOF
-    fi
-
-    # --- Weston config (only needed when weston is the SDDM compositor) ---
-    if [ "$sddm_compositor" = "weston" ]; then
-        sudo mkdir -p /etc/sddm
-
-        # Detect keyboard layout from localectl, fallback to "us"
-        local kb_layout
-        kb_layout=$(localectl status 2>/dev/null | grep "X11 Layout" | awk '{print $3}')
-        kb_layout=${kb_layout:-us}
-
-        # Build weston.ini with keyboard layout and monitor rotation
-        local weston_cfg
-        weston_cfg="[core]
-shell=kiosk-shell.so
-
-[keyboard]
-keymap_layout=${kb_layout}"
-
-        # Detect connected monitors via xrandr
-        # Rotated monitors are disabled (mode=off) so the greeter only shows on
-        # the horizontal screen. A systemd drop-in waits for the primary monitor
-        # to be detected before starting SDDM, preventing a black screen if DP
-        # link training is slow (e.g. monitor waking from deep sleep).
-        local primary_outputs=()
-        if command -v xrandr &>/dev/null && xrandr --query &>/dev/null; then
-            while IFS= read -r line; do
-                local output_name rotation mode transform
-                output_name=$(echo "$line" | awk '{print $1}')
-                # Check if rotation keyword is present before the parenthesized list of supported rotations
-                rotation=$(echo "$line" | sed 's/(.*//' | grep -oE '\b(left|right|inverted)\b' || true)
-                if [ -n "$rotation" ]; then
-                    # Rotated monitor — disable for greeter
-                    weston_cfg="${weston_cfg}
-
-[output]
-name=${output_name}
-mode=off"
-                else
-                    # Non-rotated monitor — enable with native resolution
-                    mode=$(xrandr --query 2>/dev/null | grep -A 1 "^${output_name} connected" | tail -1 | awk '{print $1}')
-                    if [ -n "$output_name" ] && [[ "$mode" =~ ^[0-9]+x[0-9]+ ]]; then
-                        primary_outputs+=("$output_name")
-                        weston_cfg="${weston_cfg}
-
-[output]
-name=${output_name}
-mode=${mode}
-transform=normal"
-                    fi
-                fi
-            done < <(xrandr --query 2>/dev/null | grep " connected ")
-        else
-            print_info "xrandr not available — skipping monitor rotation detection for weston.ini"
-        fi
-
-        echo "$weston_cfg" | sudo tee /etc/sddm/weston.ini > /dev/null
-
-        # --- Wait-for-monitor script ---
-        # Ensures the primary (non-rotated) monitor is detected before SDDM starts
-        if [ ${#primary_outputs[@]} -gt 0 ]; then
-            local grep_pattern
-            grep_pattern=$(printf '%s\\|' "${primary_outputs[@]}")
-            grep_pattern=${grep_pattern%\\|}
-
-            sudo tee /etc/sddm/wait-for-primary-monitor.sh > /dev/null <<WAITEOF
-#!/bin/bash
-# Wait up to 10s for a primary monitor to be connected before SDDM starts.
-# Generated by dotfiles installer — do not edit manually.
-TIMEOUT=10
-for i in \$(seq 1 \$TIMEOUT); do
-    for status_file in /sys/class/drm/card*-*/status; do
-        name=\$(basename "\$(dirname "\$status_file")")
-        name=\${name#card*-}
-        if echo "\$name" | grep -qx '${grep_pattern}'; then
-            [ "\$(cat "\$status_file")" = "connected" ] && exit 0
-        fi
-    done
-    sleep 1
-done
-exit 0
-WAITEOF
-            sudo chmod +x /etc/sddm/wait-for-primary-monitor.sh
-
-            sudo mkdir -p /etc/systemd/system/sddm.service.d
-            sudo tee /etc/systemd/system/sddm.service.d/wait-for-monitor.conf > /dev/null <<DROPEOF
-[Service]
-ExecStartPre=/etc/sddm/wait-for-primary-monitor.sh
-DROPEOF
-        else
-            # No primary outputs detected — clean up stale wait-script artifacts
-            sudo rm -f /etc/sddm/wait-for-primary-monitor.sh
-            sudo rm -f /etc/systemd/system/sddm.service.d/wait-for-monitor.conf
-        fi
-    else
-        # Clean up weston artifacts from previous installs
-        sudo rm -f /etc/sddm/weston.ini /etc/sddm/wait-for-primary-monitor.sh
-        sudo rm -f /etc/systemd/system/sddm.service.d/wait-for-monitor.conf
-    fi
-
-    sudo systemctl daemon-reload 2>/dev/null
-
-    # --- Enable SDDM as display manager ---
-    local current_dm
-    current_dm=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null)
-    if [ "$current_dm" != "sddm" ]; then
-        echo ""
-        print_info "SDDM is not your current display manager (currently: ${current_dm:-none})"
-        print_info "The login screen wallpaper requires SDDM to be active"
-        if gum confirm "Switch to SDDM as your display manager?"; then
-            if [ -n "$current_dm" ]; then
-                print_info "Disabling $current_dm..."
-                sudo systemctl disable "$current_dm" 2>/dev/null
-            fi
-            print_info "Enabling SDDM..."
-            sudo systemctl enable sddm
-            print_success "SDDM enabled (active after reboot)"
-        else
-            print_info "SDDM not enabled — login screen wallpaper will not be visible"
-        fi
-    fi
-
-    print_success "SDDM configured"
-
-    # Hyprland session choice hint: the hyprland package installs two SDDM
-    # sessions (hyprland.desktop, hyprland-uwsm.desktop). The dotfiles assume
-    # the uwsm-managed variant — daemons are bound to graphical-session.target
-    # which only activates under uwsm. SDDM remembers the per-user last
-    # selection in /var/lib/sddm/state.conf, so this is one-time.
-    if [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " hyprland " ]] \
-        && [ -f /usr/share/wayland-sessions/hyprland-uwsm.desktop ]; then
-        echo ""
-        print_info "At the SDDM greeter, select 'Hyprland (uwsm-managed)' the first time you log in."
-        print_info "Selecting plain 'Hyprland' will skip uwsm and leave the session daemons unstarted."
-    fi
-}
-
 # Setup Plymouth boot splash screen (CachyOS usually ships Plymouth
 # preconfigured — the check below skips setup when it's already in place)
 setup_plymouth() {
@@ -1825,35 +1576,6 @@ setup_plymouth() {
         print_info "Plymouth hook already present in mkinitcpio"
     fi
 
-    # --- Configure GRUB: add 'quiet splash' to kernel command line ---
-    local grub_default="/etc/default/grub"
-    if [ -f "$grub_default" ]; then
-        local current_cmdline
-        current_cmdline=$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$grub_default" | head -1 | sed 's/^GRUB_CMDLINE_LINUX_DEFAULT="//;s/"$//')
-
-        local updated=false
-        if ! echo "$current_cmdline" | grep -qw "quiet"; then
-            current_cmdline="$current_cmdline quiet"
-            updated=true
-        fi
-        if ! echo "$current_cmdline" | grep -qw "splash"; then
-            current_cmdline="$current_cmdline splash"
-            updated=true
-        fi
-
-        if [ "$updated" = true ]; then
-            # Trim leading/trailing whitespace
-            current_cmdline=$(echo "$current_cmdline" | sed 's/^ *//;s/ *$//')
-            print_info "Updating GRUB command line: $current_cmdline"
-            sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$current_cmdline\"|" "$grub_default"
-            regenerate_grub_config
-        else
-            print_info "GRUB already has 'quiet splash'"
-        fi
-    else
-        print_info "$grub_default not found — skipping GRUB configuration"
-    fi
-
     PLYMOUTH_CONFIGURED=true
     print_success "Plymouth configured (theme: $theme)"
 }
@@ -1879,48 +1601,6 @@ setup_shell() {
         SHELL_CHANGED=true
         print_success "Default shell changed to zsh"
         print_info "Log out and back in for changes to take effect"
-    fi
-}
-
-# Setup GRUB theme (delegates to manage-grub-theme.sh)
-setup_grub_theme() {
-    [ "$INSTALL_PURPOSE" = "desktop" ] || return 0
-    [ -f /etc/default/grub ] || return 0
-
-    "$DOTFILES_DIR/tools/manage-grub-theme.sh" setup
-}
-
-# Configure GRUB to remember last booted kernel when multiple kernels are installed
-configure_grub_saved_default() {
-    local grub_default="/etc/default/grub"
-    [ -f "$grub_default" ] || return 0
-
-    # Only relevant when multiple kernels are present
-    local kernel_count
-    kernel_count=$(find /boot -maxdepth 1 -name 'vmlinuz-*' 2>/dev/null | wc -l)
-    [ "$kernel_count" -gt 1 ] || return 0
-
-    local updated=false
-    # Ensure a GRUB variable is set; handles active, commented-out, or missing lines
-    ensure_grub_var() {
-        local var="$1" value="$2"
-        grep -q "^${var}=${value}$" "$grub_default" && return
-        if grep -q "^#\?${var}=" "$grub_default"; then
-            sudo sed -i "s/^#\?${var}=.*/${var}=${value}/" "$grub_default"
-        else
-            echo "${var}=${value}" | sudo tee -a "$grub_default" > /dev/null
-        fi
-        updated=true
-    }
-
-    print_info "Setting GRUB to remember last booted kernel..."
-    ensure_grub_var GRUB_DEFAULT saved
-    ensure_grub_var GRUB_SAVEDEFAULT true
-    # Disable submenus so saved_entry uses flat IDs (submenu '>' paths break GRUB_SAVEDEFAULT)
-    ensure_grub_var GRUB_DISABLE_SUBMENU y
-
-    if [ "$updated" = true ]; then
-        regenerate_grub_config || track_warning "Failed to regenerate GRUB config"
     fi
 }
 
@@ -2038,25 +1718,6 @@ setup_btrfs_snapshots() {
         sudo sed -i '/^UUID=.*@\.snapshots/d' /etc/fstab
     fi
 
-    # Enable grub-btrfsd service if available
-    if systemctl list-unit-files grub-btrfsd.service &>/dev/null; then
-        print_info "Configuring grub-btrfsd to watch snapper snapshots..."
-        # Override the default service to watch /.snapshots (snapper) instead of --timeshift-auto
-        sudo mkdir -p /etc/systemd/system/grub-btrfsd.service.d
-        sudo tee /etc/systemd/system/grub-btrfsd.service.d/override.conf > /dev/null << 'SVCEOF'
-[Service]
-ExecStart=
-ExecStart=/usr/bin/grub-btrfsd --syslog /.snapshots
-SVCEOF
-        sudo systemctl daemon-reload
-        print_info "Enabling grub-btrfsd service..."
-        sudo systemctl enable --now grub-btrfsd || {
-            print_warning "Failed to enable grub-btrfsd service"
-        }
-        # Regenerate grub config to include snapshot entries
-        regenerate_grub_config || track_warning "Failed to regenerate GRUB config for grub-btrfs"
-    fi
-
     # Create initial snapshot only when config was freshly created
     if [ "$config_created" = true ]; then
         sudo snapper create --description "Initial snapshot after dotfiles setup" || {
@@ -2089,11 +1750,6 @@ show_completion() {
     # Hyprland reload only if currently running in Hyprland
     if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
         steps+=("  $next_step. Run 'hyprctl reload' to reload Hyprland config")
-        next_step=$((next_step + 1))
-    fi
-
-    if group_selected niri; then
-        steps+=("  $next_step. Log out, choose Niri in your display manager, and log back in")
         next_step=$((next_step + 1))
     fi
 
@@ -2220,11 +1876,8 @@ main() {
     tune_boot_performance
     setup_clamav
     setup_biometric
-    configure_grub_saved_default
-    setup_grub_theme
     setup_btrfs_snapshots
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
-        setup_sddm
         setup_plymouth
     fi
     setup_ssh

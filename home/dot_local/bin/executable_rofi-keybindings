@@ -1,18 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# rofi-keybindings — searchable keybinding menu for Hyprland and Niri
+# rofi-keybindings — searchable keybinding menu for Hyprland
 # Parses the active compositor config and displays bindings in rofi dmenu.
 
 # ── Compositor detection ──────────────────────────────────────────
 
 . "$HOME/.local/lib/compositor.sh"
 
-if is_hyprland; then
-    COMPOSITOR="hyprland"
-elif is_niri; then
-    COMPOSITOR="niri"
-else
+if ! is_hyprland; then
     notify-send -u critical "rofi-keybindings" "No supported compositor detected"
     exit 1
 fi
@@ -422,81 +418,6 @@ parse_hyprland_conf() {
     ' "$config"
 }
 
-# ── Niri parser ───────────────────────────────────────────────────
-
-parse_niri() {
-    local config="$HOME/.config/niri/config.kdl"
-    [ -f "$config" ] || { echo "Config not found: $config" >&2; return 1; }
-
-    awk "$XF86_AWK"'
-    BEGIN { section = ""; skip = 0 }
-
-    # Section headers
-    /\/\/ ── [0-9]+\./ {
-        s = $0; sub(/.*\/\/ ── [0-9]+\. /, "", s); sub(/ ─+$/, "", s)
-        section = s; skip = 0; next
-    }
-
-    # recent-windows block → treat as a section
-    /recent-windows \{/ { section = "Window Switching"; next }
-
-    # AZERTY skip control
-    /\/\/ AZERTY/ { skip = 1; next }
-    /\/\/ QWERTY/ || /\/\/ Directional/ { skip = 0; next }
-    /^[ \t]*\/\// || /^[ \t]*$/ { next }
-    skip { next }
-    /WheelScroll/ { next }
-
-    # Keybinding lines: KeyCombo [attrs] { action [args]; }
-    # Must start with a key combo pattern and contain { ... ; ... }
-    /^[ \t]*(Mod\+|XF86|Print|Ctrl\+|Alt\+)/ && /\{[^}]*;[^}]*\}/ {
-        line = $0; gsub(/^[ \t]+/, "", line)
-
-        # Key combo: first token
-        combo = line; sub(/[ \t{].*/, "", combo)
-
-        # hotkey-overlay-title="..."
-        desc = ""
-        if (match(line, /hotkey-overlay-title="/)) {
-            rest = substr(line, RSTART + 22)
-            sub(/".*/, "", rest)
-            desc = rest
-        }
-
-        # XF86 key lookup
-        if (desc == "" && combo ~ /^XF86/) desc = xf86(combo)
-
-        # Humanize action name
-        if (desc == "") {
-            act = line
-            sub(/.*\{[ \t]*/, "", act)
-            sub(/[ \t]*;.*/, "", act)
-
-            aname = act; aargs = ""
-            if (match(act, / /)) {
-                aname = substr(act, 1, RSTART - 1)
-                aargs = substr(act, RSTART + 1)
-                gsub(/"/, "", aargs)
-            }
-
-            if (aname == "spawn" || aname == "spawn-sh") {
-                desc = aargs; sub(/.*\//, "", desc)
-            } else {
-                desc = aname; gsub(/-/, " ", desc)
-                desc = toupper(substr(desc, 1, 1)) substr(desc, 2)
-                if (aargs != "") desc = desc " " aargs
-            }
-        }
-
-        printf "[%s]  %s  →  %s\n", section, combo, desc
-    }
-    ' "$config"
-}
-
 # ── Main ──────────────────────────────────────────────────────────
 
-if [ "$COMPOSITOR" = "hyprland" ]; then
-    parse_hyprland
-else
-    parse_niri
-fi | format_icons | rofi -dmenu -i -p "Keybindings" -no-custom > /dev/null || true
+parse_hyprland | format_icons | rofi -dmenu -i -p "Keybindings" -no-custom > /dev/null || true

@@ -11,7 +11,7 @@ dotfiles:
 descriptions:
   hyprvoice-bin: Speech-to-text dictation tool (AUR)
   whisper.cpp: Local speech recognition engine
-  vibewatch: AI agent status bar & overlay for Hyprland/Niri (built from source via cargo)
+  vibewatch: AI agent status bar & overlay for Hyprland (built from source via cargo)
 
 # Tools installed via custom commands (not available in package managers).
 # These appear in the package selector alongside distro packages.

@@ -1,6 +1,6 @@
 # Dotfiles
 
-Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional Hyprland or Niri desktop support.
+Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional Hyprland desktop support.
 
 ## Features
 
@@ -9,7 +9,7 @@ Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional
 - **KDE base assumed**: Desktop installs expect a KDE Plasma base. Polkit, file manager, and theming packages rely on KDE components already being present.
 - **Desktop or terminal mode**: Choose a full desktop setup or a lightweight terminal-only install
 - **Interactive installer**: Beautiful TUI prompts using [gum](https://github.com/charmbracelet/gum)
-- **Modular packages**: Choose what to install (Hyprland, Niri, Development, Gaming, AI, etc.)
+- **Modular packages**: Choose what to install (Hyprland, Development, Gaming, AI, etc.)
 - **Desktop AppImage support**: Installs the FUSE runtime (`fuse2`) for AppImages with a custom import/remove tool via `./manage.sh apps`
 - **Chezmoi-powered**: Smart dotfile management with templates and conditional installation
 - **Easy to extend**: Add new package groups with simple YAML files
@@ -42,11 +42,10 @@ The interactive installer will:
 | Group | Description |
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `hyprpaper`, `hyprshot`, `waybar`, `rofi`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
-| **Niri** | Niri scrollable tiling compositor with Wayland desktop tools (`waybar`, `rofi`, `swaync`, `wlogout`, `sddm`, clipboard, screenshots) |
 | **Development** | `neovim`, Cursor, Git tooling (`gh`, `lazygit`, `delta`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam + Discord with performance helpers (`mangohud`, `gamemode`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape) |
-| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), BTRFS snapshots (`snapper`, `snap-pac`/`python3-dnf-plugin-snapper`, `grub-btrfs`), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
+| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), BTRFS snapshots (`snapper`, `snap-pac`), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
 | **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation with local Whisper models |
 
 ## Structure
@@ -72,7 +71,6 @@ dotfiles/
 │   │   └── base.yaml        # Base packages (pacman + AUR)
 │   └── groups/
 │       ├── hyprland.yaml    # Hyprland + Wayland tools
-│       ├── niri.yaml        # Niri compositor + Wayland tools
 │       ├── development.yaml # Dev tools
 │       ├── gaming.yaml      # Gaming packages
 │       ├── multimedia.yaml  # Media tools
@@ -209,9 +207,8 @@ After running the installer:
 1. **Log out and back in** for shell changes to take effect
 2. **Add SSH key** to GitHub/GitLab (displayed during setup)
 3. **Hyprland users**: Press `Super+?` to see keybindings
-4. **Niri users**: Log out, choose Niri in your display manager, log back in
-5. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte
-6. **Plymouth**: Reboot to see the boot splash (if configured during install)
+4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte
+5. **Plymouth**: Reboot to see the boot splash (if configured during install)
 
 ## Included Configurations
 
@@ -222,7 +219,6 @@ After running the installer:
 - **Multiplexer**: Zellij
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout
-- **Niri**: niri with waybar, rofi, swaync, wlogout (scrollable tiling Wayland compositor)
 - **AI**: hyprvoice dictation with local Whisper speech recognition
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (Catppuccin Powerline theme), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
