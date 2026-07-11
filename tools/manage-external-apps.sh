@@ -253,6 +253,8 @@ extract_appimage_metadata() {
     local extract_dir="$2"
     APPIMAGE_META_NAME=""
     APPIMAGE_META_ICON=""
+    APPIMAGE_META_MIMETYPE=""
+    APPIMAGE_META_CATEGORIES=""
 
     local work_dir=""
     work_dir=$(mktemp -d)
@@ -278,6 +280,12 @@ extract_appimage_metadata() {
     desktop_file=$(find "$extract_dir" -maxdepth 2 -type f -name '*.desktop' | head -1 || true)
     if [ -n "$desktop_file" ]; then
         APPIMAGE_META_NAME=$(sed -n 's/^Name=//p' "$desktop_file" | head -1)
+        # Carry over the upstream MIME associations and menu categories. Without
+        # MimeType (and a %U in Exec) KDE/KIO treats the app as unable to open
+        # URLs and silently falls back to another handler from mimeinfo.cache —
+        # e.g. links opening in Chrome even though helium is the default browser.
+        APPIMAGE_META_MIMETYPE=$(sed -n 's/^MimeType=//p' "$desktop_file" | head -1)
+        APPIMAGE_META_CATEGORIES=$(sed -n 's/^Categories=//p' "$desktop_file" | head -1)
         local icon_name=""
         icon_name=$(sed -n 's/^Icon=//p' "$desktop_file" | head -1)
         if [ -n "$icon_name" ]; then
@@ -336,16 +344,22 @@ execute_import_appimage() {
     fi
 
     local desktop_file="$APP_DESKTOP_DIR/${slug}.desktop"
+    # %U is load-bearing: without a URL field code, KDE/KIO considers the app
+    # unable to open links and falls back to another x-scheme-handler from
+    # mimeinfo.cache (e.g. Chrome) even when this app is the mimeapps default.
     cat > "$desktop_file" <<EOF
 [Desktop Entry]
 Name=$app_name
-Exec=$dest_appimage
+Exec=$dest_appimage %U
 Type=Application
-Categories=Utility;
+Categories=${APPIMAGE_META_CATEGORIES:-Utility;}
 Terminal=false
 StartupNotify=true
 EOF
 
+    if [ -n "$APPIMAGE_META_MIMETYPE" ]; then
+        printf 'MimeType=%s\n' "$APPIMAGE_META_MIMETYPE" >> "$desktop_file"
+    fi
     if [ -n "$icon_path" ]; then
         printf 'Icon=%s\n' "$icon_path" >> "$desktop_file"
     fi
