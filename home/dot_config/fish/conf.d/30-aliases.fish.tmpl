@@ -1,0 +1,38 @@
+if command -q eza
+    alias ls "eza --icons --group-directories-first"
+    alias ll "eza --icons --group-directories-first -l --git"
+    alias lsa "eza --icons --group-directories-first -la --git"
+    alias lt "eza --icons --group-directories-first --tree --level=2"
+end
+
+alias vim nvim
+alias vi nvim
+alias v nvim
+
+alias lg lazygit
+alias ld lazydocker
+alias dash "gh dash"
+
+alias gpr "git pull --rebase"
+alias gcm "git checkout main"
+alias gfp "git push --force-with-lease"
+alias gcl "git cleanup"
+
+# Zellij — the multiplexer behind `dev`/`wts` agent sessions.
+# za/zk/zd/_zj_pick are autoloaded functions in ../functions/.
+if command -q zellij
+    alias z zellij # raw session list is `z ls`
+    alias zka "zellij kill-all-sessions" # stop every running session
+    alias zda "zellij delete-all-sessions" # clear all exited/resurrectable sessions
+
+    # zls / zj — fuzzy-pick a session and attach. Alias kept for muscle memory.
+    alias zj za
+    alias zls za
+end
+{{- if ne .install_purpose "terminal" }}
+
+# Auto-copy terminfo to remote servers via kitten ssh
+if command -q kitten
+    alias ssh "kitten ssh"
+end
+{{- end }}

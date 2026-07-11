@@ -1,0 +1,38 @@
+# Environment for all fish shells, interactive or not (counterpart of ~/.zshenv).
+# conf.d is sourced by every fish process, so `fish -c` from editors/agents
+# gets the same PATH.
+
+# Pnpm
+set -gx PNPM_HOME $HOME/.local/share/pnpm
+fish_add_path --path $PNPM_HOME
+
+# fnm (Node.js version manager)
+set -gx FNM_PATH $HOME/.local/share/fnm
+if test -d $FNM_PATH
+    fish_add_path --path $FNM_PATH
+    if status is-interactive
+        fnm env --use-on-cd --shell fish | source
+    else
+        # Non-interactive shells (`fish -c` from Claude Code, VS Code tasks):
+        # put the default Node version's real bin on PATH directly instead of
+        # fnm's per-shell multishell — same rationale as in ~/.zshenv.
+        set -l fnm_default $FNM_PATH/aliases/default/bin
+        test -x $fnm_default/node; and fish_add_path --path $fnm_default
+    end
+end
+
+# Cargo (worktrunk, vibewatch, etc.)
+test -f $HOME/.cargo/env.fish; and source $HOME/.cargo/env.fish
+test -d $HOME/.cargo/bin; and fish_add_path --path $HOME/.cargo/bin
+
+# Lazy docker, zoxide, ...
+fish_add_path --path $HOME/.local/bin
+
+# Silence zoxide's "configuration issue" doctor (false positive in agent
+# shells that replay a snapshot without zoxide's hook; see ~/.zshenv).
+set -gx _ZO_DOCTOR 0
+{{- if .install_hyprland }}
+
+# Rofi scripts
+fish_add_path --path $HOME/.config/rofi/scripts
+{{- end }}
