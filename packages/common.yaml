@@ -6,13 +6,11 @@ tools:
     description: Smarter cd command
     install: curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
 
+  # Node LTS + global npm packages (yarn, pnpm, hunkdiff) are handled by
+  # install_common_tools() in install/installer.sh — this entry is informational.
   - name: fnm
     description: Fast Node.js version manager
     install: curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
-    post_install:
-      - fnm install --lts
-      # hunkdiff provides `hunk`, the git pager configured unconditionally in ~/.gitconfig
-      - npm install -g yarn@1 pnpm hunkdiff
 
   - name: eza
     description: Modern replacement for ls

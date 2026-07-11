@@ -801,17 +801,33 @@ install_common_tools() {
     # Install fnm
     if ! command_exists fnm; then
         install_curl_tool "fnm" "curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell"
-        # Source fnm for this session
-        eval "$(fnm env --use-on-cd --shell bash)"
-
-        # Install Node.js LTS
-        if command_exists fnm; then
-            print_info "Installing Node.js LTS via fnm..."
-            fnm install --lts || track_warning "Failed to install Node.js LTS"
-            fnm default lts-latest
-        fi
+        # The fnm installer (--skip-shell) drops the binary in ~/.local/share/fnm,
+        # which is not on the installer's PATH.
+        export PATH="$HOME/.local/share/fnm:$PATH"
+        hash -r 2>/dev/null || true
     else
         print_info "fnm is already installed"
+    fi
+
+    # Ensure a Node.js version is actually installed — fnm can exist with no
+    # versions (e.g. from a run that died before this step), and Arch's nodejs
+    # package ships without npm/npx, so fnm's LTS is our npm provider.
+    if command_exists fnm; then
+        eval "$(fnm env --use-on-cd --shell bash)" || true
+        if ! fnm ls | grep -q 'lts\|v[0-9]'; then
+            print_info "Installing Node.js LTS via fnm..."
+            if fnm install --lts && fnm default lts-latest; then
+                eval "$(fnm env --use-on-cd --shell bash)" || true
+                hash -r 2>/dev/null || true
+                print_success "Node.js LTS installed via fnm"
+            else
+                track_warning "Failed to install Node.js LTS via fnm"
+            fi
+        else
+            print_info "Node.js already installed via fnm"
+        fi
+    else
+        track_warning "fnm unavailable — Node.js LTS not installed"
     fi
 
     # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
@@ -819,6 +835,8 @@ install_common_tools() {
     if command_exists npm; then
         print_info "Installing global npm packages..."
         npm install -g yarn@1 pnpm hunkdiff || track_warning "Failed to install global npm packages"
+    else
+        track_warning "npm unavailable — skipped global npm packages (yarn, pnpm, hunkdiff)"
     fi
     
     # Install rofi themes when the Hyprland group is selected

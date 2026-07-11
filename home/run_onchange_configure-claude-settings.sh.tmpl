@@ -1,0 +1,43 @@
+{{- if .install_development -}}
+#!/bin/bash
+# Converge canonical Claude Code settings into ~/.claude/settings.json.
+# create_settings.json only applies when the target file is missing, so
+# machines where it already exists never pick up later edits — this script
+# jq-merges the canonical keys on every change while leaving machine-specific
+# keys (hooks, model, theme, ...) untouched.
+set -e
+
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+
+# Bail out if jq is not available
+if ! command -v jq &>/dev/null; then
+    echo "claude-settings: jq not found, skipping Claude Code settings convergence"
+    exit 0
+fi
+
+# Ensure the directory and file exist
+mkdir -p "$HOME/.claude"
+if [ ! -f "$CLAUDE_SETTINGS" ]; then
+    echo '{}' > "$CLAUDE_SETTINGS"
+fi
+
+# Canonical settings, inlined from dot_claude/create_settings.json at chezmoi
+# render time — editing that file changes this script's content, which is what
+# re-triggers the run_onchange execution.
+CANONICAL='{{ include "dot_claude/create_settings.json" }}'
+
+# Merge into existing settings (jq * operator does a recursive merge)
+tmp=$(mktemp)
+if jq --argjson canonical "$CANONICAL" '. * $canonical' "$CLAUDE_SETTINGS" > "$tmp"; then
+    mv "$tmp" "$CLAUDE_SETTINGS"
+    chmod 644 "$CLAUDE_SETTINGS"
+    echo "claude-settings: canonical Claude Code settings converged"
+else
+    rm -f "$tmp"
+    echo "claude-settings: failed to update Claude Code settings"
+    exit 1
+fi
+{{- else -}}
+#!/bin/bash
+# Development group not selected — nothing to do
+{{- end }}
