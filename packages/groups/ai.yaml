@@ -9,9 +9,8 @@ dotfiles:
   - dot_config/hyprvoice
 
 descriptions:
-  hyprvoice-bin: Speech-to-text dictation tool (Arch AUR)
-  whisper.cpp: Local speech recognition engine (Arch)
-  whisper-cpp: Local speech recognition engine (Fedora)
+  hyprvoice-bin: Speech-to-text dictation tool (AUR)
+  whisper.cpp: Local speech recognition engine
   vibewatch: AI agent status bar & overlay for Hyprland/Niri (built from source via cargo)
 
 # Tools installed via custom commands (not available in package managers).
@@ -19,8 +18,7 @@ descriptions:
 # Fields: name (display + selection key), check (command to test if installed),
 #         install (shell command to run), requires (dependency command to check),
 #         requires_packages (map of distro family -> system packages to
-#         install before running `install`), distro_skip (list of distro
-#         families to skip)
+#         install before running `install`)
 custom_install:
   - name: vibewatch
     check: bash "$DOTFILES_DIR/tools/vibewatch-check-current.sh"
@@ -31,28 +29,9 @@ custom_install:
     # gtk4-layer-shell, sound=alsa via rodio).
     requires_packages:
       arch: [rust, pkgconf, gtk4, libadwaita, gtk4-layer-shell, alsa-lib]
-      fedora: [rust, cargo, pkgconf-pkg-config, gtk4-devel, libadwaita-devel, gtk4-layer-shell-devel, alsa-lib-devel]
-      debian: [rustc, cargo, pkg-config, libgtk-4-dev, libadwaita-1-dev, libgtk4-layer-shell-dev, libasound2-dev]
 
 packages:
   arch:
     # Dictation (speech-to-text)
     - hyprvoice-bin
     - whisper.cpp
-
-  fedora:
-    # Dictation (speech-to-text)
-    # whisper-cpp ships only libraries on Fedora — whisper-cli is built from source by the installer
-    - whisper-cpp
-    - sdl2-compat-devel  # Build dependency for whisper-cli audio capture (replaces SDL2-devel in F42+)
-    - cmake
-    - gcc-c++
-
-  debian:
-    # whisper.cpp is not packaged for Debian/Ubuntu.
-    # Install via the official install script or build from source:
-    #   https://github.com/ggerganov/whisper.cpp
-    # hyprvoice is also not in apt — install binary from GitHub releases.
-    # Packages listed here are dependencies available in apt:
-    - libsdl2-dev      # Runtime dependency for whisper.cpp audio capture
-    - ffmpeg           # Audio/video decoding support

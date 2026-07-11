@@ -39,17 +39,14 @@ descriptions:
   swayidle: Idle management daemon
   python-pywayland: Python Wayland bindings (idle inhibitor for caffeine mode)
   swaybg: Wallpaper setter for Wayland (kept as fallback)
-  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions [Arch]
-  swww: Animated wallpaper daemon (pre-rename name still shipped by Fedora copr) [Fedora]
+  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
   polkit-kde-agent: Polkit authentication agent
   pavucontrol-qt: PulseAudio volume control GUI (Qt)
   blueman: Bluetooth device manager
-  bluez-utils: Bluetooth utilities (Arch)
-  bluez: Bluetooth protocol stack (Fedora)
+  bluez-utils: Bluetooth utilities
   inotify-tools: File system event monitor
   cmatrix: Terminal matrix rain animation
-  networkmanager: Network connection manager (Arch)
-  NetworkManager: Network connection manager (Fedora)
+  networkmanager: Network connection manager
   network-manager-applet: NetworkManager tray applet
   nm-connection-editor: NetworkManager connection editor
   plasma-nm: KDE network management widget
@@ -121,131 +118,3 @@ packages:
     - network-manager-applet
     - nm-connection-editor
     - plasma-nm
-
-  fedora:
-    # Display manager (kwin_wayland preferred if present, weston as fallback)
-    - sddm
-    - weston
-
-    # Niri core
-    - niri
-    - xwayland-satellite
-    - uwsm
-
-    # Status bar and menus
-    - waybar
-    - rofi-wayland
-    # rofi-calc is not available in Fedora repos
-    - rofimoji
-    - kcalc
-    # Notifications
-    - SwayNotificationCenter
-    # Logout screen
-    - wlogout
-
-    # Clipboard
-    - cliphist
-    - wl-clipboard
-    - wtype
-
-    # Lock screen
-    - hyprlock
-
-    # Idle management
-    - swayidle
-
-    # Wallpaper
-    - swaybg
-    - swww  # animated wallpaper daemon (Arch ships it as awww; copr still ships swww)
-
-    # Polkit agent
-    - polkit-kde
-
-    # Audio control
-    - pavucontrol-qt
-    - blueman
-    - bluez
-
-    # On-screen display (volume, brightness, caps-lock)
-    - swayosd
-
-    # Idle inhibitor (caffeine mode)
-    - python3-pywayland
-
-    # Other Wayland tools
-    - inotify-tools
-    - cmatrix
-
-    # XDG Desktop Portal
-    - xdg-desktop-portal-kde
-    - xdg-desktop-portal-hyprland
-
-    # Network management
-    - NetworkManager
-    - network-manager-applet
-    - nm-connection-editor
-    - plasma-nm
-
-  debian:
-    # niri is not yet packaged for Debian/Ubuntu in official or common PPAs.
-    # Install manually from source: https://github.com/YaLTeR/niri
-    # The packages below are Wayland companion tools available via apt.
-    # (niri itself will be skipped — install it separately after running this installer)
-
-    # uwsm landed in Debian trixie (13); on Ubuntu 24.04 it's not packaged.
-    # Install from source if missing — see install/installer.sh setup helpers.
-    - uwsm
-
-    # Status bar and menus
-    - waybar
-    - rofi-wayland
-    - rofi-calc
-    - rofimoji
-    - kcalc
-
-    # Notifications
-    - sway-notification-center
-
-    # Clipboard
-    - wl-clipboard
-
-    # Lock screen
-    - swaylock         # hyprlock not in apt; swaylock is the apt equivalent
-
-    # Idle management
-    - swayidle
-
-    # Wallpaper
-    - swaybg
-
-    # Audio control
-    - pavucontrol-qt
-    - blueman
-    - bluez
-
-    # On-screen display (volume, brightness, caps-lock)
-    - swayosd
-
-    # Idle inhibitor (caffeine mode)
-    - python3-pywayland
-
-    # Other tools
-    - inotify-tools
-    - cmatrix
-
-    # XDG Desktop Portal
-    - xdg-desktop-portal-kde
-    # xdg-desktop-portal-hyprland may not be in apt — install from source if needed
-
-    # Network management
-    # network-manager-gnome provides nm-applet, the only standalone NM tray applet on Debian.
-    # plasma-nm on Debian requires full KDE Plasma — not suitable for standalone tiling WM setups.
-    - network-manager
-    - network-manager-gnome
-    - nm-connection-editor
-
-  fedora_copr:
-    - solopasha/hyprland  # For swww (animated wallpaper daemon)
-    - erikreider/swayosd  # On-screen display for volume, brightness, caps-lock (upstream maintainer)
-
-  # Note: SwayNotificationCenter is in official Fedora repos — no COPR needed

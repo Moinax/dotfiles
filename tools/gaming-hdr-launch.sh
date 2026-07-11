@@ -88,9 +88,12 @@ print_info "HDR monitor: $monitor — ${width}x${height} @ ${refresh}Hz"
 
 is_nvidia=false
 nvidia_major=""
-if has_nvidia_gpu; then
+if lspci 2>/dev/null | grep -qi 'nvidia'; then
     is_nvidia=true
-    nvidia_major=$(get_nvidia_driver_version 2>/dev/null) || nvidia_major=""
+    if command_exists nvidia-smi; then
+        nvidia_major=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+        nvidia_major="${nvidia_major%%.*}"
+    fi
 fi
 
 # NVIDIA → native; everything else (AMD/Intel) → gamescope.

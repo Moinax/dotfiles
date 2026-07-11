@@ -1,0 +1,16 @@
+[Unit]
+Description=Set initial wallpaper via awww
+Documentation=https://codeberg.org/LGFae/awww
+PartOf=graphical-session.target
+Requires=awww-daemon.service
+After=awww-daemon.service
+
+[Service]
+Slice=background-graphical.slice
+Type=oneshot
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 50); do awww query >/dev/null 2>&1 && exit 0; sleep 0.1; done; exit 1'
+ExecStart=/usr/bin/awww img --transition-type any --transition-fps 60 --transition-duration 1 %h/Wallpapers/colorful.jpg
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical-session.target

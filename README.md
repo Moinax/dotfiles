@@ -1,17 +1,18 @@
 # Dotfiles
 
-Personal dotfiles for Arch Linux, Fedora, and Debian/Ubuntu with optional Hyprland or Niri desktop support.
+Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional Hyprland or Niri desktop support.
 
 ## Features
 
-- **Multi-distro support**: Works on Arch Linux, Fedora, and Debian/Ubuntu (extensible to other distros)
-- **KDE base assumed**: Desktop installs expect a KDE Plasma base (e.g. Fedora KDE Spin, Kubuntu). Polkit, file manager, and theming packages rely on KDE components already being present.
+- **CachyOS-first**: Built for CachyOS; plain Arch and other Arch derivatives work on a best-effort basis (everything installs via pacman/paru)
+- **Stock NVIDIA stack**: No driver installation, modprobe options, or kernel parameters are touched — CachyOS's own NVIDIA setup (prebuilt open modules, suspend services) is used as-is
+- **KDE base assumed**: Desktop installs expect a KDE Plasma base. Polkit, file manager, and theming packages rely on KDE components already being present.
 - **Desktop or terminal mode**: Choose a full desktop setup or a lightweight terminal-only install
 - **Interactive installer**: Beautiful TUI prompts using [gum](https://github.com/charmbracelet/gum)
 - **Modular packages**: Choose what to install (Hyprland, Niri, Development, Gaming, AI, etc.)
-- **Desktop AppImage support**: Installs FUSE runtime for AppImage on desktop setups (Arch: `fuse2`, Fedora: `fuse`/`fuse-libs`, Debian/Ubuntu: `libfuse2`/`libfuse2t64`) with a custom import/remove tool via `./manage.sh apps`
+- **Desktop AppImage support**: Installs the FUSE runtime (`fuse2`) for AppImages with a custom import/remove tool via `./manage.sh apps`
 - **Chezmoi-powered**: Smart dotfile management with templates and conditional installation
-- **Easy to extend**: Add new distros or package groups with simple YAML files
+- **Easy to extend**: Add new package groups with simple YAML files
 
 ## Quick Start
 
@@ -59,22 +60,16 @@ dotfiles/
 ├── install/
 │   ├── installer.sh         # Main interactive installer
 │   ├── distros/
-│   │   ├── arch.sh          # Arch Linux package functions
-│   │   ├── fedora.sh        # Fedora package functions
-│   │   └── debian.sh        # Debian/Ubuntu package functions
+│   │   └── arch.sh          # pacman/paru package functions
 │   └── lib/
 │       ├── common.sh        # Shared utilities
-│       ├── detect.sh        # Distro detection
+│       ├── detect.sh        # Distro detection (CachyOS/Arch family)
 │       ├── services.sh      # Service management
 │       └── tree_select.py   # Interactive package selector TUI
 ├── packages/
-│   ├── common.yaml          # Cross-distro tools (zoxide, fnm, etc.)
+│   ├── common.yaml          # Tools installed via curl/git (zoxide, fnm, etc.)
 │   ├── arch/
-│   │   └── base.yaml        # Arch base packages
-│   ├── fedora/
-│   │   └── base.yaml        # Fedora base packages
-│   ├── debian/
-│   │   └── base.yaml        # Debian/Ubuntu base packages
+│   │   └── base.yaml        # Base packages (pacman + AUR)
 │   └── groups/
 │       ├── hyprland.yaml    # Hyprland + Wayland tools
 │       ├── niri.yaml        # Niri compositor + Wayland tools
@@ -154,14 +149,11 @@ This repo includes an external apps helper for:
 - `install-distrobox` tries to auto-detect the new `.desktop` file after install; if multiple entries are added, pass `--app your.desktop`.
 - Managed Distrobox app metadata is stored under `${XDG_STATE_HOME:-~/.local/state}/dotfiles/external-apps/distrobox/`.
 
-## Adding a New Distribution
+## Supported Distributions
 
-1. Create `install/distros/<distro>.sh` with package manager functions
-2. Create `packages/<distro>/base.yaml` with package names
-3. Add distro-specific packages to `packages/groups/*.yaml`
-4. Update `install/lib/detect.sh` if needed
-
-Three distro families are already supported: Arch, Fedora, and Debian/Ubuntu (see `install/distros/debian.sh` for a real example).
+This repo targets **CachyOS** exclusively. Any Arch-based distro (`ID_LIKE=arch`)
+is detected and mapped to the same pacman/paru install path on a best-effort
+basis; non-Arch distros are rejected by the installer.
 
 ## Manual Chezmoi Usage
 
@@ -233,7 +225,7 @@ After running the installer:
 - **Niri**: niri with waybar, rofi, swaync, wlogout (scrollable tiling Wayland compositor)
 - **AI**: hyprvoice dictation with local Whisper speech recognition
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (Catppuccin Powerline theme), WorkTrunk worktree plugin
-- **AppImage support**: Desktop installs set up AppImage support per distro family; terminal installs skip it
+- **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
 
 ## Credits
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-{{ $wp := ternary "swww" "awww" (eq .chezmoi.osRelease.id "fedora") -}}
-# wallpaper-picker — rofi-based wallpaper picker, applies via {{ $wp }}.
+# wallpaper-picker — rofi-based wallpaper picker, applies via awww.
 # Lists ~/Wallpapers/* (jpg/jpeg/png/webp) with thumbnails.
 set -e
 
@@ -27,20 +26,20 @@ chosen=$(
 target="$WALLPAPER_DIR/$chosen"
 
 # Apply onto the running daemon for a single clean transition. We do NOT
-# restart a live daemon: a restart triggers {{ $wp }}'s cache-restore, which
+# restart a live daemon: a restart triggers awww's cache-restore, which
 # flashes the previous wallpaper before the transition lands. Only
 # cold-start the daemon if it isn't running at all.
-if ! {{ $wp }} query >/dev/null 2>&1; then
-    systemctl --user start awww-daemon.service 2>/dev/null || setsid -f {{ $wp }}-daemon
+if ! awww query >/dev/null 2>&1; then
+    systemctl --user start awww-daemon.service 2>/dev/null || setsid -f awww-daemon
     ready=
     for _ in $(seq 1 50); do
-        {{ $wp }} query >/dev/null 2>&1 && { ready=1; break; }
+        awww query >/dev/null 2>&1 && { ready=1; break; }
         sleep 0.1
     done
     if [ -z "$ready" ]; then
-        notify-send -u critical "Wallpaper" "{{ $wp }}-daemon did not start"
+        notify-send -u critical "Wallpaper" "awww-daemon did not start"
         exit 1
     fi
 fi
 
-{{ $wp }} img --transition-type any --transition-fps 60 --transition-duration 1 "$target"
+awww img --transition-type any --transition-fps 60 --transition-duration 1 "$target"

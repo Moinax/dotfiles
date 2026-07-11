@@ -37,36 +37,9 @@ HYPRVOICE_MODEL="small"
 HYPRVOICE_PROVIDER="whisper-cpp"
 INSTALL_PURPOSE="desktop"
 
-# Regenerate GRUB config (distro-aware: grub-mkconfig vs grub2-mkconfig)
-# Patch a grub-btrfs config file to use Fedora's grub2 paths.
-# $1: path to the config file (e.g. /etc/default/grub-btrfs/config or a clone's config)
-_patch_grub_btrfs_fedora_paths() {
-    local config="$1"
-    local maybe_sudo=""
-    # Use sudo only for system files, not temp clones
-    [[ "$config" == /etc/* || "$config" == /boot/* ]] && maybe_sudo="sudo"
-    $maybe_sudo sed -i \
-        -e 's|^#\?\s*GRUB_BTRFS_GRUB_DIRNAME=.*|GRUB_BTRFS_GRUB_DIRNAME="/boot/grub2"|' \
-        -e 's|^#\?\s*GRUB_BTRFS_MKCONFIG=.*|GRUB_BTRFS_MKCONFIG=/usr/sbin/grub2-mkconfig|' \
-        -e 's|^#\?\s*GRUB_BTRFS_SCRIPT_CHECK=.*|GRUB_BTRFS_SCRIPT_CHECK=grub2-script-check|' \
-        -e 's|^#\?\s*GRUB_BTRFS_MKCONFIG_LIB=.*|GRUB_BTRFS_MKCONFIG_LIB=/usr/share/grub/grub-mkconfig_lib|' \
-        -e 's|^#\?\s*GRUB_BTRFS_GBTRFS_DIRNAME=.*|GRUB_BTRFS_GBTRFS_DIRNAME="/boot/grub2"|' \
-        "$config"
-}
-
 regenerate_grub_config() {
-    # Fedora: fix grub-btrfs config paths before regeneration
-    # (41_snapshots-btrfs defaults to /boot/grub when GRUB_BTRFS_GRUB_DIRNAME is unset)
-    if [ "$DISTRO_FAMILY" = "fedora" ] && [ -f /etc/default/grub-btrfs/config ]; then
-        _patch_grub_btrfs_fedora_paths /etc/default/grub-btrfs/config
-    fi
-
     print_info "Regenerating GRUB config..."
-    if [ "$DISTRO_FAMILY" = "fedora" ]; then
-        sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-    else
-        sudo grub-mkconfig -o /boot/grub/grub.cfg
-    fi
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 # Check if root filesystem is BTRFS
@@ -97,7 +70,7 @@ snapper_root_config_value() {
 
 # Return success when BTRFS snapshot setup is complete enough to skip rerunning it.
 is_btrfs_snapshots_configured() {
-    local timeline_value allow_users apt_hook
+    local timeline_value allow_users
 
     command_exists snapper || return 1
     [ -f /etc/snapper/configs/root ] || return 1
@@ -110,11 +83,6 @@ is_btrfs_snapshots_configured() {
         return 1
     fi
 
-    if [ "$DISTRO_FAMILY" = "debian" ]; then
-        apt_hook="/etc/apt/apt.conf.d/80-snapper"
-        [ -f "$apt_hook" ] || return 1
-    fi
-
     if systemctl list-unit-files grub-btrfsd.service &>/dev/null; then
         if ! systemctl is-enabled --quiet grub-btrfsd.service \
             && ! systemctl is-active --quiet grub-btrfsd.service; then
@@ -124,9 +92,6 @@ is_btrfs_snapshots_configured() {
         if ! systemctl cat grub-btrfsd.service 2>/dev/null | grep -q 'ExecStart=.*/\.snapshots'; then
             return 1
         fi
-    elif [[ "$DISTRO_FAMILY" =~ ^(debian|fedora)$ ]]; then
-        # grub-btrfs not in repos for debian/fedora — needs source install
-        command_exists grub-btrfsd || return 1
     fi
 
     return 0
@@ -613,33 +578,7 @@ install_base_packages() {
     
     # Install yq first for better YAML parsing
     install_yq
-    
-    # Enable COPR repositories first (Fedora family only)
-    if [ "$DISTRO_FAMILY" = "fedora" ]; then
-        print_info "Enabling COPR repositories..."
-        local copr_repos=()
-        while IFS= read -r repo; do
-            [ -n "$repo" ] && copr_repos+=("$repo")
-        done < <(yq -r '.packages.copr.repositories[]? // ""' "$base_file" 2>/dev/null | grep -v "^$")
 
-        for repo in "${copr_repos[@]}"; do
-            enable_copr "$repo" || true  # Continue even if COPR fails
-        done
-    fi
-
-    # Enable PPA repositories first (Debian/Ubuntu family only)
-    if [ "$DISTRO_FAMILY" = "debian" ]; then
-        print_info "Enabling PPA repositories..."
-        local ppa_repos=()
-        while IFS= read -r repo; do
-            [ -n "$repo" ] && ppa_repos+=("$repo")
-        done < <(yq -r '.packages.ppa.repositories[]? // ""' "$base_file" 2>/dev/null | grep -v "^$")
-
-        for repo in "${ppa_repos[@]}"; do
-            enable_ppa "$repo" || true  # Continue even if PPA fails (e.g., pure Debian)
-        done
-    fi
-    
     # Parse and install core packages
     local packages=()
     while IFS= read -r pkg; do
@@ -662,20 +601,18 @@ install_base_packages() {
         fi
     fi
 
-    # Parse and install AUR packages (Arch family only)
-    if [ "$DISTRO_FAMILY" = "arch" ]; then
-        packages=()
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && packages+=("$pkg")
-        done < <(parse_packages "$base_file" "aur")
+    # Parse and install AUR packages
+    packages=()
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] && packages+=("$pkg")
+    done < <(parse_packages "$base_file" "aur")
 
-        if [ ${#packages[@]} -gt 0 ]; then
-            install_packages "${packages[@]}" || track_warning "Some AUR packages failed to install"
-        fi
+    if [ ${#packages[@]} -gt 0 ]; then
+        install_packages "${packages[@]}" || track_warning "Some AUR packages failed to install"
     fi
 
-    # Parse and install desktop-only AUR packages (Arch family only)
-    if [ "$DISTRO_FAMILY" = "arch" ] && [ "$INSTALL_PURPOSE" = "desktop" ]; then
+    # Parse and install desktop-only AUR packages
+    if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         packages=()
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && packages+=("$pkg")
@@ -686,20 +623,11 @@ install_base_packages() {
         fi
     fi
 
-    # Install desktop-only AppImage support via distro-specific hook
-    if [ "$INSTALL_PURPOSE" = "desktop" ] && declare -F install_appimage_support >/dev/null; then
+    # Install desktop-only AppImage support (fuse2)
+    if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         install_appimage_support || track_warning "Failed to install AppImage support"
     fi
 
-    # Install binary packages not available in apt (Debian/Ubuntu family only)
-    if [ "$DISTRO_FAMILY" = "debian" ]; then
-        install_lazygit || track_warning "Failed to install lazygit"
-        install_starship || track_warning "Failed to install starship"
-        install_fastfetch || track_warning "Failed to install fastfetch"
-        install_yazi || track_warning "Failed to install yazi"
-        post_install_bat_alias
-    fi
-    
     print_success "Base packages installed"
 }
 
@@ -722,9 +650,7 @@ install_group_packages() {
         fi
         
         print_info "Installing $group group..."
-        
-        setup_group_repos "$group_file" "$group"
-        
+
         # Parse package candidates (distro packages + custom_install)
         local all_packages=()
         local -A custom_install_names=()
@@ -911,52 +837,6 @@ install_common_tools() {
         npm install -g yarn@1 pnpm hunkdiff || track_warning "Failed to install global npm packages"
     fi
     
-    # Tools below are packaged for Arch; install from upstream on other distros.
-    if [ "$DISTRO_FAMILY" != "arch" ]; then
-        if ! command_exists eza; then
-            local eza_arch
-            case "$(uname -m)" in
-                x86_64)  eza_arch="x86_64" ;;
-                aarch64) eza_arch="aarch64" ;;
-                armv7l)  eza_arch="armv7" ;;
-                *)       eza_arch="$(uname -m)" ;;
-            esac
-            install_curl_tool "eza" \
-                "curl -fsSL https://github.com/eza-community/eza/releases/latest/download/eza_${eza_arch}-unknown-linux-gnu.tar.gz | sudo tar xz -C /usr/local/bin && sudo chmod +x /usr/local/bin/eza"
-        else
-            print_info "eza is already installed"
-        fi
-
-        if ! command_exists lazydocker; then
-            install_curl_tool "lazydocker" \
-                "curl -fsSL https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash"
-        else
-            print_info "lazydocker is already installed"
-        fi
-
-        if ! command_exists tv; then
-            install_curl_tool "television" \
-                "curl -fsSL https://alexpasmantier.github.io/television/install.sh | bash"
-        else
-            print_info "television is already installed"
-        fi
-    fi
-
-    # Install Zellij on distros that don't package it (Arch & Fedora install it
-    # natively via base.yaml; everything else gets the upstream musl binary).
-    if ! command_exists zellij; then
-        local zellij_arch
-        case "$(uname -m)" in
-            x86_64)  zellij_arch="x86_64" ;;
-            aarch64) zellij_arch="aarch64" ;;
-            *)       zellij_arch="$(uname -m)" ;;
-        esac
-        install_curl_tool "zellij" \
-            "curl -fsSL https://github.com/zellij-org/zellij/releases/latest/download/zellij-${zellij_arch}-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin && sudo chmod +x /usr/local/bin/zellij"
-    else
-        print_info "zellij is already installed"
-    fi
-
     # Install rofi themes when a Wayland compositor group is selected
     if group_selected hyprland || group_selected niri; then
         print_info "Installing Rofi themes collection..."
@@ -982,37 +862,6 @@ install_common_tools() {
 
     # Setup hyprvoice (AI group)
     if group_selected ai; then
-        # Install hyprvoice binary (Fedora only — Arch uses AUR package)
-        if [ "$DISTRO_FAMILY" = "fedora" ] && ! command_exists hyprvoice; then
-            install_curl_tool "hyprvoice" \
-                "curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice && chmod +x ~/.local/bin/hyprvoice"
-        elif command_exists hyprvoice; then
-            print_info "hyprvoice is already installed"
-        fi
-
-        # Build whisper-cli from source (Fedora's whisper-cpp package ships only libraries)
-        if [ "$DISTRO_FAMILY" = "fedora" ] && ! command_exists whisper-cli; then
-            print_info "Building whisper-cli from source (not shipped by Fedora's whisper-cpp package)..."
-            local whisper_tmp="/tmp/whisper.cpp"
-            rm -rf "$whisper_tmp"
-            if git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git "$whisper_tmp" 2>/dev/null; then
-                if cmake -B "$whisper_tmp/build" "$whisper_tmp" -DWHISPER_SDL2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-                    && cmake --build "$whisper_tmp/build" --target whisper-cli -j"$(nproc)"; then
-                    mkdir -p "$HOME/.local/bin"
-                    cp "$whisper_tmp/build/bin/whisper-cli" "$HOME/.local/bin/whisper-cli"
-                    chmod +x "$HOME/.local/bin/whisper-cli"
-                    print_success "whisper-cli installed to ~/.local/bin/whisper-cli"
-                else
-                    print_error "Failed to build whisper-cli"
-                fi
-                rm -rf "$whisper_tmp"
-            else
-                print_error "Failed to clone whisper.cpp"
-            fi
-        elif command_exists whisper-cli; then
-            print_info "whisper-cli is already installed"
-        fi
-
         # Configure hyprvoice transcription provider and model
         if command_exists hyprvoice; then
             local existing_provider="" existing_model_cfg=""
@@ -1231,7 +1080,6 @@ sourceDir = "$source_dir"
     install_productivity = $install_productivity
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
-    has_nvidia = $HAS_NVIDIA
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
@@ -1273,13 +1121,6 @@ migrate_notification_daemon() {
             old_packages+=("$pkg")
         fi
     done
-    # Debian/Ubuntu: dunst is the apt package (mako is not in apt)
-    if [ "$DISTRO_FAMILY" = "debian" ]; then
-        old_packages=()
-        if is_package_installed dunst 2>/dev/null; then
-            old_packages+=("dunst")
-        fi
-    fi
 
     if [ ${#old_daemons[@]} -eq 0 ] && [ ${#old_packages[@]} -eq 0 ]; then
         return 0
@@ -1335,27 +1176,6 @@ migrate_dropbox_to_dist() {
         did_something=true
     fi
 
-    # Arch ships dropbox in main repos so there's no repo file to clean
-    case "$DISTRO_FAMILY" in
-        fedora)
-            if [ -f /etc/yum.repos.d/dropbox.repo ]; then
-                print_info "Removing leftover Dropbox dnf repo..."
-                sudo rm -f /etc/yum.repos.d/dropbox.repo
-                did_something=true
-            fi
-            ;;
-        debian)
-            if [ -f /etc/apt/sources.list.d/dropbox.list ] \
-                || [ -f /etc/apt/keyrings/dropbox.gpg ]; then
-                print_info "Removing leftover Dropbox apt repo..."
-                sudo rm -f /etc/apt/sources.list.d/dropbox.list \
-                           /etc/apt/keyrings/dropbox.gpg
-                sudo apt-get update -qq || true
-                did_something=true
-            fi
-            ;;
-    esac
-
     if $did_something; then
         systemctl --user daemon-reload      2>/dev/null || true
         systemctl --user reset-failed dropbox.service 2>/dev/null || true
@@ -1408,255 +1228,10 @@ apply_dark_mode_defaults() {
     fi
 }
 
-# Install NVIDIA driver packages (Arch: prebuilt open modules for mainline + LTS)
-# Uses prebuilt (non-DKMS) modules for fast upgrades, plus linux-lts as a fallback
-# kernel with its matching nvidia-open-lts module package.
-_install_nvidia_drivers_arch() {
-    local gaming_selected="$1"
-    local pkgs=(linux-lts nvidia-open nvidia-open-lts nvidia-utils nvidia-settings)
-
-    if [ "$gaming_selected" = "true" ]; then
-        pkgs+=(lib32-nvidia-utils)
-    fi
-
-    print_info "Installing NVIDIA prebuilt driver packages (mainline + LTS): ${pkgs[*]}"
-    install_packages "${pkgs[@]}" || track_warning "Some NVIDIA driver packages failed to install"
-}
-
-# Install NVIDIA driver packages (Fedora: akmod via RPM Fusion)
-_install_nvidia_drivers_fedora() {
-    enable_rpmfusion
-    local pkgs=(akmod-nvidia nvidia-vaapi-driver)
-    print_info "Installing NVIDIA driver packages: ${pkgs[*]}"
-    install_packages "${pkgs[@]}" || track_warning "Some NVIDIA driver packages failed to install"
-}
-
-# Install NVIDIA driver packages (Debian/Ubuntu)
-_install_nvidia_drivers_debian() {
-    # Enable non-free/restricted repos needed for NVIDIA drivers
-    case "$DISTRO" in
-        ubuntu|pop|linuxmint|elementary|neon|zorin)
-            if command_exists add-apt-repository; then
-                sudo add-apt-repository -y restricted 2>/dev/null || true
-                sudo apt update
-            fi
-            ;;
-        *)
-            if ! grep -rq 'non-free' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
-                print_info "Enabling contrib and non-free repositories..."
-                if command_exists add-apt-repository; then
-                    sudo add-apt-repository -y contrib 2>/dev/null || true
-                    sudo add-apt-repository -y non-free 2>/dev/null || true
-                else
-                    sudo sed -i 's/^\(deb.*main\)$/\1 contrib non-free non-free-firmware/' /etc/apt/sources.list
-                fi
-                sudo apt update
-            fi
-            ;;
-    esac
-
-    # Install drivers
-    case "$DISTRO" in
-        ubuntu|pop|linuxmint|elementary|neon|zorin)
-            print_info "Installing NVIDIA drivers via ubuntu-drivers..."
-            install_packages ubuntu-drivers-common
-            sudo ubuntu-drivers autoinstall || track_warning "ubuntu-drivers autoinstall failed"
-            ;;
-        *)
-            print_info "Installing NVIDIA driver packages for Debian..."
-            install_packages nvidia-driver || track_warning "nvidia-driver package failed to install"
-            ;;
-    esac
-}
-
-# Install NVIDIA driver packages per distro (called before setup_nvidia)
-install_nvidia_drivers() {
-    if [ "$HAS_NVIDIA" != "true" ] || [ "$INSTALL_PURPOSE" != "desktop" ]; then
-        return 0
-    fi
-
-    print_header "NVIDIA Driver Installation"
-
-    # Skip if drivers are already installed (covers both loaded and freshly-installed-pre-reboot)
-    if get_nvidia_driver_version &>/dev/null; then
-        print_info "NVIDIA drivers already installed — skipping driver installation"
-        return 0
-    fi
-
-    local gaming_selected=false
-    if group_selected gaming; then
-        gaming_selected=true
-    fi
-
-    case "$DISTRO_FAMILY" in
-        arch)
-            _install_nvidia_drivers_arch "$gaming_selected"
-            ;;
-        fedora)
-            _install_nvidia_drivers_fedora
-            ;;
-        debian)
-            _install_nvidia_drivers_debian
-            ;;
-        *)
-            print_warning "NVIDIA driver auto-install not supported on $DISTRO_FAMILY — install manually"
-            return 0
-            ;;
-    esac
-
-    print_success "NVIDIA driver packages installed"
-    print_info "A reboot may be required before drivers are fully active"
-}
-
-# Setup NVIDIA GPU suspend/resume services
-setup_nvidia() {
-    if [ "$HAS_NVIDIA" != "true" ]; then
-        return 0
-    fi
-
-    print_header "NVIDIA GPU Setup"
-
-    # Check if NVIDIA driver services are installed
-    if ! has_nvidia_services; then
-        print_warning "NVIDIA GPU detected but driver services not found (reboot may be required)"
-        print_info "Re-run setup after reboot to configure suspend/resume services"
-        return 0
-    fi
-
-    # Detect driver version for version-specific suspend behavior
-    local nvidia_major
-    nvidia_major=$(get_nvidia_driver_version) || nvidia_major="unknown"
-    print_info "NVIDIA driver version detected: ${nvidia_major}"
-
-    print_info "Using NVIDIA's documented systemd suspend/resume integration"
-
-    # Enable NVIDIA suspend/resume/hibernate services for GPU memory preservation.
-    # Use enable without --now: these are oneshot services meant to run only during actual suspend/resume.
-    for svc in nvidia-suspend.service nvidia-resume.service nvidia-hibernate.service; do
-        if systemctl is-enabled "$svc" &>/dev/null; then
-            print_info "Service $svc is already enabled"
-        else
-            print_info "Enabling service: $svc"
-            if sudo systemctl enable "$svc"; then
-                print_success "Service $svc enabled"
-            else
-                print_warning "Failed to enable service $svc"
-            fi
-        fi
-    done
-
-    # --- Common configuration (required regardless of driver version) ---
-
-    local modprobe_conf="/etc/modprobe.d/nvidia.conf"
-    local nvidia_modprobe_options="NVreg_PreserveVideoMemoryAllocations=1"
-    local modprobe_changed=false
-
-    # Older local experiments disabled the package default notifier path. Current
-    # nvidia-utils ships nvidia-sleep.conf with the supported defaults, including
-    # NVreg_UseKernelSuspendNotifiers=1 and NVreg_TemporaryFilePath=/var/tmp.
-    while IFS= read -r stale_conf; do
-        print_info "Removing stale NVIDIA suspend override from $stale_conf"
-        sudo sed -i 's/[[:space:]]*NVreg_UseKernelSuspendNotifiers=0//g' "$stale_conf"
-        modprobe_changed=true
-    done < <(grep -rl 'NVreg_UseKernelSuspendNotifiers=0' /etc/modprobe.d/ 2>/dev/null || true)
-
-    if ! grep -qs '^options[[:space:]]\+nvidia[[:space:]]' "$modprobe_conf"; then
-        print_info "Configuring NVIDIA modprobe options..."
-        printf '%s\n' "options nvidia $nvidia_modprobe_options" | sudo tee -a "$modprobe_conf" > /dev/null
-        modprobe_changed=true
-        print_success "NVIDIA modprobe config written to $modprobe_conf"
-    else
-        local missing_options=()
-        for option in $nvidia_modprobe_options; do
-            if ! grep -rqs "$option" /etc/modprobe.d/; then
-                missing_options+=("$option")
-            fi
-        done
-
-        if [ ${#missing_options[@]} -gt 0 ]; then
-            print_info "Adding missing NVIDIA modprobe options: ${missing_options[*]}"
-            local escaped_options
-            escaped_options=$(printf ' %s' "${missing_options[@]}")
-            sudo sed -i "/^options[[:space:]]\\+nvidia[[:space:]]/s/$/${escaped_options}/" "$modprobe_conf"
-            modprobe_changed=true
-            print_success "NVIDIA modprobe options updated in $modprobe_conf"
-        else
-            print_success "NVIDIA modprobe options already configured"
-        fi
-    fi
-    if ! grep -rEqs '^options[[:space:]]+nvidia[-_]drm.*modeset=1' /etc/modprobe.d/; then
-        echo "options nvidia_drm modeset=1" | sudo tee -a "$modprobe_conf" > /dev/null
-        modprobe_changed=true
-    fi
-
-    # Configure GRUB kernel parameters for NVIDIA + proper suspend
-    configure_nvidia_kernel_params
-
-    if [ "$modprobe_changed" = true ] && command -v mkinitcpio &>/dev/null; then
-        print_info "Rebuilding initramfs so early-loaded NVIDIA modules use updated modprobe options..."
-        if sudo mkinitcpio -P; then
-            print_success "Initramfs rebuilt"
-        else
-            print_warning "Failed to rebuild initramfs; reboot may still use stale NVIDIA options"
-        fi
-    fi
-
-    print_success "NVIDIA GPU setup complete"
-}
-
-# Configure kernel parameters in GRUB for NVIDIA suspend/resume support
-# Ensures the documented NVIDIA Wayland/suspend parameters are present without
-# forcing a platform sleep mode.
-# Idempotent: only modifies GRUB and regenerates config when changes are needed
-configure_nvidia_kernel_params() {
-    local grub_default="/etc/default/grub"
-    [ -f "$grub_default" ] || return 0
-
-    local current_cmdline
-    current_cmdline=$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$grub_default" \
-        | head -1 | sed 's/^GRUB_CMDLINE_LINUX_DEFAULT="//;s/"$//')
-
-    local updated=false
-
-    # ensure_kparam adds a kernel parameter if not already present.
-    # Uses -F for fixed-string matching (dots in param names are literal, not regex wildcards).
-    # Modifies outer current_cmdline and updated via bash dynamic scoping.
-    ensure_kparam() {
-        local param="$1"
-        if ! echo "$current_cmdline" | grep -qwF "$param"; then
-            current_cmdline="$current_cmdline $param"
-            updated=true
-        fi
-    }
-
-    # Leave the kernel/firmware to choose the default sleep state. If a platform
-    # needs s2idle or deep, choose it outside the dotfiles baseline.
-    if echo "$current_cmdline" | grep -q 'mem_sleep_default='; then
-        current_cmdline=$(echo "$current_cmdline" | sed 's/mem_sleep_default=[^[:space:]]*//g')
-        updated=true
-    fi
-    if echo "$current_cmdline" | grep -qwF "nvidia-drm.fbdev=1"; then
-        current_cmdline=$(echo "$current_cmdline" | sed 's/nvidia-drm\.fbdev=1//g')
-        updated=true
-    fi
-
-    ensure_kparam "nvidia-drm.modeset=1"
-    ensure_kparam "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
-
-    if [ "$updated" = true ]; then
-        # Collapse multiple spaces and trim
-        current_cmdline=$(echo "$current_cmdline" | tr -s ' ' | sed 's/^ *//;s/ *$//')
-        print_info "Updating GRUB kernel parameters for NVIDIA + suspend..."
-        sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$current_cmdline\"|" "$grub_default"
-        regenerate_grub_config || {
-            track_warning "Failed to regenerate GRUB config"
-            return
-        }
-        print_success "GRUB kernel parameters updated (reboot required)"
-    else
-        print_success "GRUB kernel parameters already configured"
-    fi
-}
+# NVIDIA note: no driver installation or tuning happens here on purpose.
+# CachyOS ships its own NVIDIA stack (prebuilt nvidia-open modules for the
+# cachyos kernels, modeset defaults, suspend/resume services) — the dotfiles
+# deliberately leave it untouched so the stock behavior can be evaluated.
 
 # Enable services
 enable_selected_services() {
@@ -1780,8 +1355,7 @@ EOF
 
 # Configure and enable ClamAV (conditional on security group).
 # ClamAV ships with a poison-pill `Example` line in its configs and a commented
-# LocalSocket; the daemon won't start until these are fixed. On Debian the
-# postinst handles it, but Arch/Fedora require the edits below. We then enable
+# LocalSocket; the daemon won't start until these are fixed. We then enable
 # the freshclam updater, wait for the signature DBs to populate, and start the
 # on-access scan daemon (needs DBs present to load).
 setup_clamav() {
@@ -1795,31 +1369,16 @@ setup_clamav() {
 
     print_header "Configuring ClamAV"
 
-    local freshclam_conf clamd_conf freshclam_svc clamd_svc
-    case "$DISTRO_FAMILY" in
-        arch|debian)
-            freshclam_conf=/etc/clamav/freshclam.conf
-            clamd_conf=/etc/clamav/clamd.conf
-            freshclam_svc=clamav-freshclam.service
-            clamd_svc=clamav-daemon.service
-            ;;
-        fedora)
-            freshclam_conf=/etc/freshclam.conf
-            clamd_conf=/etc/clamd.d/scan.conf
-            freshclam_svc=clamav-freshclam.service
-            clamd_svc=clamd@scan.service
-            ;;
-        *)
-            print_warning "ClamAV auto-config not implemented for $DISTRO_FAMILY — skipping"
-            return 0
-            ;;
-    esac
+    local freshclam_conf=/etc/clamav/freshclam.conf
+    local clamd_conf=/etc/clamav/clamd.conf
+    local freshclam_svc=clamav-freshclam.service
+    local clamd_svc=clamav-daemon.service
 
     sudo sed -i '/^Example[[:space:]]*$/d' "$freshclam_conf" "$clamd_conf"
     sudo sed -i '0,/^#[[:space:]]*LocalSocket[[:space:]]/s//LocalSocket /' "$clamd_conf"
 
-    # Apply tmpfiles.d so /run/clamd.scan (Fedora) / /run/clamav (Arch) exists
-    # before starting the daemon — otherwise it fails until first reboot.
+    # Apply tmpfiles.d so /run/clamav exists before starting the daemon —
+    # otherwise it fails until first reboot.
     sudo systemd-tmpfiles --create >/dev/null 2>&1 || true
 
     # Start freshclam first — clamd needs main.cvd/daily.cvd to load.
@@ -1869,39 +1428,16 @@ setup_biometric() {
 
     # PAM fingerprint covers login, sudo, AND polkit — Bitwarden's biometric unlock goes via polkit.
     if gum confirm "Enable fingerprint for system auth (login, sudo, polkit, Bitwarden)?"; then
-        case "$DISTRO_FAMILY" in
-            fedora)
-                if ! command_exists authselect; then
-                    track_warning "authselect not found — enable PAM fingerprint manually"
-                elif authselect current 2>/dev/null | grep -q 'with-fingerprint'; then
-                    print_info "authselect 'with-fingerprint' feature already enabled"
-                elif sudo authselect enable-feature with-fingerprint; then
-                    print_success "Enabled authselect 'with-fingerprint'"
-                else
-                    track_warning "Failed to enable authselect 'with-fingerprint'"
-                fi
-                ;;
-            arch|debian)
-                local pam_file
-                if [ "$DISTRO_FAMILY" = "arch" ]; then
-                    pam_file=/etc/pam.d/system-local-login
-                    [ -f /etc/pam.d/system-auth ] && pam_file=/etc/pam.d/system-auth
-                else
-                    pam_file=/etc/pam.d/common-auth
-                fi
-                if sudo grep -q 'pam_fprintd.so' "$pam_file" 2>/dev/null; then
-                    print_info "pam_fprintd already configured in $pam_file"
-                else
-                    print_info "Adding pam_fprintd.so to $pam_file"
-                    sudo cp "$pam_file" "${pam_file}.bak.$(date +%s)"
-                    sudo sed -i '0,/^auth/s//auth      sufficient   pam_fprintd.so\n&/' "$pam_file"
-                    print_success "PAM fingerprint enabled (backup: ${pam_file}.bak.*)"
-                fi
-                ;;
-            *)
-                track_warning "PAM fingerprint setup not implemented for $DISTRO_FAMILY"
-                ;;
-        esac
+        local pam_file=/etc/pam.d/system-local-login
+        [ -f /etc/pam.d/system-auth ] && pam_file=/etc/pam.d/system-auth
+        if sudo grep -q 'pam_fprintd.so' "$pam_file" 2>/dev/null; then
+            print_info "pam_fprintd already configured in $pam_file"
+        else
+            print_info "Adding pam_fprintd.so to $pam_file"
+            sudo cp "$pam_file" "${pam_file}.bak.$(date +%s)"
+            sudo sed -i '0,/^auth/s//auth      sufficient   pam_fprintd.so\n&/' "$pam_file"
+            print_success "PAM fingerprint enabled (backup: ${pam_file}.bak.*)"
+        fi
     fi
 
     # Hyprlock / swaylock PAM stacks default to `auth include login`, which pulls in
@@ -2230,11 +1766,9 @@ DROPEOF
     fi
 }
 
-# Setup Plymouth boot splash screen
+# Setup Plymouth boot splash screen (CachyOS usually ships Plymouth
+# preconfigured — the check below skips setup when it's already in place)
 setup_plymouth() {
-    # Only relevant on Arch family — Fedora ships Plymouth out of the box
-    [ "$DISTRO_FAMILY" != "arch" ] && return
-
     # Skip if Plymouth is already installed and configured
     if command_exists plymouth-set-default-theme \
         && grep -qE '^HOOKS=.*\bplymouth\b' /etc/mkinitcpio.conf 2>/dev/null; then
@@ -2504,36 +2038,6 @@ setup_btrfs_snapshots() {
         sudo sed -i '/^UUID=.*@\.snapshots/d' /etc/fstab
     fi
 
-    # Debian: install APT hook for pre-upgrade snapshots
-    if [ "$DISTRO_FAMILY" = "debian" ]; then
-        local apt_hook="/etc/apt/apt.conf.d/80-snapper"
-        if [ ! -f "$apt_hook" ]; then
-            print_info "Installing APT snapper hook..."
-            sudo tee "$apt_hook" > /dev/null << 'APTEOF'
-DPkg::Pre-Invoke { "if command -v snapper >/dev/null 2>&1 && snapper list-configs 2>/dev/null | grep -q root; then snapper create --description 'Before APT upgrade' --cleanup-algorithm number; fi"; };
-APTEOF
-        fi
-    fi
-
-    # Debian/Fedora: install grub-btrfs from source (not in repos)
-    if [[ "$DISTRO_FAMILY" =~ ^(debian|fedora)$ ]] && ! command_exists grub-btrfsd; then
-        print_info "Installing grub-btrfs from source..."
-        local tmp_dir
-        tmp_dir=$(mktemp -d)
-        if git clone --depth 1 https://github.com/Antynea/grub-btrfs.git "$tmp_dir"; then
-            # Fedora uses grub2 paths instead of grub — patch clone before install
-            if [ "$DISTRO_FAMILY" = "fedora" ]; then
-                _patch_grub_btrfs_fedora_paths "$tmp_dir/config"
-            fi
-            if ! (cd "$tmp_dir" && sudo make install); then
-                track_warning "Failed to install grub-btrfs from source"
-            fi
-        else
-            track_warning "Failed to clone grub-btrfs repository"
-        fi
-        rm -rf "$tmp_dir"
-    fi
-
     # Enable grub-btrfsd service if available
     if systemctl list-unit-files grub-btrfsd.service &>/dev/null; then
         print_info "Configuring grub-btrfsd to watch snapper snapshots..."
@@ -2651,13 +2155,6 @@ main() {
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()
 
-    # Detect NVIDIA GPU
-    HAS_NVIDIA=false
-    if has_nvidia_gpu; then
-        HAS_NVIDIA=true
-        print_info "NVIDIA GPU detected"
-    fi
-
     HAS_FINGERPRINT=false
     if has_fingerprint_reader; then
         HAS_FINGERPRINT=true
@@ -2727,8 +2224,6 @@ main() {
     setup_grub_theme
     setup_btrfs_snapshots
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
-        install_nvidia_drivers
-        setup_nvidia
         setup_sddm
         setup_plymouth
     fi

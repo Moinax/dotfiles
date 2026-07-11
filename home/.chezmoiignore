@@ -23,8 +23,8 @@ LICENSE
 
 # Hyprland 0.55 switched configuration from hyprlang (.conf) to Lua (.lua).
 # We keep both flavors in source and deploy only the one matching the
-# installed Hyprland version. Older distros (e.g. Fedora) still ship < 0.55
-# and need the .conf files; bleeding-edge (Arch) gets the .lua files.
+# installed Hyprland version (CachyOS tracks Arch, so current installs get
+# the .lua files; the .conf files remain as a fallback for older versions).
 # Override by setting .hyprland_config_lang = "lua" | "conf" in chezmoi data.
 {{- if .install_hyprland }}
 {{-   $lang := "" }}
@@ -174,19 +174,5 @@ Wallpapers/**
 .local/share/applications/google-chrome.desktop
 {{- end }}
 
-# ssh-agent: Arch runs OpenSSH's systemd `ssh-agent.socket` user unit; other
-# distros fall back to keychain (see .zsh/rc.d/40-tools.zsh).
-{{- if ne .chezmoi.osRelease.id "arch" }}
-.config/environment.d/ssh-agent.conf
-.config/systemd/user/sockets.target.wants/ssh-agent.socket
-{{- end }}
-
-# hypridle-pin watcher: notifies when Arch rebuilds hypridle so the
-# sdbus-cpp/hyprlock IgnorePkg pins can be lifted. Pins live in Arch's
-# /etc/pacman.conf, so this is Arch-only.
-{{- if ne .chezmoi.osRelease.id "arch" }}
-.local/bin/check-hypridle-pin.sh
-.config/systemd/user/check-hypridle-pin.service
-.config/systemd/user/check-hypridle-pin.timer
-.config/systemd/user/timers.target.wants/check-hypridle-pin.timer
-{{- end }}
+# ssh-agent runs via OpenSSH's systemd `ssh-agent.socket` user unit
+# (ssh-agent.conf + the sockets.target.wants symlink are always managed).

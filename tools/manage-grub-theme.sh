@@ -16,10 +16,6 @@ GRUB_DEFAULT="/etc/default/grub"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/grub-themes"
 CLONE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/grub-theme-repos"
 
-# Detect distro family for grub-mkconfig path differences
-DISTRO=$(detect_distro)
-DISTRO_FAMILY=$(get_distro_family "$DISTRO")
-
 # ── Theme registry ───────────────────────────────────────────────────────────
 # Each theme is defined by a set of variables: _REPO, _VARIANTS, _INSTALL_METHOD
 
@@ -101,20 +97,13 @@ get_grub_themes_dir() {
     fi
 }
 
-# Run grub-mkconfig for the current distro
+# Regenerate the GRUB config
 run_grub_mkconfig() {
     print_info "Regenerating GRUB config..."
-    if [ "$DISTRO_FAMILY" = "fedora" ]; then
-        sudo grub2-mkconfig -o /boot/grub2/grub.cfg || {
-            print_error "grub2-mkconfig failed — theme files are installed but GRUB config was not updated"
-            return 1
-        }
-    else
-        sudo grub-mkconfig -o /boot/grub/grub.cfg || {
-            print_error "grub-mkconfig failed — theme files are installed but GRUB config was not updated"
-            return 1
-        }
-    fi
+    sudo grub-mkconfig -o /boot/grub/grub.cfg || {
+        print_error "grub-mkconfig failed — theme files are installed but GRUB config was not updated"
+        return 1
+    }
 }
 
 # Read current GRUB_THEME from /etc/default/grub

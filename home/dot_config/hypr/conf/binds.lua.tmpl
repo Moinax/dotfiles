@@ -18,9 +18,7 @@ hl.bind(mod .. " + K",            hl.dsp.exec_cmd(home .. "/.config/hypr/scripts
 hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("rofi -show window -window-thumbnail"))                                    -- Window switcher
 hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd([[rofi -show "Select App to Kill" -modi "Select App to Kill:rofi-killwindow"]])) -- Kill window (rofi)
 hl.bind(mod .. " + V",            hl.dsp.exec_cmd([[bash -c 'cliphist list | rofi -dmenu -p "Clipboard" | cliphist decode | wtype -']])) -- Clipboard
-{{- if ne .chezmoi.osRelease.id "fedora" }}
 hl.bind(mod .. " + C",            hl.dsp.exec_cmd("rofi -show calc"))                                                        -- Calculator (rofi)
-{{- end }}
 hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("kcalc"))                                                                  -- Open calculator
 hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                             -- Color picker
 hl.bind(mod .. " + R",            hl.dsp.exec_cmd("rofi-theme-selector"))                                                    -- Theme selector

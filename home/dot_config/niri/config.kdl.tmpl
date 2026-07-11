@@ -144,14 +144,6 @@ environment {
     // For Wayland input methods, these should be unset (use native Wayland protocol)
     // GTK_IM_MODULE and QT_IM_MODULE intentionally not set
     // XMODIFIERS intentionally not set
-{{- if .has_nvidia }}
-
-    // NVIDIA https://wiki.hyprland.org/Nvidia/
-    LIBVA_DRIVER_NAME "nvidia"
-    GBM_BACKEND "nvidia-drm"
-    __GLX_VENDOR_LIBRARY_NAME "nvidia"
-    __GL_VRR_ALLOWED "1"
-{{- end }}
 }
 
 // Daemons with their own user unit autostart via graphical-session.target.wants/.
@@ -192,9 +184,7 @@ binds {
     Mod+Tab hotkey-overlay-title="Switch Window: rofi" { spawn-sh "rofi -show window -window-thumbnail"; }
     Mod+Escape hotkey-overlay-title="Kill Window: rofi" { spawn-sh "rofi -show 'Select App to Kill' -modi 'Select App to Kill:rofi-killwindow'"; }
     Mod+V hotkey-overlay-title="Clipboard: cliphist" { spawn-sh "cliphist list | rofi -dmenu -p 'Clipboard' | cliphist decode | wtype -"; }
-{{ if ne .chezmoi.osRelease.id "fedora" -}}
     Mod+C hotkey-overlay-title="Calculator: rofi-calc" { spawn-sh "rofi -show calc"; }
-{{ end -}}
     Mod+Ctrl+Alt+C hotkey-overlay-title="Calculator: kcalc" { spawn "kcalc"; }
     Mod+Shift+P hotkey-overlay-title="Color Picker: hyprpicker" { spawn "hyprpicker"; }
     Mod+R hotkey-overlay-title="Theme Selector: rofi" { spawn "rofi-theme-selector"; }

@@ -15,7 +15,6 @@ descriptions:
   obs-studio: Streaming and screen recording
   ffmpeg: Audio/video encoding framework
   imagemagick: Image manipulation toolkit
-  ImageMagick: Image manipulation toolkit (Fedora)
   gimp: GNU Image Manipulation Program
   inkscape: Vector graphics editor
   easyeffects: PipeWire audio effects (RNNoise mic suppression for Discord/OBS)
@@ -31,27 +30,3 @@ packages:
     - inkscape
     - easyeffects
     - gpu-screen-recorder
-
-  fedora:
-    - mpv
-    - obs-studio
-    - ffmpeg
-    - ImageMagick
-    - gimp
-    - inkscape
-
-  debian:
-    # Requires restricted + universe — enabled by setup_multimedia_repos
-    - vlc
-    - obs-studio
-    - kdenlive
-    - ffmpeg
-    - imagemagick
-    - gimp
-    - inkscape
-    - pavucontrol-qt
-
-  fedora_repos:
-    # RPM Fusion for codecs
-    - rpmfusion-free
-    - rpmfusion-nonfree

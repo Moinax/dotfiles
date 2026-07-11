@@ -7,32 +7,16 @@ environment: both
 # No dotfiles to manage
 dotfiles: []
 
-# Services are enabled by setup_clamav() in installer.sh (distro-specific names:
-# clamav-freshclam + clamav-daemon on Arch/Debian, clamd@scan on Fedora).
+# Services are enabled by setup_clamav() in installer.sh
+# (clamav-freshclam + clamav-daemon).
 services: []
 
 descriptions:
   clamav: ClamAV antivirus engine (clamscan / clamdscan)
-  clamav-update: ClamAV signature updater (freshclam) — Fedora
-  clamav-freshclam: ClamAV signature updater (freshclam) — Debian/Ubuntu
-  clamav-daemon: ClamAV background scanning daemon — Debian/Ubuntu
-  clamd: ClamAV background scanning daemon — Fedora
-  clamtk: Graphical front-end for ClamAV (Arch AUR / Fedora / Debian)
+  clamtk: Graphical front-end for ClamAV (AUR)
 
 packages:
   arch:
     # clamav bundles freshclam + clamav-daemon service units
     - clamav
     - clamtk  # AUR
-
-  fedora:
-    - clamav
-    - clamav-update
-    - clamd
-    - clamtk
-
-  debian:
-    - clamav
-    - clamav-freshclam
-    - clamav-daemon
-    - clamtk

@@ -8,7 +8,7 @@
 
 configuration {
 	/*---------- General setting ----------*/
-	modi: "drun,window,{{ if ne .chezmoi.osRelease.id "fedora" }}calc,{{ end }}files:rofi-filesearch,clipboard:rofi-clipboard,emoj:rofi-emoji";
+	modi: "drun,window,calc,files:rofi-filesearch,clipboard:rofi-clipboard,emoj:rofi-emoji";
 	case-sensitive: false;
 	cycle: true;
 	filter: "";
@@ -80,9 +80,7 @@ configuration {
 	display-combi: "󰍉 Search";
 	display-keys: "󰌌 Keys";
 	display-filebrowser: "󰉋 Files";
-{{- if ne .chezmoi.osRelease.id "fedora" }}
 	display-calc: "󰃬 Calc";
-{{- end }}
 	display-clipboard: "󰅍 Clipboard";
 	display-files: "󰈞 Files";
 	display-emoj: "󰞅 Emoji";

@@ -22,23 +22,16 @@ descriptions:
   ffmpegthumbnailer: Video thumbnail generator
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
   snapper: BTRFS snapshot manager
-  snap-pac: Auto-snapshot on pacman upgrades (Arch)
-  python3-dnf-plugin-snapper: Auto-snapshot on DNF upgrades (Fedora)
+  snap-pac: Auto-snapshot on pacman upgrades
   grub-btrfs: GRUB entries for BTRFS snapshots
-  slack-desktop: Team communication app (Arch AUR / Debian/Ubuntu)
-  slack: Team communication app (Fedora)
+  slack-desktop: Team communication app (AUR)
   telegram-desktop: Telegram messaging app
-  bitwarden: Bitwarden password manager desktop app (Arch)
-  bitwarden-flatpak: Bitwarden Desktop via Flathub (Fedora / Debian — no native package)
-  helium: Helium web browser (AppImage, cross-distro, set as default)
-  zen-browser-bin: Zen Browser (Arch AUR)
-  zen-browser: Zen Browser (Fedora / Debian)
-  google-chrome: Google Chrome web browser (Arch AUR)
-  google-chrome-stable: Google Chrome web browser (Fedora)
+  bitwarden: Bitwarden password manager desktop app
+  helium: Helium web browser (AppImage, set as default)
+  zen-browser-bin: Zen Browser (AUR)
+  google-chrome: Google Chrome web browser (AUR)
   dropbox: Dropbox cloud file sync (official dist binary, bypasses distro package)
-  localsend-bin: LocalSend — AirDrop-style LAN file sharing (Arch AUR)
-  localsend-flatpak: LocalSend via Flathub (Fedora / Debian — no native package)
-  localsend-firewalld: Open firewalld port 53317/tcp+udp for LocalSend discovery (Fedora)
+  localsend-bin: LocalSend — AirDrop-style LAN file sharing (AUR)
   p7zip: 7-Zip archive tool
   unrar: RAR archive extractor
   unzip: ZIP archive extractor
@@ -84,86 +77,6 @@ packages:
     - unrar
     - unzip
 
-  fedora:
-    # File managers
-    - dolphin
-    - ffmpegthumbnailer
-    - kdegraphics-thumbnailers
-
-    # KDE apps
-    - gwenview
-    - kate
-    - okular
-    - ark
-
-    # Backup and snapshots
-    - snapper
-    - python3-dnf-plugin-snapper
-    # grub-btrfs installed from source by setup_btrfs_snapshots()
-
-    # Communication
-    - slack
-    - telegram-desktop
-
-    # Password manager — bitwarden installed via Flatpak (see custom_install)
-
-    # Web browsers
-    - zen-browser
-    - google-chrome-stable
-    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
-
-    # Cloud sync — dropbox installed via custom_install (Dropbox's own
-    # auto-updater fights any distro package)
-
-    # LAN file sharing — localsend installed via flatpak + firewalld port via custom_install
-
-    # Archive tools
-    - p7zip
-    - unrar
-    - unzip
-
-  debian:
-    # File managers
-    - dolphin
-    - ffmpegthumbnailer
-
-    # KDE apps
-    - gwenview
-    - kate
-    - okular
-    - ark
-
-    # Backup and snapshots
-    - snapper
-    # grub-btrfs installed from source by setup_btrfs_snapshots()
-
-    # Communication
-    - slack-desktop
-    - telegram-desktop
-
-    # Password manager — bitwarden installed via Flatpak (see custom_install)
-
-    # Web browsers (Google Chrome requires repo — added by setup_productivity_repos)
-    - google-chrome-stable
-    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
-
-    # Cloud sync — dropbox installed via custom_install (Dropbox's own
-    # auto-updater fights any distro package)
-
-    # LAN file sharing — localsend installed via flatpak (see custom_install)
-
-    # Archive tools
-    - p7zip-full
-    - unrar
-    - unzip
-
-  fedora_copr:
-    - sneexy/zen-browser
-
-  fedora_repos:
-    # Google Chrome repo
-    - google-chrome
-
 custom_install:
   # Helium ships only as an AppImage. install-github resolves the latest release,
   # picks the asset for the current arch, imports it via the AppImage mechanism
@@ -180,76 +93,9 @@ custom_install:
     # here too so selecting Helium alone still works.
     requires_packages:
       arch: [fuse2]
-      fedora: [fuse]
-      debian: [libfuse2]
     install: |
       "$DOTFILES_DIR/tools/manage-external-apps.sh" install-github imputnet/helium-linux \
         --name helium --type appimage --non-interactive
-
-  - name: bitwarden-flatpak
-    check: flatpak info com.bitwarden.desktop
-    requires: flatpak
-    requires_packages:
-      fedora: [flatpak]
-      debian: [flatpak]
-    install: |
-      flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
-        && flatpak install --user -y --noninteractive flathub com.bitwarden.desktop
-    distro_skip:
-      - arch
-
-  - name: zen-browser
-    check: zen
-    install: |
-      curl -fsSL https://github.com/zen-browser/updates-server/raw/refs/heads/main/install.sh | bash
-      ln -sf "$HOME/.local/bin/zen" "$HOME/.local/bin/zen-browser"
-    distro_skip:
-      - arch
-      - fedora
-
-  # `&&` chaining is load-bearing: install_curl_tool runs the body as
-  # `if eval "$cmd"; then` which suspends errexit for the whole eval (and
-  # for any subshell launched from it), so a failure of the first command
-  # has to short-circuit the chain explicitly or it'd be silently masked.
-  - name: localsend-flatpak
-    check: flatpak info org.localsend.localsend_app
-    requires: flatpak
-    requires_packages:
-      fedora: [flatpak]
-      debian: [flatpak]
-    install: |
-      flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
-        && flatpak install --user -y --noninteractive flathub org.localsend.localsend_app
-    distro_skip:
-      - arch
-
-  # Separate entry so a firewall failure doesn't mask a successful flatpak
-  # install (and vice versa), and so this step has its own retryable check.
-  - name: localsend-firewalld
-    # "Already done" if firewalld is inactive (user disabled it) or the port
-    # is open in the default zone — prevents looping installs on re-runs.
-    check: sh -c '! systemctl is-active --quiet firewalld || firewall-cmd --list-ports 2>/dev/null | grep -qw 53317/tcp'
-    requires: firewall-cmd
-    # Subshell + explicit `|| exit 1` (rather than `set -e`) because errexit
-    # is suppressed inside `if eval` even for subshells; `exit 1` from a
-    # subshell only kills the subshell, propagating non-zero to install_curl_tool.
-    install: |
-      (
-        # Pre-acquire sudo so we fail fast instead of prompting mid-install
-        # after a long flatpak download outlasts sudo's credential cache.
-        sudo -v || exit 1
-        # Apply to every active zone — NetworkManager may bind the active
-        # connection to "public"/"home" instead of the default zone, in which
-        # case adding only to the default leaves discovery silently broken.
-        for zone in $(firewall-cmd --get-active-zones | awk '!/^[[:space:]]/'); do
-          sudo firewall-cmd --permanent --zone="$zone" --add-port=53317/tcp || exit 1
-          sudo firewall-cmd --permanent --zone="$zone" --add-port=53317/udp || exit 1
-        done
-        sudo firewall-cmd --reload || exit 1
-      )
-    distro_skip:
-      - arch
-      - debian
 
   # Dropbox's in-app auto-updater downloads dist binaries to ~/.dropbox-dist/
   # and SIGKILLs the running daemon to swap them in. Any distro-packaged

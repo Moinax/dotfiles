@@ -42,7 +42,7 @@ else
     exit 1
 fi
 
-# Install gum based on distro
+# Install gum (interactive prompt tool)
 install_gum() {
     if command -v gum &> /dev/null; then
         print_info "gum is already installed"
@@ -51,54 +51,21 @@ install_gum() {
 
     print_info "Installing gum (interactive prompt tool)..."
 
-    case "$(get_distro_family "$DISTRO")" in
-        arch)
-            # Check if paru is installed
-            if command -v paru &> /dev/null; then
-                paru -S --needed --noconfirm gum
-            elif command -v yay &> /dev/null; then
-                yay -S --needed --noconfirm gum
-            else
-                # Install from official repos or AUR
-                sudo pacman -S --needed --noconfirm gum 2>/dev/null || {
-                    print_info "Installing paru first..."
-                    sudo pacman -S --needed --noconfirm git base-devel
-                    git clone https://aur.archlinux.org/paru.git /tmp/paru-build
-                    (cd /tmp/paru-build && makepkg -si --noconfirm)
-                    rm -rf /tmp/paru-build
-                    paru -S --needed --noconfirm gum
-                }
-            fi
-            ;;
-        fedora)
-            # Try dnf first, then COPR
-            sudo dnf install -y gum 2>/dev/null || {
-                print_info "Adding COPR repository for gum..."
-                sudo dnf copr enable -y atim/gum
-                sudo dnf install -y gum
-            }
-            ;;
-        debian)
-            # Fresh Debian/Ubuntu installs may not have the tools needed to add
-            # the external apt repository yet.
-            print_info "Installing apt repository prerequisites..."
-            sudo apt update
-            sudo apt install -y curl gnupg ca-certificates
-
-            # Add Charm apt repository and install gum
-            print_info "Adding Charm apt repository for gum..."
-            sudo mkdir -p /etc/apt/keyrings
-            curl -fsSL https://repo.charm.sh/apt/gpg.key \
-                | sudo gpg --yes --dearmor -o /etc/apt/keyrings/charm.gpg
-            echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
-                | sudo tee /etc/apt/sources.list.d/charm.list > /dev/null
-            sudo apt update && sudo apt install -y gum
-            ;;
-        *)
-            print_error "Unsupported distribution: $DISTRO"
-            exit 1
-            ;;
-    esac
+    if command -v paru &> /dev/null; then
+        paru -S --needed --noconfirm gum
+    elif command -v yay &> /dev/null; then
+        yay -S --needed --noconfirm gum
+    else
+        # Install from official repos or AUR
+        sudo pacman -S --needed --noconfirm gum 2>/dev/null || {
+            print_info "Installing paru first..."
+            sudo pacman -S --needed --noconfirm git base-devel
+            git clone https://aur.archlinux.org/paru.git /tmp/paru-build
+            (cd /tmp/paru-build && makepkg -si --noconfirm)
+            rm -rf /tmp/paru-build
+            paru -S --needed --noconfirm gum
+        }
+    fi
 
     if command -v gum &> /dev/null; then
         print_success "gum installed successfully"
@@ -115,22 +82,7 @@ install_git() {
     fi
 
     print_info "Installing git..."
-
-    case "$(get_distro_family "$DISTRO")" in
-        arch)
-            sudo pacman -S --needed --noconfirm git
-            ;;
-        fedora)
-            sudo dnf install -y git
-            ;;
-        debian)
-            sudo apt update && sudo apt install -y git
-            ;;
-        *)
-            print_error "Unsupported distribution: $DISTRO"
-            exit 1
-            ;;
-    esac
+    sudo pacman -S --needed --noconfirm git
 }
 
 # Main

@@ -18,16 +18,7 @@ services: []
 
 descriptions:
   fprintd: Fingerprint reader daemon (libfprint)
-  fprintd-pam: PAM module for fprintd (Fedora / Debian / Ubuntu)
 
 packages:
   arch:
     - fprintd
-
-  fedora:
-    - fprintd
-    - fprintd-pam
-
-  debian:
-    - fprintd
-    - libpam-fprintd

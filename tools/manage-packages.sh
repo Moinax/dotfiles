@@ -304,8 +304,6 @@ show_add() {
         return
     fi
 
-    setup_group_repos "$file" "$group_id"
-
     # Separate distro packages from custom_install packages
     local distro_packages=()
     local custom_packages=()
@@ -649,7 +647,6 @@ apply_manage_diff() {
     local tsv="$1"
     local install_distro=() install_custom=() remove_distro=() remove_custom=()
     declare -A pkg_file=()
-    declare -A install_groups=()
     declare -A affected_groups=()
 
     local op grp pkg custom
@@ -659,7 +656,6 @@ apply_manage_diff() {
         affected_groups["$grp"]=1
         case "$op" in
             install)
-                install_groups["$grp"]=1
                 if [ "$custom" = "1" ]; then install_custom+=("$pkg"); else install_distro+=("$pkg"); fi
                 ;;
             remove)
@@ -698,13 +694,6 @@ apply_manage_diff() {
     fi
 
     # ── Installs ─────────────────────────────────────────────────────────────
-    if [ "$n_install" -gt 0 ]; then
-        local grp
-        for grp in "${!install_groups[@]}"; do
-            setup_group_repos "$GROUPS_DIR/${grp}.yaml" "$grp"
-        done
-    fi
-
     if [ ${#install_distro[@]} -gt 0 ]; then
         install_packages "${install_distro[@]}"
     fi

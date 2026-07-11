@@ -15,9 +15,7 @@ bind = SUPER, K, exec, ~/.config/hypr/scripts/toggle-keyboard-layout.sh # Switch
 bind = SUPER, TAB, exec, rofi -show window -window-thumbnail # Window switcher
 bind = SUPER, Escape, exec, rofi -show "Select App to Kill" -modi "Select App to Kill:rofi-killwindow" # Kill window (rofi)
 bind = SUPER, V, exec, cliphist list | rofi -dmenu -p "Clipboard" | cliphist decode | wtype - # Clipboard
-{{- if ne .chezmoi.osRelease.id "fedora" }}
 bind = SUPER, C, exec, rofi -show calc # Calculator (rofi)
-{{- end }}
 bind = SUPER ALT, C, exec, kcalc # Open calculator
 bind = SUPER SHIFT, P, exec, hyprpicker # Color picker
 bind = SUPER, R, exec, rofi-theme-selector # Theme selector

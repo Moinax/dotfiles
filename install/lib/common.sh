@@ -314,7 +314,7 @@ group_hardware_available() {
 }
 
 # Parse custom_install entries and output their names (filtered by distro).
-# Usage: parse_custom_install_names "file.yaml" "debian"
+# Usage: parse_custom_install_names "file.yaml" "arch"
 parse_custom_install_names() {
     local file="$1"
     local distro="$2"
@@ -453,8 +453,8 @@ _parse_custom_install_requires_packages_fallback() {
 }
 
 # Get the packages to auto-install when a custom_install entry's `requires`
-# command is missing. Resolves DISTRO_FAMILY (arch|fedora|debian) and emits
-# one package per line; empty output if nothing is declared for this family.
+# command is missing. Resolves DISTRO_FAMILY (arch) and emits one package per
+# line; empty output if nothing is declared for this family.
 parse_custom_install_requires_packages() {
     local file="$1" pkg_name="$2"
     local family="${DISTRO_FAMILY:-}"
@@ -465,111 +465,6 @@ parse_custom_install_requires_packages() {
     else
         _parse_custom_install_requires_packages_fallback "$file" "$pkg_name" "$family"
     fi
-}
-
-# Parse a nested list from the top-level packages: map in YAML.
-# Usage: parse_package_nested_list "file.yaml" "fedora_copr"
-parse_package_nested_list() {
-    local file="$1"
-    local key="$2"
-    local in_packages=false
-    local in_list=false
-    local packages_indent=-1
-    local list_indent=-1
-
-    while IFS= read -r line; do
-        local trimmed="${line#"${line%%[![:space:]]*}"}"
-        local indent=$(( ${#line} - ${#trimmed} ))
-
-        if ! $in_packages; then
-            if [[ "$line" =~ ^[[:space:]]*packages:[[:space:]]*$ ]]; then
-                in_packages=true
-                packages_indent=$indent
-            fi
-            continue
-        fi
-
-        if [ -n "$trimmed" ] && [ "$indent" -le "$packages_indent" ]; then
-            break
-        fi
-
-        if ! $in_list; then
-            if [[ "$line" =~ ^[[:space:]]*${key}:[[:space:]]*$ ]]; then
-                in_list=true
-                list_indent=$indent
-            fi
-            continue
-        fi
-
-        if [ -n "$trimmed" ] && [ "$indent" -le "$list_indent" ] && [[ ! "$trimmed" =~ ^- ]]; then
-            break
-        fi
-
-        if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-            echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
-        fi
-    done < "$file"
-}
-
-# Parse COPR repositories from YAML
-# Usage: parse_copr_repos "file.yaml"
-parse_copr_repos() {
-    local file="$1"
-
-    if command_exists yq; then
-        yq -r '.packages.fedora_copr[]? // ""' "$file" 2>/dev/null | grep -v "^$"
-    else
-        parse_package_nested_list "$file" "fedora_copr"
-    fi
-}
-
-# Parse PPA repositories from YAML
-# Usage: parse_ppas "file.yaml"
-parse_ppas() {
-    local file="$1"
-
-    if command_exists yq; then
-        yq -r '.packages.debian_ppa[]? // ""' "$file" 2>/dev/null | grep -v "^$"
-    else
-        parse_package_nested_list "$file" "debian_ppa"
-    fi
-}
-
-# Enable any extra repositories needed by a package group on the current distro.
-# Uses existing distro-specific helpers when available and is best-effort by design.
-setup_group_repos() {
-    local group_file="$1"
-    local group="$2"
-
-    case "${DISTRO_FAMILY:-}" in
-        fedora)
-            local repo
-            while IFS= read -r repo; do
-                [ -n "$repo" ] && enable_copr "$repo" || true
-            done < <(parse_copr_repos "$group_file")
-
-            case "$group" in
-                hyprland) setup_hyprland_repos 2>/dev/null || true ;;
-                gaming) setup_gaming_repos 2>/dev/null || true ;;
-                multimedia) setup_multimedia_repos 2>/dev/null || true ;;
-                productivity) setup_productivity_repos 2>/dev/null || true ;;
-            esac
-            ;;
-        debian)
-            local repo
-            while IFS= read -r repo; do
-                [ -n "$repo" ] && enable_ppa "$repo" || true
-            done < <(parse_ppas "$group_file")
-
-            case "$group" in
-                hyprland) setup_hyprland_repos 2>/dev/null || true ;;
-                gaming) setup_gaming_repos 2>/dev/null || true ;;
-                multimedia) setup_multimedia_repos 2>/dev/null || true ;;
-                productivity) setup_productivity_repos 2>/dev/null || true ;;
-                development) setup_development_repos 2>/dev/null || true ;;
-            esac
-            ;;
-    esac
 }
 
 # ── Secrets & config helpers ─────────────────────────────────────────────────

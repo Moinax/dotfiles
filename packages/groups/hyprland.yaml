@@ -25,8 +25,7 @@ descriptions:
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
   hyprpaper: Wallpaper manager for Hyprland (kept as fallback)
-  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions [Arch]
-  swww: Animated wallpaper daemon (pre-rename name still shipped by Fedora copr) [Fedora]
+  awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
   hyprpicker: Color picker for Hyprland
   polkit-kde-agent: Polkit authentication agent (KDE)
   hyprshot: Screenshot tool for Hyprland
@@ -44,10 +43,8 @@ descriptions:
   wtype: Wayland keyboard input simulator
   pavucontrol-qt: PulseAudio volume control GUI (Qt)
   blueman: Bluetooth device manager
-  bluez-utils: Bluetooth utilities (Arch)
-  bluez: Bluetooth protocol stack (Fedora)
-  xorg-xhost: X server access control (Arch)
-  xhost: X server access control (Fedora)
+  bluez-utils: Bluetooth utilities
+  xorg-xhost: X server access control
   inotify-tools: File system event monitor
   cmatrix: Terminal matrix rain animation
   xdg-desktop-portal-kde: KDE portal backend (color-scheme, file chooser, etc.)
@@ -108,117 +105,3 @@ packages:
     # Other Wayland tools
     - inotify-tools
     - cmatrix
-
-  fedora:
-    # Display manager (kwin_wayland preferred if present, weston as fallback)
-    - sddm
-    - weston
-
-    # Hyprland core
-    - hyprland
-    - hypridle
-    - hyprlock
-    - hyprpaper
-    - swww  # animated wallpaper daemon (Arch ships it as awww; copr still ships swww)
-    - hyprpicker
-    - polkit-kde
-    - hyprshot
-    - uwsm
-
-    # Status bar and menus
-    - waybar
-    - rofi-wayland
-    # rofi-calc is not available in Fedora repos
-    - rofimoji
-    - kcalc
-    # Notifications
-    - SwayNotificationCenter
-    # Logout screen
-    - wlogout
-
-    # Clipboard
-    - cliphist
-    - wl-clipboard
-    - wtype
-
-    # Audio control
-    - pavucontrol-qt
-    - blueman
-    - bluez
-
-    # On-screen display (volume, brightness, caps-lock)
-    - swayosd
-
-    # X compatibility
-    - xhost
-
-    # Idle inhibitor (caffeine mode)
-    - python3-pywayland
-
-    # XDG Desktop Portal
-    - xdg-desktop-portal-kde
-    - xdg-desktop-portal-hyprland
-
-    # Other tools
-    - inotify-tools
-    - cmatrix
-
-  debian:
-    # Ubuntu 24.04+ recommended (hyprland available in universe)
-    # Requires universe repo — enabled by setup_hyprland_repos
-    - hyprland
-    - hyprpaper
-    - hypridle
-    - hyprlock
-    # uwsm landed in Debian trixie (13); on Ubuntu 24.04 it's not packaged.
-    # Install from source if missing — see install/installer.sh setup helpers.
-    - uwsm
-
-    # Display manager (kwin_wayland preferred if present, weston as fallback)
-    - sddm
-    - weston
-
-    # Status bar and menus
-    - waybar
-    # rofi-wayland is the correct Wayland fork on Ubuntu 24.04+.
-    # Plain 'rofi' is the X11 build; use rofi-wayland for Wayland support.
-    - rofi-wayland
-    - rofi-calc
-    - rofimoji
-    - kcalc
-
-    # Notifications
-    - sway-notification-center
-
-    # Clipboard
-    - wl-clipboard
-    - cliphist
-
-    # Audio control
-    - pavucontrol-qt
-    - blueman
-    - bluez
-
-    # On-screen display (volume, brightness, caps-lock)
-    - swayosd
-
-    # X compatibility
-    - x11-xserver-utils
-
-    # Idle inhibitor (caffeine mode)
-    - python3-pywayland
-
-    # XDG Desktop Portal
-    - xdg-desktop-portal-kde
-    # xdg-desktop-portal-hyprland may not be in apt — install from source if needed
-
-    # Other tools
-    - inotify-tools
-    - cmatrix
-
-    # Note: hyprpicker, hyprshot, wlogout, wtype
-    # may not be in apt — install via binary or build from source
-
-  fedora_copr:
-    - solopasha/hyprland  # For hyprshot (not in official repos)
-    - erikreider/swayosd  # On-screen display for volume, brightness, caps-lock (upstream maintainer)

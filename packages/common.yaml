@@ -31,7 +31,7 @@ tools:
     install: curl -fsSL https://alexpasmantier.github.io/television/install.sh | bash
 
   - name: zellij
-    description: Terminal workspace / multiplexer (packaged on Arch & Fedora; binary elsewhere)
+    description: Terminal workspace / multiplexer (packaged on Arch; binary fallback)
     install: |
       arch=$(uname -m)
       curl -fsSL "https://github.com/zellij-org/zellij/releases/latest/download/zellij-${arch}-unknown-linux-musl.tar.gz" \

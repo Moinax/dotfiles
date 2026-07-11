@@ -22,28 +22,21 @@ services:
 descriptions:
   neovim: Hyperextensible text editor
   tree-sitter-cli: Tree-sitter CLI — compiles parsers for nvim-treesitter's main branch (required since AstroNvim v6)
-  cursor-bin: AI-powered code editor (Arch AUR)
-  cursor: AI-powered code editor
+  cursor-bin: AI-powered code editor (AUR)
   git: Distributed version control system
-  github-cli: GitHub CLI (Arch)
-  gh: GitHub CLI (Fedora)
+  github-cli: GitHub CLI
   lazygit: Terminal UI for git
   git-delta: Syntax-highlighting diff pager
   docker: Container runtime engine
-  moby-engine: Docker engine (Fedora's open-source build of Docker)
   docker-compose: Multi-container orchestration
   lazydocker: Terminal UI for Docker
   cmake: Cross-platform build system generator
   cpio: Archive copy utility
-  base-devel: Base development tools (Arch)
-  make: Build automation tool (Fedora)
-  gcc: GNU C compiler (Fedora)
-  gcc-c++: GNU C++ compiler (Fedora)
+  base-devel: Base development tools
   just: Command runner (like make, simpler)
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
-  worktrunk-bin: Git worktree manager for AI workflows (Arch AUR)
-  worktrunk: Git worktree manager for AI workflows
+  worktrunk-bin: Git worktree manager for AI workflows (AUR)
   claude-code: AI-powered coding assistant CLI
   ccstatusline: Claude Code status line with Catppuccin Powerline theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
@@ -51,15 +44,13 @@ descriptions:
 
 desktop_only:
   - cursor-bin
-  - cursor
 
 # Tools installed via custom commands (not available in package managers).
 # These appear in the package selector alongside distro packages.
 # Fields: name (display + selection key), check (command to test if installed),
 #         install (shell command to run), requires (dependency command to check),
 #         requires_packages (map of distro family -> system packages to
-#         install before running `install`), distro_skip (list of distro
-#         families to skip)
+#         install before running `install`)
 custom_install:
   - name: claude-code
     check: command -v claude
@@ -68,16 +59,6 @@ custom_install:
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
     requires: gh
-  - name: cursor
-    check: command -v cursor
-    install: bash "$DOTFILES_DIR/tools/install-cursor.sh"
-    distro_skip:
-      - arch
-  - name: worktrunk
-    check: command -v wt || test -f "$HOME/.cargo/bin/wt"
-    install: curl -fsSL https://github.com/max-sixty/worktrunk/releases/latest/download/worktrunk-installer.sh | sh
-    distro_skip:
-      - arch
 
 packages:
   arch:
@@ -114,71 +95,3 @@ packages:
     # JS runtime & per-project env
     - bun
     - direnv
-
-  fedora:
-    # Editors
-    - neovim
-
-    # Git tools
-    - git
-    - gh
-    - lazygit
-    - git-delta
-
-    # Containers
-    - moby-engine  # Fedora's Docker engine (same codebase as docker-ce)
-    - docker-compose
-    # Note: lazydocker is not in dnf — installed via binary in common tools
-
-    # Build tools
-    - cmake
-    - cpio
-    - make
-    - gcc
-    - gcc-c++
-
-    # Networking
-    - tailscale
-
-    # Task runner
-    - just
-
-    # JS runtime & per-project env
-    - bun
-    - direnv
-
-  debian:
-    # Editors
-    - neovim
-
-    # Git tools
-    # Note: git is already in packages/debian/base.yaml
-    - gh           # Requires GitHub CLI apt repo (added by setup_development_repos)
-    - git-delta
-
-    # Containers (requires Docker CE apt repo — added by setup_development_repos)
-    - docker-ce
-    - docker-ce-cli
-    - containerd.io
-    - docker-compose-plugin
-
-    # Build tools
-    - build-essential
-    - cmake
-    - make
-    - gcc
-    - g++
-
-    # Networking (requires Tailscale apt repo — added by setup_development_repos)
-    - tailscale
-
-    # Task runner
-    - just
-
-    # Per-project env
-    - direnv
-
-    # Note: bun is not in apt — install via `curl -fsSL https://bun.sh/install | bash`
-    # Note: lazygit is not in apt — installed via binary (install_lazygit in debian.sh)
-    # Note: lazydocker is not in apt — install manually after setup
-
