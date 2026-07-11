@@ -7,8 +7,12 @@ source "$_DISTRO_DIR/../lib/common.sh"
 
 # Run a pacman/paru command, converting "up to date" messages to info and
 # suppressing boilerplate noise. Output is filtered in real time via a pipe
-# so that download/install progress remains visible.
+# so that download/install progress remains visible. On failure, print an
+# unmissable banner with the exact command — a transient mirror/download
+# error once aborted the whole base-package transaction and the generic
+# "some packages failed" warning made it easy to overlook.
 _run_pkg_cmd() {
+    local rc=0
     "$@" 2>&1 | while IFS= read -r line; do
         if [[ "$line" =~ ^warning:\ (.+)\ is\ up\ to\ date\ --\ skipping$ ]]; then
             print_info "Already installed: ${BASH_REMATCH[1]}"
@@ -22,7 +26,12 @@ _run_pkg_cmd() {
             echo "$line"
         fi
     done
-    return "${PIPESTATUS[0]}"
+    rc="${PIPESTATUS[0]}"
+    if [ "$rc" -ne 0 ]; then
+        print_error "Package command failed (exit $rc): $*"
+        print_error "Scroll up for pacman's error output; re-run the command above to retry."
+    fi
+    return "$rc"
 }
 
 # Drop packages pinned via pacman's IgnorePkg. An explicit `pacman -S --noconfirm`
