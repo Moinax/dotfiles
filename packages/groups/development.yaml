@@ -27,6 +27,7 @@ descriptions:
   github-cli: GitHub CLI
   lazygit: Terminal UI for git
   git-delta: Syntax-highlighting diff pager
+  tea: Command-line client for Gitea servers
   docker: Container runtime engine
   docker-compose: Multi-container orchestration
   lazydocker: Terminal UI for Docker
@@ -72,6 +73,7 @@ packages:
     - github-cli
     - lazygit
     - git-delta
+    - tea
     
     # Containers
     - docker
