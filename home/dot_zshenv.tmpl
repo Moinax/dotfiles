@@ -42,6 +42,9 @@ export PATH="$HOME/.local/bin:$PATH"
 # not the `chpwd_functions+=(__zoxide_hook)` line from `zoxide init`, so the
 # doctor sees a missing hook on every command. Zoxide still works fine.
 export _ZO_DOCTOR=0
+
+# havre dev secrets: passphrase-less key for non-interactive sops decrypt
+export SOPS_AGE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/havre_sops"
 {{- if .install_hyprland }}
 # Rofi scripts
 export PATH="$HOME/.config/rofi/scripts:$PATH"
