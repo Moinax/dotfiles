@@ -50,6 +50,12 @@ Amazon = ""
 Android = ""
 Arch = "󰣇"
 Artix = "󰣇"
+# CachyOS is detected as its own os_info type; without this key starship falls
+# back to its built-in default (the reminder-ribbon emoji). Reuse the Arch mark
+# since CachyOS is Arch-based (ID_LIKE=arch). Uses the Font Logos Arch mark
+# (U+F303, same as starship's nerd-font-symbols preset). Trailing space pads
+# it off the next segment without pushing it away from the left cap.
+CachyOS = " "
 CentOS = ""
 Debian = "󰣚"
 Redhat = "󱄛"
