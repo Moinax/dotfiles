@@ -1,0 +1,26 @@
+[Unit]
+Description=Preload SSH key into ssh-agent at login (KWallet answers the passphrase)
+# AddKeysToAgent in ~/.ssh/config only loads the key on first *interactive*
+# use; non-interactive callers (IDEs, agents, scripts) hit an empty agent and
+# hang on a passphrase prompt they can't answer. Loading at session start
+# closes that gap. SSH_ASKPASS_REQUIRE=force routes the one prompt through
+# ksshaskpass, which KWallet answers silently once the passphrase is stored.
+PartOf=graphical-session.target
+Wants=kwalletd.service
+After=graphical-session.target ssh-agent.socket kwalletd.service
+StartLimitIntervalSec=0
+
+[Service]
+Slice=background-graphical.slice
+Type=oneshot
+Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
+Environment=SSH_ASKPASS=/usr/bin/ksshaskpass
+Environment=SSH_ASKPASS_REQUIRE=force
+# ksshaskpass reads the stored passphrase over org.freedesktop.secrets
+# (ksecretd, activated by kwalletd6 shortly after it starts). The name is
+# not D-Bus-activatable, so wait for it instead of racing it at login.
+ExecStartPre=/usr/bin/gdbus wait --session --timeout 15 org.freedesktop.secrets
+ExecStart=/usr/bin/ssh-add %h/.ssh/id_ed25519
+
+[Install]
+WantedBy=graphical-session.target

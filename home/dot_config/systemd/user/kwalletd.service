@@ -1,0 +1,20 @@
+[Unit]
+Description=KWallet daemon (Secret Service provider)
+# Plasma starts kwalletd6 as part of the session; under Hyprland nothing
+# does, and the org.freedesktop.secrets name it provides is not D-Bus
+# activatable, so QtKeychain consumers (ksshaskpass, browsers, ...) fail
+# with "The name is not activatable" instead of reaching the wallet.
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Slice=background-graphical.slice
+Type=dbus
+BusName=org.kde.kwalletd6
+ExecStart=/usr/bin/kwalletd6
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
