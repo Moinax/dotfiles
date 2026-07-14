@@ -618,6 +618,38 @@ list_distrobox_containers() {
     return 1
 }
 
+distrobox_container_exists() {
+    list_distrobox_containers 2>/dev/null | grep -Fxq "$1"
+}
+
+# Images matched to the package format; distrobox-enter would otherwise
+# auto-create missing containers from its Fedora default, which can't
+# install .deb or .pkg.tar packages.
+default_image_for_package_type() {
+    case "$1" in
+        deb) echo "docker.io/library/ubuntu:latest" ;;
+        rpm) echo "registry.fedoraproject.org/fedora-toolbox:latest" ;;
+        arch) echo "docker.io/library/archlinux:latest" ;;
+    esac
+}
+
+ensure_distrobox_container() {
+    local container="$1"
+    local package_type="$2"
+
+    if distrobox_container_exists "$container"; then
+        return 0
+    fi
+
+    local image=""
+    image=$(default_image_for_package_type "$package_type")
+    print_info "Container '$container' does not exist; creating it from $image..."
+    if ! distrobox create --yes --name "$container" --image "$image"; then
+        print_error "Failed to create container '$container'"
+        return 1
+    fi
+}
+
 pick_existing_distrobox_container() {
     local containers=()
     while IFS= read -r line; do
@@ -651,8 +683,8 @@ list_desktop_ids_in_container() {
     local container="$1"
     run_in_distrobox "$container" sh -lc '
         find /usr/share/applications "$HOME/.local/share/applications" \
-            -maxdepth 1 -type f -name "*.desktop" 2>/dev/null \
-            | xargs -r -n1 basename | sort -u
+            -maxdepth 1 -type f -name "*.desktop" -printf "%f\n" 2>/dev/null \
+            | sort -u
     '
 }
 
@@ -882,6 +914,8 @@ execute_install_distrobox() {
     local package_type=""
     package_type=$(package_type_for_file "$package_path") || return 1
 
+    ensure_distrobox_container "$container" "$package_type" || return 1
+
     local before_file=""
     local after_file=""
     before_file=$(mktemp)
@@ -889,13 +923,19 @@ execute_install_distrobox() {
     trap 'rm -f "$before_file" "$after_file"' RETURN
 
     print_info "Collecting desktop entries from container '$container'..."
-    list_desktop_ids_in_container "$container" > "$before_file"
+    list_desktop_ids_in_container "$container" > "$before_file" || {
+        print_error "Could not list desktop entries in container '$container'."
+        return 1
+    }
 
     print_info "Installing package in container '$container'..."
     install_package_in_distrobox "$container" "$package_path" "$package_type"
 
     print_info "Collecting updated desktop entries..."
-    list_desktop_ids_in_container "$container" > "$after_file"
+    list_desktop_ids_in_container "$container" > "$after_file" || {
+        print_error "Could not list desktop entries in container '$container'."
+        return 1
+    }
 
     local app_id=""
     app_id=$(select_exported_app_id "$before_file" "$after_file" "$requested_app_id") || return 1
@@ -1003,6 +1043,8 @@ interactive_install_distrobox_with_file() {
     fi
 
     ensure_dirs
+    ensure_distrobox_container "$container" "$package_type" || return 1
+
     local before_file=""
     local after_file=""
     before_file=$(mktemp)
@@ -1010,7 +1052,10 @@ interactive_install_distrobox_with_file() {
     trap 'rm -f "$before_file" "$after_file"' RETURN
 
     print_info "Collecting desktop entries from container '$container'..."
-    list_desktop_ids_in_container "$container" > "$before_file"
+    list_desktop_ids_in_container "$container" > "$before_file" || {
+        print_error "Could not list desktop entries in container '$container'."
+        return 1
+    }
 
     print_info "Installing package in container '$container'..."
     install_package_in_distrobox "$container" "$package_path" "$package_type" || {
@@ -1019,7 +1064,10 @@ interactive_install_distrobox_with_file() {
     }
 
     print_info "Collecting updated desktop entries..."
-    list_desktop_ids_in_container "$container" > "$after_file"
+    list_desktop_ids_in_container "$container" > "$after_file" || {
+        print_error "Could not list desktop entries in container '$container'."
+        return 1
+    }
 
     local app_id=""
     app_id=$(pick_exported_app_id_interactive "$before_file" "$after_file") || {
