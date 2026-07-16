@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
 #   tab 1 (agent): agent (top-left) + reviewr sidebar (top-right); bottom
-#                  row = suspended dev-server + logs terminal (or a single
-#                  full-width terminal when the project has no dev command)
+#                  row = "dev" + "logs" terminals (both plain shells)
 #   tab "git":     full-window lazygit
 #   tab "nvim":    full-window nvim
 #
@@ -93,16 +92,12 @@ herdr plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
 mapfile -t agent_argv < <(dev-agent-argv "$provider" "$name" "$prompt")
 herdr pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
 
-# Bottom row: type the dev-server command but DON'T run it — reattaching or
-# restoring must never silently double-bind a port (start_suspended parity).
-# A plain terminal for logs/one-off commands sits right of the dev pane;
-# without a dev command the whole row stays a single terminal.
-devcmd="$(dev-server-cmd "$dir")"
-if [[ -n "$devcmd" ]]; then
-  herdr pane split "$p_bottom" --direction right --ratio 0.5 \
-    --cwd "$dir" --no-focus >/dev/null
-  herdr pane send-text "$p_bottom" "$devcmd" >/dev/null
-fi
+# Bottom row: two plain terminals — "dev" (run your dev server by hand)
+# and "logs" (tail logs, one-off commands). No auto-typed dev command.
+p_logs="$(herdr pane split "$p_bottom" --direction right --ratio 0.5 \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+herdr pane rename "$p_bottom" dev >/dev/null
+herdr pane rename "$p_logs" logs >/dev/null
 
 # lazygit tab (created before nvim so the tab order is agent, git, nvim).
 p_git="$(herdr tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
