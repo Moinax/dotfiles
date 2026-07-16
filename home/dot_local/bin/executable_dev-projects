@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Single source of truth for the dev project tree: the root directory and the
+# "directories up to two levels deep" listing convention. The pickers
+# (dev-pick, rofi-dev) list it; dev-herdr derives its session groups from it.
+# Override the root with DEV_PROJECTS_ROOT.
+#
+# Usage: dev-projects root   print the projects root directory
+#        dev-projects list   print candidate project dirs, relative to root
+set -euo pipefail
+
+root="${DEV_PROJECTS_ROOT:-$HOME/Projects}"
+
+case "${1:-}" in
+  root)
+    echo "$root"
+    ;;
+  list)
+    command -v fd >/dev/null 2>&1 || { echo "dev-projects: fd not found" >&2; exit 1; }
+    fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix
+    ;;
+  *)
+    echo "dev-projects: unknown command '${1:-}' (expected: root | list)" >&2
+    exit 1
+    ;;
+esac

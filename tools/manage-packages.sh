@@ -102,7 +102,7 @@ get_group_packages() {
 
     local distro_pkgs custom_pkgs
     distro_pkgs=$(parse_packages "$file" "$DISTRO_FAMILY")
-    custom_pkgs=$(parse_custom_install_names "$file" "$DISTRO_FAMILY")
+    custom_pkgs=$(parse_custom_install_names "$file")
 
     # Combine distro and custom_install packages
     [ -n "$distro_pkgs" ] && all_packages+="$distro_pkgs"$'\n'
@@ -168,7 +168,7 @@ extract_package_name() {
 
 normalize_package_name_for_system() {
     local pkg="$1"
-    if [ "$DISTRO_FAMILY" = "arch" ] && [[ "$pkg" == */* ]]; then
+    if [[ "$pkg" == */* ]]; then
         echo "${pkg#*/}"
     else
         echo "$pkg"
@@ -180,7 +180,7 @@ normalize_package_name_for_system() {
 is_custom_install_pkg() {
     local file="$1" pkg="$2"
     local names
-    names=$(parse_custom_install_names "$file" "$DISTRO_FAMILY" 2>/dev/null)
+    names=$(parse_custom_install_names "$file" 2>/dev/null)
     echo "$names" | grep -qxF "$pkg"
 }
 
@@ -562,7 +562,7 @@ build_manage_json() {
         local cn
         while IFS= read -r cn; do
             [ -n "$cn" ] && custom_set["$cn"]=1
-        done < <(parse_custom_install_names "$file" "$DISTRO_FAMILY")
+        done < <(parse_custom_install_names "$file")
 
         local items=()
         local pkg

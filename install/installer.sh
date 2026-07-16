@@ -102,19 +102,6 @@ show_welcome() {
         "Detected: $(gum style --foreground 39 "$DISTRO_NAME")"
 }
 
-# Confirm distro detection
-confirm_distro() {
-    echo ""
-    if gum confirm "Is this the correct distribution?"; then
-        print_success "Distribution confirmed: $DISTRO"
-        return 0
-    else
-        print_error "Please run this installer on a supported distribution"
-        print_info "Supported: $(get_supported_distros)"
-        exit 1
-    fi
-}
-
 # Select setup purpose (desktop or terminal)
 select_purpose() {
     echo ""
@@ -201,7 +188,7 @@ _build_tree_json() {
             local desc="$(_json_escape "${descs[$pkg]:-}")"
             local name="$(_json_escape "$pkg")"
             pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
-        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+        done < <(parse_custom_install_names "$group_file")
 
         # Emit group JSON object
         if [ "$first_group" = true ]; then
@@ -246,7 +233,7 @@ _build_tree_payload() {
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+        done < <(parse_custom_install_names "$group_file")
         totals+="${group}=${count} "
     done
     printf '%s\n' "$totals"
@@ -300,7 +287,7 @@ _select_packages_gum_fallback() {
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && all_group_pkgs+=("$pkg")
-        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+        done < <(parse_custom_install_names "$group_file")
 
         for pkg in "${all_group_pkgs[@]}"; do
             # Skip desktop_only packages in terminal mode
@@ -643,7 +630,7 @@ install_group_packages() {
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && all_packages+=("$pkg") && custom_install_names["$pkg"]=1
-        done < <(parse_custom_install_names "$group_file" "$DISTRO_FAMILY")
+        done < <(parse_custom_install_names "$group_file")
 
         # Filter out desktop_only packages in terminal mode
         if [ "$INSTALL_PURPOSE" = "terminal" ]; then
@@ -1795,9 +1782,9 @@ main() {
     # Check for gum
     check_gum
     
-    # Welcome and confirmation
+    # Welcome (displays the detected distro; support is already hard-gated
+    # by setup.sh and the distros/ check above)
     show_welcome
-    confirm_distro
 
     # Select setup purpose (desktop or terminal)
     select_purpose

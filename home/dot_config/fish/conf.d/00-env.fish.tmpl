@@ -28,6 +28,10 @@ test -d $HOME/.cargo/bin; and fish_add_path --path $HOME/.cargo/bin
 # Lazy docker, zoxide, ...
 fish_add_path --path $HOME/.local/bin
 
+# Shims ahead of the real binaries (e.g. the `claude` graceful-resume
+# wrapper) — must win the lookup over ~/.local/bin, as in ~/.zshenv.
+test -d $HOME/.local/bin/shims; and fish_add_path --path $HOME/.local/bin/shims
+
 # Silence zoxide's "configuration issue" doctor (false positive in agent
 # shells that replay a snapshot without zoxide's hook; see ~/.zshenv).
 set -gx _ZO_DOCTOR 0

@@ -43,8 +43,9 @@ dir="$(cd "$dir" && pwd)"
 # (e.g. the dev-pick popup), which would otherwise pin the current session.
 session="${HERDR_DEV_SESSION:-}"
 if [[ -z "$session" ]]; then
+  projects_root="$(dev-projects root)"
   case "$dir" in
-    "$HOME/Projects"/*/*) session="${dir#"$HOME/Projects/"}"; session="${session%%/*}" ;;
+    "$projects_root"/*/*) session="${dir#"$projects_root/"}"; session="${session%%/*}" ;;
     *) session="default" ;;
   esac
 fi
@@ -82,36 +83,9 @@ t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 
 h tab rename "$t_agent" agent >/dev/null
-# Label the agent pane with its provider (claude, codex, opencode), like the
-# dev/logs/git panes are labeled.
-h pane rename "$p_agent" "$provider" >/dev/null
-
-# Bottom row FIRST (splitting down before any right-split keeps it spanning
-# the full width), then lazygit right of the agent.
-# --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
-p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
-  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-
-# lazygit fills the top-right slot; it lives in the agent tab instead of a
-# dedicated "git" tab, so a diff is one glance away from the agent.
-p_git="$(h pane split "$p_agent" --direction right \
-  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-h pane rename "$p_git" git >/dev/null
-h pane run "$p_git" "lazygit" >/dev/null
-
-# Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
-# into the pane's shell so prompts with spaces/quotes survive. The installed
-# herdr integration hooks the agent CLI itself, so detection and session
-# restore work no matter how the agent is launched.
-mapfile -t agent_argv < <(dev-agent-argv "$provider" "$name" "$prompt")
-h pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
-
-# Bottom row: two plain terminals — "dev" (run your dev server by hand)
-# and "logs" (tail logs, one-off commands). No auto-typed dev command.
-p_logs="$(h pane split "$p_bottom" --direction right --ratio 0.5 \
-  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-h pane rename "$p_bottom" dev >/dev/null
-h pane rename "$p_logs" logs >/dev/null
+# Panes (agent + lazygit top row, dev/logs bottom row) are built by
+# herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
+herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" "$name" "$prompt"
 
 # nvim tab (lazygit is now a pane in the agent tab, so there is no git tab).
 p_nvim="$(h tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \

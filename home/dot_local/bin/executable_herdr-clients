@@ -16,7 +16,7 @@ command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)
 command -v jq    >/dev/null 2>&1 || die "jq is required"
 
 # "default" is herdr's reserved alias for the unnamed session; its client
-# window keeps the bare "herdr" class (matches dev-herdr and windowrules).
+# window keeps the bare "herdr" class (matches dev-herdr).
 class_for() {
   [[ "$1" == default ]] && echo "herdr" || echo "herdr-$1"
 }
@@ -93,7 +93,7 @@ wait_for_window() {
 
 open_all() {
   local -a names=() to_open=()
-  local session class failed
+  local session class failed classes
   # Start from ALL persisted sessions (not just running ones): a reboot kills
   # the detached servers (setsid background procs, not services), so after a
   # boot nothing is running and a running-only list would find nothing to
@@ -103,12 +103,15 @@ open_all() {
     | jq -r '.sessions[]? | .name')
   [[ ${#names[@]} -eq 0 ]] && return 0
   failed="$(ensure_servers "${names[@]}")" || true
+  # One hyprctl call for the whole loop (same one-call-then-grep pattern as
+  # running_sessions in ensure_servers).
+  classes="$(hyprctl clients -j 2>/dev/null | jq -r '.[].class')"
   for session in "${names[@]}"; do
     if [[ -n "$failed" ]] && grep -qxF "$session" <<<"$failed"; then
       echo "herdr-clients: server for '$session' did not start" >&2
       continue
     fi
-    window_exists "$(class_for "$session")" || to_open+=("$session")
+    grep -qxF "$(class_for "$session")" <<<"$classes" || to_open+=("$session")
   done
   [[ ${#to_open[@]} -eq 0 ]] && return 0
 

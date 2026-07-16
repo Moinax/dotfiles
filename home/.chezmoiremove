@@ -31,3 +31,6 @@
 .config/hypr/conf/input-layouts/1_english.conf
 .config/hypr/conf/input-layouts/2_french.conf
 .config/hypr/conf/input-layouts/3_belgian.conf
+
+# `dev` became a standalone script in ~/.local/bin
+.config/fish/functions/dev.fish

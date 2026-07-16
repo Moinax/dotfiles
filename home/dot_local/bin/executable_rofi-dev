@@ -1,28 +1,10 @@
 #!/usr/bin/env bash
 # rofi-dev — fuzzy directory picker that launches the dev layout.
-# Defaults to the persistent Zellij session (same default as the `dev` function).
-# Uses dmenu mode so rofi closes immediately after selection.
+# Candidates come from dev-projects (shared with dev-pick); `dev` owns the
+# detached launch, so rofi can close immediately after selection.
 
-# Detect fd binary (Arch/Fedora: fd, Debian: fdfind)
-if command -v fd &>/dev/null; then
-    FD_CMD="fd"
-elif command -v fdfind &>/dev/null; then
-    FD_CMD="fdfind"
-else
-    notify-send -u critical "rofi-dev" "fd not found"
-    exit 1
-fi
-
-selection=$($FD_CMD --type d --max-depth 2 \
-    --base-directory "$HOME/Projects" \
-    --strip-cwd-prefix 2>/dev/null | rofi -dmenu -i -p "Dev")
+selection=$(dev-projects list 2>/dev/null | rofi -dmenu -i -p "Dev")
 
 if [ -n "$selection" ]; then
-    dir="$HOME/Projects/$selection"
-    name="$(basename "$dir")"
-    # dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
-    # DEV_MUX) and owns window spawning per backend. setsid detaches it fully
-    # so it survives this script exiting right after selection (same fix as
-    # dev-pick, where the popup pty teardown killed a plain background job).
-    setsid -f dev-mux -n "$name" -d "$dir" &>/dev/null </dev/null
+    dev "$(dev-projects root)/$selection"
 fi

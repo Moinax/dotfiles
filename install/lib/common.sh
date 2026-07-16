@@ -313,19 +313,16 @@ group_hardware_available() {
     esac
 }
 
-# Parse custom_install entries and output their names (filtered by distro).
-# Usage: parse_custom_install_names "file.yaml" "arch"
+# Parse custom_install entries and output their names.
+# Usage: parse_custom_install_names "file.yaml"
 parse_custom_install_names() {
     local file="$1"
-    local distro="$2"
 
     if command_exists yq; then
-        yq -r "(.custom_install // [])[] | select((.distro_skip // []) | contains([\"$distro\"]) | not) | .name" "$file" 2>/dev/null | grep -v "^$" || true
+        yq -r '(.custom_install // [])[].name' "$file" 2>/dev/null | grep -v "^$" || true
     else
         # Fallback: simple parsing
         local in_section=false
-        local current_name=""
-        local skip=false
         while IFS= read -r line; do
             if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
                 in_section=true
@@ -336,25 +333,11 @@ parse_custom_install_names() {
                 if [[ "$line" =~ ^[a-z] ]]; then
                     break
                 fi
-                # New entry
                 if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*(.+)$ ]]; then
-                    # Emit previous entry if valid
-                    if [ -n "$current_name" ] && ! $skip; then
-                        echo "$current_name"
-                    fi
-                    current_name="${BASH_REMATCH[1]}"
-                    skip=false
-                fi
-                # Check distro_skip list
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*${distro}[[:space:]]*$ ]] && [ -n "$current_name" ]; then
-                    skip=true
+                    echo "${BASH_REMATCH[1]}"
                 fi
             fi
         done < "$file"
-        # Emit last entry
-        if [ -n "$current_name" ] && ! $skip; then
-            echo "$current_name"
-        fi
     fi
 }
 
@@ -401,7 +384,7 @@ parse_custom_install_requires() { _parse_custom_install_field "$1" "$2" "require
 
 # Fallback parser for requires_packages (used when yq is unavailable).
 # Emits one package per line for the given distro family. Supports inline
-# list form only (e.g. `fedora: [rust, cargo]`) — which is what the yaml uses.
+# list form only (e.g. `arch: [rust, cargo]`) — which is what the yaml uses.
 _parse_custom_install_requires_packages_fallback() {
     local file="$1" pkg_name="$2" family="$3"
     local in_section=false

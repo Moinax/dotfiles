@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Resolve an AI-agent provider to its launch argv — the single source of truth
-# used by dev-zellij-session.
+# Resolve an AI-agent provider to its launch argv — the single source of
+# truth for launching an agent CLI (used by dev-zellij-session and
+# herdr-agent-layout).
 #
 # Each provider has its own CLI shape:
 #   claude   -> claude -n NAME [prompt]   (-n = display name; prompt auto-submits)

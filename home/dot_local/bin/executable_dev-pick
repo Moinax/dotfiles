@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
-# Fuzzy-pick a project under ~/Projects and open its dev environment.
-# Bound to a herdr popup (prefix+o, see ~/.config/herdr/config.toml) — the
-# popup closes when this exits — but works from any terminal. Same source
-# as rofi-dev: directories two levels deep under ~/Projects.
-#
-# dev-mux must be fully detached (setsid), not just backgrounded: the herdr
-# popup's pty is torn down the instant this script exits, and a plain
-# `& disown` child sits in the same process group, so it is killed before it
-# can create the workspace. A new session (no controlling tty) survives that,
-# and also keeps the zellij backend's long-lived kitty window from holding
-# the popup open.
+# Fuzzy-pick a project and open its dev environment. Bound to a herdr popup
+# (prefix+o, see ~/.config/herdr/config.toml) — the popup closes when this
+# exits — but works from any terminal. Candidates come from dev-projects
+# (shared with rofi-dev); `dev` owns the detached launch, which is what lets
+# this exit immediately without killing the spawned environment.
 set -euo pipefail
 
-for cmd in fd tv dev-mux; do
+for cmd in tv dev-projects dev; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "dev-pick: $cmd not found" >&2; exit 1; }
 done
 
-sel="$(tv --source-command "fd --type d --max-depth 2 --base-directory $HOME/Projects --strip-cwd-prefix" \
+sel="$(tv --source-command "dev-projects list" \
   --no-status-bar --input-header "Dev project" < /dev/tty)" || exit 0
 [[ -z "$sel" ]] && exit 0
 
-dir="$HOME/Projects/$sel"
-setsid -f dev-mux -n "$(basename "$dir")" -d "$dir" >/dev/null 2>&1 </dev/null
+dev "$(dev-projects root)/$sel"

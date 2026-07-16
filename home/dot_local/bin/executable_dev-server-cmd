@@ -3,7 +3,7 @@
 # Prefer a justfile `dev` recipe (usually the project's own orchestrator,
 # e.g. frontend + backend + worker), then fall back to a package.json
 # "dev" script (package manager chosen from the lockfile).
-# Shared by dev-zellij-session and dev-herdr.
+# Used by dev-zellij-session.
 #
 # Usage: dev-server-cmd [DIR]   (defaults to $PWD)
 set -euo pipefail

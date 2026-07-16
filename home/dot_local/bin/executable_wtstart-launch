@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Post-switch half of wtstart, shared by the fish and zsh functions (which
+# keep only the `wt switch` calls — those need shell integration): resolve
+# the "<project>.<branch>" title, copy gitignored files into fresh worktrees,
+# and launch the dev environment.
+#   -d DIR       the worktree to launch in (required)
+#   -b BRANCH    branch name as typed; defaults to the checked-out branch
+#   -n NAME      append " - <name>" after the "<project>.<branch>" title
+#   -p PROVIDER  AI agent provider: claude (default), codex, opencode
+#   -s           auto-run `/start <branch>` in the agent pane (claude only)
+#   --new        the worktree was just created (copy gitignored files into it)
+set -euo pipefail
+
+dir="" branch="" name_override="" provider="claude" send_start=false is_new=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d) dir="$2"; shift 2 ;;
+    -b) branch="$2"; shift 2 ;;
+    -n) name_override="$2"; shift 2 ;;
+    -p)
+      case "$2" in
+        claude|codex|opencode) provider="$2"; shift 2 ;;
+        *) echo "wtstart: -p must be claude|codex|opencode" >&2; exit 1 ;;
+      esac ;;
+    -s) send_start=true; shift ;;
+    --new) is_new=true; shift ;;
+    *) echo "wtstart-launch: unknown option $1" >&2; exit 1 ;;
+  esac
+done
+[[ -n "$dir" ]] || { echo "wtstart-launch: -d DIR is required" >&2; exit 1; }
+cd "$dir"
+
+# Copy gitignored files (e.g. .env.development.local) for new worktrees only
+$is_new && wt step copy-ignored
+
+resolved_branch="${branch:-$(git branch --show-current)}"
+
+# Project name = main repo dir name (`--git-common-dir` resolves to the main
+# repo's .git even from a worktree). Used to prefix the title as
+# "<project>.<branch>".
+git_common="$(git rev-parse --git-common-dir 2>/dev/null)" || git_common=""
+if [[ -n "$git_common" ]]; then
+  project="$(basename "$(cd "$(dirname "$git_common")" && pwd)")"
+else
+  project="$(basename "$dir")"
+fi
+
+# Always lead with "<project>.<branch>"; -n appends " - <name>" after it.
+name="$project.$resolved_branch"
+[[ -n "$name_override" ]] && name="$name - $name_override"
+
+# A non-empty prompt is auto-submitted to the agent on launch; -s uses that to
+# make Claude run `/start <branch>`. `/start` is a Claude command and only
+# claude auto-submits from the CLI, so -s is gated to the claude provider.
+prompt=""
+if $send_start; then
+  if [[ "$provider" != claude ]]; then
+    echo "wtstart: -s only applies to claude (/start is a Claude command); skipping" >&2
+  elif [[ -n "$resolved_branch" ]]; then
+    prompt="/start $resolved_branch"
+  else
+    echo "wtstart: -s set but no branch resolved; skipping /start" >&2
+  fi
+fi
+
+# dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
+# DEV_MUX) and owns window spawning per backend; setsid fully detaches it
+# from this short-lived script.
+setsid -f dev-mux -n "$name" -d "$dir" -p "$provider" -- "$prompt" >/dev/null 2>&1 </dev/null

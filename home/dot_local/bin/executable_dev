@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Open a persistent, detachable dev environment (AI agent + lazygit + nvim)
+# for a directory. Reattach by re-running `dev`. A script rather than a shell
+# function: it has no parent-shell side effects, and one copy serves fish,
+# zsh, and the pickers (dev-pick, rofi-dev) alike.
+#   -n <name>  append " - <name>" after the directory name in the title
+#   -p <prov>  AI agent provider: claude (default), codex, opencode
+#
+# Usage: dev [-n NAME] [-p PROVIDER] [DIR]
+set -euo pipefail
+
+name_override="" provider="claude"
+while [[ "${1:-}" == -* ]]; do
+  case "$1" in
+    -n)
+      [[ -z "${2:-}" || "$2" == -* ]] && { echo "dev: -n requires a name" >&2; exit 1; }
+      name_override="$2"; shift 2 ;;
+    -p)
+      case "${2:-}" in
+        claude|codex|opencode) provider="$2"; shift 2 ;;
+        *) echo "dev: -p must be claude|codex|opencode" >&2; exit 1 ;;
+      esac ;;
+    --) shift; break ;;
+    *) echo "dev: unknown option $1" >&2; exit 1 ;;
+  esac
+done
+dir="${1:-.}"
+[[ -d "$dir" ]] || { echo "dev: no such directory: $dir" >&2; exit 1; }
+dir="$(cd "$dir" && pwd)"
+
+# Always lead with the directory name; -n appends " - <name>" after it.
+name="$(basename "$dir")"
+[[ -n "$name_override" ]] && name="$name - $name_override"
+
+# dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
+# DEV_MUX) and owns window spawning per backend. setsid detaches it fully so
+# it survives the caller exiting immediately — a herdr popup tears down its
+# pty the instant the picker exits, killing a plain `& disown` child in the
+# same process group before it can create the workspace; a new session (no
+# controlling tty) survives that.
+setsid -f dev-mux -n "$name" -d "$dir" -p "$provider" >/dev/null 2>&1 </dev/null

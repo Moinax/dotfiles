@@ -37,7 +37,7 @@ for a in "${agent_argv[@]:1}"; do
 done
 
 # --- detect a dev-server command -----------------------------------------
-# Shared detection lives in dev-server-cmd (also used by dev-herdr).
+# Detection lives in dev-server-cmd.
 devcmd=()
 devcmd_str="$(dev-server-cmd "$dir")"
 [[ -n "$devcmd_str" ]] && read -ra devcmd <<< "$devcmd_str"

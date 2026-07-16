@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Build the standard "agent" tab layout inside an existing tab's root pane:
+# agent (top-left) + lazygit (top-right); bottom row = "dev" + "logs"
+# terminals (both plain shells). Single source of truth shared by dev-herdr
+# (workspace create) and herdr-nav agent-tab — layout tweaks happen here only.
+#
+# Usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]
+#        Without -s the CLI resolves the session itself (default session, or
+#        the one inherited via HERDR_SOCKET_PATH when run from inside a pane).
+set -euo pipefail
+
+usage="usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]"
+session=""
+[[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+p_agent="${1:?$usage}"
+dir="${2:?$usage}"
+provider="${3:?$usage}"
+label="${4:?$usage}"
+prompt="${5:-}"
+
+h() {
+  if [[ -n "$session" ]]; then herdr --session "$session" "$@"; else herdr "$@"; fi
+}
+
+# Label the agent pane with its provider (claude, codex, opencode), like the
+# dev/logs/git panes are labeled.
+h pane rename "$p_agent" "$provider" >/dev/null
+
+# Bottom row FIRST (splitting down before any right-split keeps it spanning
+# the full width), then lazygit right of the agent.
+# --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
+p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+
+# lazygit fills the top-right slot; it lives in the agent tab instead of a
+# dedicated "git" tab, so a diff is one glance away from the agent.
+p_git="$(h pane split "$p_agent" --direction right \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+h pane rename "$p_git" git >/dev/null
+h pane run "$p_git" "lazygit" >/dev/null
+
+# Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
+# into the pane's shell so prompts with spaces/quotes survive. The installed
+# herdr integration hooks the agent CLI itself, so detection and session
+# restore work no matter how the agent is launched.
+mapfile -t agent_argv < <(dev-agent-argv "$provider" "$label" "$prompt")
+h pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
+
+# Bottom row: two plain terminals — "dev" (run your dev server by hand)
+# and "logs" (tail logs, one-off commands). No auto-typed dev command.
+p_logs="$(h pane split "$p_bottom" --direction right --ratio 0.5 \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+h pane rename "$p_bottom" dev >/dev/null
+h pane rename "$p_logs" logs >/dev/null
