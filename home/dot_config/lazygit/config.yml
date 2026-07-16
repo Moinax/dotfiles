@@ -1,28 +1,11 @@
 git:
   pagers:
     - colorArg: always
-      pager: delta --paging=never
+      # lazygit sets COLUMNS to the diff pane width and re-renders on resize:
+      # side-by-side when wide, inline when narrow.
+      pager: bash -c '[ "${COLUMNS:-80}" -ge 160 ] && exec delta --paging=never --side-by-side; exec delta --paging=never'
 gui:
   nerdFontsVersion: "3"
 os:
   editPreset: "nvim-remote"
   open: 'if [ -n "$NVIM" ]; then nvim --server "$NVIM" --remote {{filename}}; else xdg-open {{filename}}; fi'
-customCommands:
-  # delta stays the inline pager (above); hunk is a fullscreen TUI reviewer
-  # opened on demand with `H`. `output: terminal` suspends lazygit so hunk
-  # gets the tty.
-  - key: "H"
-    context: "commits"
-    description: "Review commit in hunk"
-    command: "hunk show {{.SelectedLocalCommit.Hash}}"
-    output: terminal
-  - key: "H"
-    context: "files"
-    description: "Review working tree in hunk"
-    command: "hunk diff"
-    output: terminal
-  - key: "H"
-    context: "stash"
-    description: "Review stash in hunk"
-    command: 'hunk stash show stash@{{"{"}}{{.SelectedStashEntry.Index}}{{"}"}}'
-    output: terminal
