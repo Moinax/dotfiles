@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Create — or focus — a Herdr workspace for a project, mirroring the
+# dev-zellij layout: agent (top-left) + lazygit (top-right), terminal or
+# suspended dev-server across the bottom, plus an nvim tab.
+#
+# Workspaces live in Herdr's default session; one shared client window
+# (kitty class "herdr") shows them all, with the agent-status sidebar.
+# Reattaching = focusing the existing workspace; Herdr itself keeps agents
+# alive and (with the claude integration) restores their sessions.
+#
+# Usage: dev-herdr -n NAME -d DIR -p PROVIDER [-- PROMPT]
+set -euo pipefail
+
+die() { echo "dev-herdr: $*" >&2; exit 1; }
+command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)"
+command -v jq    >/dev/null 2>&1 || die "jq is required"
+
+name=""; dir="$PWD"; provider="claude"; prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n) name="$2"; shift 2 ;;
+    -d) dir="$2"; shift 2 ;;
+    -p) provider="$2"; shift 2 ;;
+    --) shift; prompt="${1:-}"; break ;;
+    *)  shift ;;
+  esac
+done
+dir="$(cd "$dir" && pwd)"
+[[ -z "$name" ]] && name="$(basename "$dir")"
+[[ "$provider" != claude ]] && name="$name ($provider)"
+
+# --- server ---------------------------------------------------------------
+# The CLI does not auto-start the server (it errors on the missing socket),
+# so bring it up headless if needed.
+if ! herdr status server >/dev/null 2>&1; then
+  setsid herdr server >/dev/null 2>&1 &
+  for _ in $(seq 1 20); do
+    herdr status server >/dev/null 2>&1 && break
+    sleep 0.25
+  done
+  herdr status server >/dev/null 2>&1 || die "herdr server did not start"
+fi
+
+# --- client window (one shared window, kitty class "herdr") ----------------
+show_client() {
+  if hyprctl clients -j 2>/dev/null | jq -e 'any(.[]; .class == "herdr")' >/dev/null; then
+    hyprctl dispatch focuswindow 'class:^(herdr)$' >/dev/null
+  else
+    kitty --class herdr -e herdr >/dev/null 2>&1 &
+    disown
+  fi
+}
+
+# --- reattach path: workspace already exists ------------------------------
+existing="$(herdr workspace list \
+  | jq -r --arg l "$name" '.result.workspaces[]? | select(.label == $l) | .workspace_id' \
+  | head -n1)"
+if [[ -n "$existing" ]]; then
+  herdr workspace focus "$existing" >/dev/null
+  show_client
+  exit 0
+fi
+
+# --- create path ----------------------------------------------------------
+ws_json="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus)"
+ws="$(jq -r '.result.workspace.workspace_id' <<<"$ws_json")"
+p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
+[[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
+
+# Bottom row FIRST (splitting down before any right-split keeps it spanning
+# the full width, like the zellij layout), then lazygit right of the agent.
+# --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
+p_bottom="$(herdr pane split "$p_agent" --direction down --ratio 0.72 \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+p_git="$(herdr pane split "$p_agent" --direction right --ratio 0.5 \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+
+herdr pane run "$p_git" "lazygit" >/dev/null
+
+# Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
+# into the pane's shell so prompts with spaces/quotes survive. The installed
+# herdr integration hooks the agent CLI itself, so detection and session
+# restore work no matter how the agent is launched.
+mapfile -t agent_argv < <(dev-agent-argv "$provider" "$name" "$prompt")
+herdr pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
+
+# Bottom row: type the dev-server command but DON'T run it — reattaching or
+# restoring must never silently double-bind a port (start_suspended parity).
+devcmd="$(dev-server-cmd "$dir")"
+if [[ -n "$devcmd" ]]; then
+  herdr pane send-text "$p_bottom" "$devcmd" >/dev/null
+fi
+
+# nvim tab (parity with the zellij layout's second tab).
+p_nvim="$(herdr tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
+  | jq -r '.result.root_pane.pane_id')"
+herdr pane run "$p_nvim" "nvim" >/dev/null
+
+herdr workspace focus "$ws" >/dev/null
+show_client
