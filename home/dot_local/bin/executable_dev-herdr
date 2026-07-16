@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
-#   tab 1 (agent): agent (top-left) + reviewr sidebar (top-right); bottom
+#   tab "agent":   agent (top-left) + reviewr sidebar (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
 #   tab "git":     full-window lazygit
 #   tab "nvim":    full-window nvim
@@ -69,7 +69,10 @@ fi
 ws_json="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus)"
 ws="$(jq -r '.result.workspace.workspace_id' <<<"$ws_json")"
 p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
+t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
+
+herdr tab rename "$t_agent" agent >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
 # the full width), then the reviewr sidebar right of the agent.
