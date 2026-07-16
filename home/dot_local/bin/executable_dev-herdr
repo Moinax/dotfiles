@@ -5,12 +5,16 @@
 #   tab "git":     full-window lazygit
 #   tab "nvim":    full-window nvim
 #
-# Workspaces live in Herdr's default session; one shared client window
-# (kitty class "herdr") shows them all, with the agent-status sidebar.
+# Workspaces are grouped into one Herdr session per ~/Projects subdirectory
+# (labs, mbrella, o27, ...): each group gets its own server + client window
+# (kitty class "herdr-<group>") showing only that group's workspaces in the
+# agent-status sidebar. Projects outside ~/Projects land in the default
+# session (class "herdr"). All sessions share ~/.config/herdr/config.toml.
 # Reattaching = focusing the existing workspace; Herdr itself keeps agents
 # alive and (with the claude integration) restores their sessions.
 #
 # Usage: dev-herdr -n NAME -d DIR -p PROVIDER [-- PROMPT]
+# HERDR_DEV_SESSION=<name> overrides the path-derived session.
 set -euo pipefail
 
 die() { echo "dev-herdr: $*" >&2; exit 1; }
@@ -31,59 +35,104 @@ dir="$(cd "$dir" && pwd)"
 [[ -z "$name" ]] && name="$(basename "$dir")"
 [[ "$provider" != claude ]] && name="$name ($provider)"
 
+# --- session --------------------------------------------------------------
+# Session = first path component under ~/Projects (labs, mbrella, o27, ...);
+# anything else (including projects sitting directly in ~/Projects) uses the
+# default session. "default" is herdr's reserved alias for it, so --session
+# can be passed uniformly. Explicit --session on every call also beats the
+# HERDR_SOCKET_PATH env inherited when launched from inside a herdr pane
+# (e.g. the dev-pick popup), which would otherwise pin the current session.
+session="${HERDR_DEV_SESSION:-}"
+if [[ -z "$session" ]]; then
+  case "$dir" in
+    "$HOME/Projects"/*/*) session="${dir#"$HOME/Projects/"}"; session="${session%%/*}" ;;
+    *) session="default" ;;
+  esac
+fi
+session="${session//[^[:alnum:]_.-]/_}"
+h() { herdr --session "$session" "$@"; }
+
 # --- server ---------------------------------------------------------------
 # The CLI does not auto-start the server (it errors on the missing socket),
-# so bring it up headless if needed.
-if ! herdr status server >/dev/null 2>&1; then
-  setsid herdr server >/dev/null 2>&1 &
+# so bring it up headless if needed. Exit codes are unreliable for a session
+# whose socket does not exist yet (the CLI prints an error but exits 0), so
+# liveness comes from `session list` instead of `status server`.
+session_running() {
+  herdr session list --json 2>/dev/null \
+    | jq -e --arg s "$session" \
+        'any(.sessions[]?; .name == $s and .running)' >/dev/null
+}
+if ! session_running; then
+  setsid herdr --session "$session" server >/dev/null 2>&1 &
   for _ in $(seq 1 20); do
-    herdr status server >/dev/null 2>&1 && break
+    session_running && break
     sleep 0.25
   done
-  herdr status server >/dev/null 2>&1 || die "herdr server did not start"
+  session_running || die "herdr server for session '$session' did not start"
 fi
 
-# --- client window (one shared window, kitty class "herdr") ----------------
+# --- plugins ----------------------------------------------------------------
+# Plugins are per-session state (installed under the session dir), so a
+# freshly bootstrapped group session has no reviewr — install it on demand.
+# Non-fatal: the layout below already tolerates a missing plugin.
+if ! h plugin list --json 2>/dev/null \
+    | jq -e '.result.plugins[]? | select(.plugin_id == "persiyanov.reviewr")' >/dev/null; then
+  h plugin install persiyanov/herdr-reviewr --yes >/dev/null 2>&1 \
+    || echo "dev-herdr: reviewr plugin install failed (offline?)" >&2
+fi
+
+# --- client window (one per session; kitty class "herdr" / "herdr-<name>") -
 show_client() {
-  if hyprctl clients -j 2>/dev/null | jq -e 'any(.[]; .class == "herdr")' >/dev/null; then
+  # kitty -T permanently fixes the OS window title (herdr's own OSC title —
+  # a bare "herdr" — can't overwrite it), so the Hyprland window shows which
+  # session/group it is.
+  local class="herdr" title="herdr — $session"
+  [[ "$session" != default ]] && class="herdr-$session"
+  if hyprctl clients -j 2>/dev/null | jq -e --arg c "$class" 'any(.[]; .class == $c)' >/dev/null; then
     # Hyprland 0.55 lua config: dispatch takes hl.dsp.* lua expressions
     # (classic `dispatch focuswindow class:...` errors but still exits 0).
-    hyprctl dispatch 'hl.dsp.focus({ window = "class:^(herdr)$" })' >/dev/null
+    hyprctl dispatch "hl.dsp.focus({ window = \"class:^($class)\$\" })" >/dev/null
   else
-    kitty --class herdr -e herdr >/dev/null 2>&1 &
+    # Scrub inherited HERDR_* vars (set when launched from inside a herdr
+    # pane, e.g. the dev-pick popup or a workspace terminal): the client
+    # sees them and refuses to start ("nested herdr is disabled").
+    local -a scrub=()
+    local v
+    for v in "${!HERDR_@}"; do scrub+=(-u "$v"); done
+    env "${scrub[@]}" kitty --class "$class" --title "$title" -e herdr --session "$session" >/dev/null 2>&1 &
     disown
   fi
 }
 
 # --- reattach path: workspace already exists ------------------------------
-existing="$(herdr workspace list \
+existing="$(h workspace list \
   | jq -r --arg l "$name" '.result.workspaces[]? | select(.label == $l) | .workspace_id' \
   | head -n1)"
 if [[ -n "$existing" ]]; then
-  herdr workspace focus "$existing" >/dev/null
+  h workspace focus "$existing" >/dev/null
   show_client
   exit 0
 fi
 
 # --- create path ----------------------------------------------------------
-ws_json="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus)"
+ws_json="$(h workspace create --cwd "$dir" --label "$name" --no-focus)"
 ws="$(jq -r '.result.workspace.workspace_id' <<<"$ws_json")"
 p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
 t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 
-herdr tab rename "$t_agent" agent >/dev/null
+h tab rename "$t_agent" agent >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
 # the full width), then the reviewr sidebar right of the agent.
 # --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
-p_bottom="$(herdr pane split "$p_agent" --direction down --ratio 0.72 \
+p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 
 # Reviewr (agent diff review) fills the top-right slot. --target-pane
 # implies the workspace (passing --workspace alongside it is rejected).
 # Non-fatal: the layout still works without it if the plugin is missing.
-herdr plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
+h plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
   --placement split --target-pane "$p_agent" \
   --direction right --cwd "$dir" --no-focus >/dev/null \
   || echo "dev-herdr: reviewr pane failed (plugin installed and enabled?)" >&2
@@ -93,23 +142,23 @@ herdr plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
 # herdr integration hooks the agent CLI itself, so detection and session
 # restore work no matter how the agent is launched.
 mapfile -t agent_argv < <(dev-agent-argv "$provider" "$name" "$prompt")
-herdr pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
+h pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
 
 # Bottom row: two plain terminals — "dev" (run your dev server by hand)
 # and "logs" (tail logs, one-off commands). No auto-typed dev command.
-p_logs="$(herdr pane split "$p_bottom" --direction right --ratio 0.5 \
+p_logs="$(h pane split "$p_bottom" --direction right --ratio 0.5 \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-herdr pane rename "$p_bottom" dev >/dev/null
-herdr pane rename "$p_logs" logs >/dev/null
+h pane rename "$p_bottom" dev >/dev/null
+h pane rename "$p_logs" logs >/dev/null
 
 # lazygit tab (created before nvim so the tab order is agent, git, nvim).
-p_git="$(herdr tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
+p_git="$(h tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
   | jq -r '.result.root_pane.pane_id')"
-herdr pane run "$p_git" "lazygit" >/dev/null
+h pane run "$p_git" "lazygit" >/dev/null
 
-p_nvim="$(herdr tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
+p_nvim="$(h tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
   | jq -r '.result.root_pane.pane_id')"
-herdr pane run "$p_nvim" "nvim" >/dev/null
+h pane run "$p_nvim" "nvim" >/dev/null
 
-herdr workspace focus "$ws" >/dev/null
+h workspace focus "$ws" >/dev/null
 show_client
