@@ -2,6 +2,21 @@
 # (see `herdr --default-config`). The keybind legend is the built-in
 # prefix+? help overlay, which lists these bindings with their descriptions.
 
+[keys]
+# prefix+o is repurposed for the project picker below; move the default
+# open-notification-target jump to shift+o.
+open_notification_target = "prefix+shift+o"
+
+# Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
+# project's dev environment via dev-mux — the in-herdr rofi-dev.
+[[keys.command]]
+key = "prefix+o"
+type = "popup"
+command = "dev-pick"
+width = "70%"
+height = "60%"
+description = "Open project (dev picker)"
+
 # Toggle the reviewr sidebar: diff review of agent changes with line
 # comments delivered back to the agent. ("d" for diff — prefix+r is resize.)
 [[keys.command]]
