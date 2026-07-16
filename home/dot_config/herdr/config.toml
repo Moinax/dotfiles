@@ -16,25 +16,3 @@ command = "dev-pick"
 width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
-
-# Toggle the reviewr sidebar: diff review of agent changes with line
-# comments delivered back to the agent. ("d" for diff — prefix+r is resize.)
-[[keys.command]]
-key = "prefix+d"
-type = "plugin_action"
-command = "persiyanov.reviewr.toggle"
-description = "Toggle reviewr (agent diff review)"
-
-# Git-aware read-only file/diff viewer, split beside the current pane.
-[[keys.command]]
-key = "prefix+f"
-type = "shell"
-command = "herdr plugin action invoke open-file-viewer --plugin herdr-file-viewer"
-description = "File viewer (split)"
-
-# Same viewer, full tab.
-[[keys.command]]
-key = "prefix+shift+f"
-type = "shell"
-command = "herdr plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer"
-description = "File viewer (tab)"

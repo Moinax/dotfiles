@@ -40,7 +40,6 @@ descriptions:
   tailscale: Mesh VPN for secure networking
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
-  glow: Terminal markdown renderer (used by herdr-file-viewer)
   claude-code: AI-powered coding assistant CLI
   ccstatusline: Claude Code status line with Catppuccin Powerline theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
@@ -66,10 +65,6 @@ custom_install:
   - name: herdr-reviewr
     check: herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr
     install: herdr plugin install persiyanov/herdr-reviewr --yes
-    requires: herdr
-  - name: herdr-file-viewer
-    check: herdr plugin list 2>/dev/null | grep -q file-viewer
-    install: herdr plugin install smarzban/herdr-file-viewer --yes
     requires: herdr
 
 packages:
@@ -107,7 +102,6 @@ packages:
 
     # Agent multiplexer (dev/wts herdr backend)
     - herdr-bin  # AUR
-    - glow
 
     # JS runtime & per-project env
     - bun
