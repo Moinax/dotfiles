@@ -1035,6 +1035,7 @@ sourceDir = "$source_dir"
     install_productivity = $install_productivity
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
+    use_herdr = false
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
