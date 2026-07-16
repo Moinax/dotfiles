@@ -19,8 +19,9 @@ focus_pane_right = ["prefix+l", "alt+l", "alt+right"]
 zoom = ["prefix+z", "alt+f"]
 
 # Direct tab jump like zellij's Alt+1..9 (prefix+1..9 still works).
-# The AZERTY unshifted-symbol variants are bound below via herdr-nav,
-# same trick as the zellij config: & é " ' ( are identical on fr and be.
+# AZERTY: kitty translates alt+& é " ' ( into alt+1..5 at the terminal
+# layer (see kitty.conf) — herdr 0.7.4 parses "alt+é" but silently drops
+# it at runtime, misaligning every later [[keys.command]] binding.
 switch_tab = ["prefix+1..9", "alt+1..9"]
 
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
@@ -32,39 +33,6 @@ command = "dev-pick"
 width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
-
-# AZERTY tab jumps (alt + unshifted number-row symbol → tab 1..5), resolved
-# through herdr-nav since switch_tab only accepts digit ranges. Tabs 6-9
-# keep only alt+digit — the fr/be symbols there diverge (see zellij config).
-[[keys.command]]
-key = "alt+ampersand"
-type = "shell"
-command = "herdr-nav tab 1"
-description = "Go to tab 1 (AZERTY)"
-
-[[keys.command]]
-key = "alt+é"
-type = "shell"
-command = "herdr-nav tab 2"
-description = "Go to tab 2 (AZERTY)"
-
-[[keys.command]]
-key = 'alt+"'
-type = "shell"
-command = "herdr-nav tab 3"
-description = "Go to tab 3 (AZERTY)"
-
-[[keys.command]]
-key = "alt+'"
-type = "shell"
-command = "herdr-nav tab 4"
-description = "Go to tab 4 (AZERTY)"
-
-[[keys.command]]
-key = "alt+("
-type = "shell"
-command = "herdr-nav tab 5"
-description = "Go to tab 5 (AZERTY)"
 
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
