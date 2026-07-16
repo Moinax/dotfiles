@@ -29,8 +29,8 @@ function dev
         set name "$name - $_flag_n"
     end
 
-    # No --title: dev-zellij pins the window title itself (provider-tagged for
-    # non-claude), keeping it renameable on the fly via Ctrl+Alt+R.
-    kitty --directory $dir -e dev-zellij -n $name -d $dir -p $provider >/dev/null 2>&1 &
+    # dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
+    # DEV_MUX) and owns window spawning per backend.
+    dev-mux -n $name -d $dir -p $provider >/dev/null 2>&1 &
     disown
 end

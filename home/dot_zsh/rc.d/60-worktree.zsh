@@ -83,9 +83,9 @@ wtstart() {
     fi
   fi
 
-  # No --title: dev-zellij pins the window title itself (so it stays renameable
-  # on the fly via Ctrl+Alt+R). See the note in dev-zellij.
-  kitty --directory "$dir" -e dev-zellij -n "$name" -d "$dir" -p "$provider" -- "$prompt" &>/dev/null & disown
+  # dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
+  # DEV_MUX) and owns window spawning per backend.
+  dev-mux -n "$name" -d "$dir" -p "$provider" -- "$prompt" &>/dev/null & disown
 
   builtin cd -- "$orig_dir"
 }

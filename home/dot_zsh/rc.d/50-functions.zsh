@@ -21,9 +21,9 @@ dev() {
   # Always lead with the directory name; -n appends " - <name>" after it.
   local name="$(basename "$dir")"
   [[ -n "$name_override" ]] && name="$name - $name_override"
-  # No --title: dev-zellij pins the window title itself (provider-tagged for
-  # non-claude), keeping it renameable on the fly via Ctrl+Alt+R.
-  kitty --directory "$dir" -e dev-zellij -n "$name" -d "$dir" -p "$provider" &>/dev/null & disown
+  # dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
+  # DEV_MUX) and owns window spawning per backend.
+  dev-mux -n "$name" -d "$dir" -p "$provider" &>/dev/null & disown
 }
 
 # yazi wrapper that cd's the parent shell to yazi's exit cwd
