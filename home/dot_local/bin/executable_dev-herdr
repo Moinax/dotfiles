@@ -44,7 +44,9 @@ fi
 # --- client window (one shared window, kitty class "herdr") ----------------
 show_client() {
   if hyprctl clients -j 2>/dev/null | jq -e 'any(.[]; .class == "herdr")' >/dev/null; then
-    hyprctl dispatch focuswindow 'class:^(herdr)$' >/dev/null
+    # Hyprland 0.55 lua config: dispatch takes hl.dsp.* lua expressions
+    # (classic `dispatch focuswindow class:...` errors but still exits 0).
+    hyprctl dispatch 'hl.dsp.focus({ window = "class:^(herdr)$" })' >/dev/null
   else
     kitty --class herdr -e herdr >/dev/null 2>&1 &
     disown
