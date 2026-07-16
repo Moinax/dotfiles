@@ -39,6 +39,17 @@ width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
 
+# Open an extra agent tab in the focused workspace, cloning the dev-herdr
+# "agent" tab layout (agent + reviewr sidebar, dev/logs bottom row) with the
+# same provider and project dir — several agents on one checkout, no
+# worktree needed. ctrl+alt is free across the stack (Hyprland only uses
+# SUPER+CTRL / ALT+CTRL+TAB, kitty only ctrl+alt+enter/r).
+[[keys.command]]
+key = "ctrl+alt+a"
+type = "shell"
+command = "herdr-nav agent-tab"
+description = "New agent tab (same project)"
+
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]

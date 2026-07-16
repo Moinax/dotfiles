@@ -5,6 +5,7 @@
 #
 # Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
 #        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
+#        herdr-nav agent-tab        add another agent tab to the focused workspace
 set -euo pipefail
 
 die() { echo "herdr-nav: $*" >&2; exit 1; }
@@ -32,6 +33,57 @@ case "${1:-}" in
       | jq -re '.result.panes[] | select(.focused) | .pane_id')" \
       || die "no focused pane"
     herdr pane resize --direction "$dir" --pane "$pane" >/dev/null
+    ;;
+  agent-tab)
+    # Clone the dev-herdr "agent" tab layout into a new tab of the focused
+    # workspace (agent top-left + reviewr sidebar, dev/logs bottom row) so
+    # several agents can share one checkout — no worktree needed. Provider
+    # and project dir come from the workspace's existing agent pane.
+    ws="$(focused_workspace)"
+    panes="$(herdr pane list --workspace "$ws")"
+    src="$(jq -c '[.result.panes[] | select((.agent // "") != "")][0] // empty' <<<"$panes")"
+    if [[ -n "$src" ]]; then
+      provider="$(jq -r '.agent' <<<"$src")"
+      dir="$(jq -r '.cwd' <<<"$src")"
+    else
+      provider="claude"
+      dir="$(jq -re '.result.panes[] | select(.focused) | .cwd' <<<"$panes")" \
+        || die "no focused pane"
+    fi
+    ws_label="$(herdr workspace list \
+      | jq -re --arg w "$ws" '.result.workspaces[] | select(.workspace_id == $w) | .label')"
+    # Next free suffix after the existing "agent" / "agent N" tabs.
+    num="$(herdr tab list --workspace "$ws" \
+      | jq -r '[.result.tabs[].label
+                | capture("^agent(?: (?<n>[0-9]+))?$")
+                | ((.n // "1") | tonumber)]
+               | (max // 0) + 1')"
+    label="agent"; [[ "$num" -gt 1 ]] && label="agent $num"
+
+    tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
+    t_new="$(jq -r '.result.tab.tab_id' <<<"$tab_json")"
+    p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$tab_json")"
+    herdr pane rename "$p_agent" "$provider" >/dev/null
+
+    # Same order as dev-herdr: bottom row first so it spans the full width,
+    # then the reviewr sidebar right of the agent (non-fatal if missing).
+    p_bottom="$(herdr pane split "$p_agent" --direction down --ratio 0.72 \
+      --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+    herdr plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
+      --placement split --target-pane "$p_agent" \
+      --direction right --cwd "$dir" --no-focus >/dev/null \
+      || echo "herdr-nav: reviewr pane failed (plugin installed and enabled?)" >&2
+
+    mapfile -t agent_argv < <(dev-agent-argv "$provider" "$ws_label #$num" "")
+    herdr pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
+
+    p_logs="$(herdr pane split "$p_bottom" --direction right --ratio 0.5 \
+      --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+    herdr pane rename "$p_bottom" dev >/dev/null
+    herdr pane rename "$p_logs" logs >/dev/null
+    # tab create does not switch the workspace's active tab — land on the
+    # new agent explicitly.
+    herdr tab focus "$t_new" >/dev/null
     ;;
   *)
     die "unknown command: ${1:-<none>} (expected: tab | resize)"
