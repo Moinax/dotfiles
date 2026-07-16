@@ -122,6 +122,9 @@ t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 
 h tab rename "$t_agent" agent >/dev/null
+# Label the agent pane with its provider (claude, codex, opencode), like the
+# dev/logs/reviewr panes are labeled.
+h pane rename "$p_agent" "$provider" >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
 # the full width), then the reviewr sidebar right of the agent.

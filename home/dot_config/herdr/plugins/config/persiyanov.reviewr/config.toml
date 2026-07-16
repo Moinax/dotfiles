@@ -1,0 +1,9 @@
+# reviewr's own config (not herdr's) — herdr hands this directory to the
+# plugin as $HERDR_PLUGIN_CONFIG_DIR; it is shared by all herdr sessions.
+# Strict parsing: any unknown key or invalid value makes the whole file
+# invalid and reviewr refuses to start, so keep only documented keys
+# (see the plugin README, "Configuration").
+
+# Navigator (changed-file list) on top, so the File (diff) pane sits at
+# the bottom. `p` cycles positions during a session.
+navigator_position = "top"
