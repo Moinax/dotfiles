@@ -21,6 +21,8 @@ if [ -n "$selection" ]; then
     dir="$HOME/Projects/$selection"
     name="$(basename "$dir")"
     # dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
-    # DEV_MUX) and owns window spawning per backend.
-    dev-mux -n "$name" -d "$dir" &>/dev/null & disown
+    # DEV_MUX) and owns window spawning per backend. setsid detaches it fully
+    # so it survives this script exiting right after selection (same fix as
+    # dev-pick, where the popup pty teardown killed a plain background job).
+    setsid -f dev-mux -n "$name" -d "$dir" &>/dev/null </dev/null
 fi

@@ -4,8 +4,12 @@
 # popup closes when this exits — but works from any terminal. Same source
 # as rofi-dev: directories two levels deep under ~/Projects.
 #
-# dev-mux is backgrounded like the other call sites: the zellij backend
-# execs a long-lived kitty window, which would otherwise hold the popup open.
+# dev-mux must be fully detached (setsid), not just backgrounded: the herdr
+# popup's pty is torn down the instant this script exits, and a plain
+# `& disown` child sits in the same process group, so it is killed before it
+# can create the workspace. A new session (no controlling tty) survives that,
+# and also keeps the zellij backend's long-lived kitty window from holding
+# the popup open.
 set -euo pipefail
 
 for cmd in fd tv dev-mux; do
@@ -17,4 +21,4 @@ sel="$(tv --source-command "fd --type d --max-depth 2 --base-directory $HOME/Pro
 [[ -z "$sel" ]] && exit 0
 
 dir="$HOME/Projects/$sel"
-dev-mux -n "$(basename "$dir")" -d "$dir" >/dev/null 2>&1 & disown
+setsid -f dev-mux -n "$(basename "$dir")" -d "$dir" >/dev/null 2>&1 </dev/null
