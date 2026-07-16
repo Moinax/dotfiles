@@ -18,6 +18,11 @@ focus_pane_right = ["prefix+l", "alt+l", "alt+right"]
 # toggle; the prefix+z default is kept.
 zoom = ["prefix+z", "alt+f"]
 
+# Cycle spaces (workspaces) directly with ctrl+alt+up/down, matching the
+# sidebar's vertical order. Unset by default in herdr.
+previous_workspace = "ctrl+alt+up"
+next_workspace = "ctrl+alt+down"
+
 # Direct tab jump like zellij's Alt+1..9 (prefix+1..9 still works).
 # AZERTY: kitty translates alt+& é " ' ( into alt+1..5 at the terminal
 # layer (see kitty.conf) — herdr 0.7.4 parses "alt+é" but silently drops
