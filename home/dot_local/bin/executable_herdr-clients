@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Manage Herdr client windows (kitty class "herdr" / "herdr-<session>") from
+# desktop keybindings. Herdr servers run detached (setsid, one per session —
+# see dev-herdr), so closing a client window only detaches: agents keep
+# running and reattaching restores everything.
+#
+# Usage: herdr-clients show SESSION   focus the session's client window, opening it if needed
+#        herdr-clients open-all       open a client window for every running session
+#        herdr-clients detach-all     close every client window (servers/agents keep running)
+#        herdr-clients toggle         detach-all if any client window is open, else open-all
+set -euo pipefail
+
+die() { echo "herdr-clients: $*" >&2; exit 1; }
+command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)"
+command -v jq    >/dev/null 2>&1 || die "jq is required"
+
+# "default" is herdr's reserved alias for the unnamed session; its client
+# window keeps the bare "herdr" class (matches dev-herdr and windowrules).
+class_for() {
+  [[ "$1" == default ]] && echo "herdr" || echo "herdr-$1"
+}
+
+window_exists() {
+  hyprctl clients -j 2>/dev/null \
+    | jq -e --arg c "$1" 'any(.[]; .class == $c)' >/dev/null
+}
+
+launch_client() {
+  local session="$1"
+  # kitty -T permanently fixes the OS window title (herdr's own OSC title —
+  # a bare "herdr" — can't overwrite it), so the Hyprland window shows which
+  # session/group it is.
+  local class title="herdr — $session"
+  class="$(class_for "$session")"
+  # Scrub inherited HERDR_* vars (set when launched from inside a herdr
+  # pane): the client sees them and refuses to start ("nested herdr is
+  # disabled").
+  local -a scrub=()
+  local v
+  for v in "${!HERDR_@}"; do scrub+=(-u "$v"); done
+  env "${scrub[@]}" kitty --class "$class" --title "$title" \
+    -e herdr --session "$session" >/dev/null 2>&1 &
+  disown
+}
+
+running_sessions() {
+  herdr session list --json 2>/dev/null \
+    | jq -r '.sessions[]? | select(.running) | .name'
+}
+
+# Wait for a launched client's window to map (kitty is async).
+wait_for_window() {
+  local class="$1"
+  for _ in $(seq 1 40); do
+    window_exists "$class" && return 0
+    sleep 0.1
+  done
+  echo "herdr-clients: window for $class did not appear" >&2
+  return 1
+}
+
+open_all() {
+  local -a to_open=()
+  local session class
+  while IFS= read -r session; do
+    [[ -z "$session" ]] && continue
+    window_exists "$(class_for "$session")" || to_open+=("$session")
+  done < <(running_sessions)
+  [[ ${#to_open[@]} -eq 0 ]] && return 0
+
+  # Open the clients as one tabbed Hyprland group on the focused workspace:
+  # launch sequentially, turn the first mapped window into a group, and let
+  # the rest auto-join (group.auto_group = true in general.lua — a new
+  # window opening at a focused grouped window is added to the group).
+  # A single missing window just opens plain — no groupbar on a lone tile.
+  local group_pending=0
+  [[ ${#to_open[@]} -ge 2 ]] && group_pending=1
+  for session in "${to_open[@]}"; do
+    class="$(class_for "$session")"
+    launch_client "$session"
+    wait_for_window "$class" || continue
+    if [[ $group_pending -eq 1 ]]; then
+      group_pending=0
+      hyprctl dispatch "hl.dsp.focus({ window = \"class:^($class)\$\" })" >/dev/null
+      # auto_group may have already pulled the window into a pre-existing
+      # group (it opened at the focused window — e.g. a grouped terminal);
+      # togglegroup there would disband that group, so pull out first.
+      if hyprctl clients -j 2>/dev/null \
+          | jq -e --arg c "$class" 'any(.[]; .class == $c and (.grouped | length) > 0)' >/dev/null; then
+        hyprctl dispatch "hl.dsp.window.move({ out_of_group = \"r\" })" >/dev/null
+      fi
+      hyprctl dispatch "hl.dsp.group.toggle()" >/dev/null
+    fi
+  done
+}
+
+detach_all() {
+  # SIGTERM the kitty processes hosting the clients — kitty closes
+  # cleanly, the herdr client exits, and the detached servers live on.
+  hyprctl clients -j 2>/dev/null \
+    | jq -r '.[] | select(.class | test("^herdr(-.*)?$")) | .pid' \
+    | while IFS= read -r pid; do kill "$pid" 2>/dev/null || true; done
+}
+
+any_client_open() {
+  hyprctl clients -j 2>/dev/null \
+    | jq -e 'any(.[]; .class | test("^herdr(-.*)?$"))' >/dev/null
+}
+
+case "${1:-}" in
+  show)
+    session="${2:?usage: herdr-clients show SESSION}"
+    class="$(class_for "$session")"
+    if window_exists "$class"; then
+      # Hyprland 0.55 lua config: dispatch takes hl.dsp.* lua expressions
+      # (classic `dispatch focuswindow class:...` errors but still exits 0).
+      hyprctl dispatch "hl.dsp.focus({ window = \"class:^($class)\$\" })" >/dev/null
+    else
+      launch_client "$session"
+    fi
+    ;;
+  open-all)   open_all ;;
+  detach-all) detach_all ;;
+  toggle)
+    if any_client_open; then detach_all; else open_all; fi
+    ;;
+  *)
+    die "unknown command: ${1:-<none>} (expected: show | open-all | detach-all | toggle)"
+    ;;
+esac

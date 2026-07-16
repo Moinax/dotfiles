@@ -14,6 +14,7 @@ hl.bind(mod .. " + CTRL + B",     hl.dsp.exec_cmd("google-chrome-stable --passwo
 hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                                -- Open file manager
 hl.bind(mod .. " + I",            hl.dsp.exec_cmd(home .. "/.local/bin/emoji-picker.sh"))                                    -- Emoji selector
 hl.bind(mod .. " + A",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-audio-switch.sh"))                             -- Switch audio output
+hl.bind(mod .. " + ALT + A",      hl.dsp.exec_cmd(home .. "/.local/bin/herdr-clients toggle"))                               -- Toggle all herdr sessions (open all / detach all)
 hl.bind(mod .. " + K",            hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-keyboard-layout.sh"))                -- Switch keyboard layout
 hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("rofi -show window -window-thumbnail"))                                    -- Window switcher
 hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd([[rofi -show "Select App to Kill" -modi "Select App to Kill:rofi-killwindow"]])) -- Kill window (rofi)

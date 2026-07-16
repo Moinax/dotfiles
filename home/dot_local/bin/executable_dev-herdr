@@ -82,26 +82,10 @@ if ! h plugin list --json 2>/dev/null \
 fi
 
 # --- client window (one per session; kitty class "herdr" / "herdr-<name>") -
+# Focus-or-launch lives in herdr-clients (shared with the desktop open-all /
+# detach-all keybinds); it also scrubs inherited HERDR_* vars.
 show_client() {
-  # kitty -T permanently fixes the OS window title (herdr's own OSC title —
-  # a bare "herdr" — can't overwrite it), so the Hyprland window shows which
-  # session/group it is.
-  local class="herdr" title="herdr — $session"
-  [[ "$session" != default ]] && class="herdr-$session"
-  if hyprctl clients -j 2>/dev/null | jq -e --arg c "$class" 'any(.[]; .class == $c)' >/dev/null; then
-    # Hyprland 0.55 lua config: dispatch takes hl.dsp.* lua expressions
-    # (classic `dispatch focuswindow class:...` errors but still exits 0).
-    hyprctl dispatch "hl.dsp.focus({ window = \"class:^($class)\$\" })" >/dev/null
-  else
-    # Scrub inherited HERDR_* vars (set when launched from inside a herdr
-    # pane, e.g. the dev-pick popup or a workspace terminal): the client
-    # sees them and refuses to start ("nested herdr is disabled").
-    local -a scrub=()
-    local v
-    for v in "${!HERDR_@}"; do scrub+=(-u "$v"); done
-    env "${scrub[@]}" kitty --class "$class" --title "$title" -e herdr --session "$session" >/dev/null 2>&1 &
-    disown
-  fi
+  herdr-clients show "$session"
 }
 
 # --- reattach path: workspace already exists ------------------------------
