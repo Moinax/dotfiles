@@ -71,21 +71,25 @@ if [[ "${state_of[$name]}" == "1" && $active_count -le 1 ]]; then
     abort "Refused — $name is the last active output"
 fi
 
-hypr_spec_for() {
-    local n="$1" spec
-    spec=$(grep -E "^monitor=${n}," "$HOME/.config/hypr/conf/monitor.conf" 2>/dev/null | head -1)
-    if [[ -z "$spec" ]]; then
-        notify "No spec for $n in monitor.conf — enabling at defaults"
-        echo "${n},preferred,auto,1"
-    else
-        echo "${spec#monitor=}"
+# conf/monitor.lua holds one hl.monitor() line per output; replay it verbatim
+# through `hyprctl eval` to re-enable with the configured mode/position/scale.
+hypr_lua_for() {
+    local n="$1" lua
+    lua=$(grep -F 'hl.monitor' "$HOME/.config/hypr/conf/monitor.lua" 2>/dev/null \
+        | grep -F "output = \"${n}\"" | head -1)
+    if [[ -z "$lua" ]]; then
+        notify "No spec for $n in monitor.lua — enabling at defaults"
+        lua="hl.monitor({ output = \"${n}\", mode = \"preferred\", position = \"auto\", scale = 1 })"
     fi
+    printf '%s' "$lua"
 }
 
 if [[ "${state_of[$name]}" == "1" ]]; then
-    hyprctl keyword monitor "${name},disable" >/dev/null || abort "Failed to disable $name"
+    hyprctl eval "hl.monitor({ output = \"${name}\", disabled = true })" 2>/dev/null | grep -qx ok \
+        || abort "Failed to disable $name"
     notify "Disabled $name"
 else
-    hyprctl keyword monitor "$(hypr_spec_for "$name")" >/dev/null || abort "Failed to enable $name"
+    hyprctl eval "$(hypr_lua_for "$name")" 2>/dev/null | grep -qx ok \
+        || abort "Failed to enable $name"
     notify "Enabled $name"
 fi

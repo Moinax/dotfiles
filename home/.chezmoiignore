@@ -8,7 +8,6 @@ LICENSE
 
 # Ignore Hyprland configs if not selected
 {{- if not .install_hyprland }}
-.config/hypr/hyprland.conf
 .config/hypr/hyprland.lua
 .config/hypr/hypridle.conf
 .config/hypr/hyprpaper.conf
@@ -17,71 +16,6 @@ LICENSE
 .config/hypr/conf/**
 .config/hypr/scripts
 .config/hypr/scripts/**
-{{- end }}
-
-# Hyprland 0.55 switched configuration from hyprlang (.conf) to Lua (.lua).
-# We keep both flavors in source and deploy only the one matching the
-# installed Hyprland version (CachyOS tracks Arch, so current installs get
-# the .lua files; the .conf files remain as a fallback for older versions).
-# Override by setting .hyprland_config_lang = "lua" | "conf" in chezmoi data.
-{{- if .install_hyprland }}
-{{-   $lang := "" }}
-{{-   if hasKey . "hyprland_config_lang" }}
-{{-     $lang = .hyprland_config_lang }}
-{{-   end }}
-{{-   if eq $lang "" }}
-{{-     $lang = "conf" }}
-{{-     if lookPath "Hyprland" }}
-{{-       $ver := output "bash" "-c" "Hyprland --version 2>/dev/null | grep -oE 'v?[0-9]+\\.[0-9]+' | head -1 | tr -d v" | trim }}
-{{-       if $ver }}
-{{-         $parts := splitList "." $ver }}
-{{-         if ge (len $parts) 2 }}
-{{-           $major := atoi (index $parts 0) }}
-{{-           $minor := atoi (index $parts 1) }}
-{{-           if or (gt $major 0) (and (eq $major 0) (ge $minor 55)) }}
-{{-             $lang = "lua" }}
-{{-           end }}
-{{-         end }}
-{{-       end }}
-{{-     end }}
-{{-   end }}
-{{-   if eq $lang "lua" }}
-# Hyprland >= 0.55 on this host → use .lua, ignore .conf
-.config/hypr/hyprland.conf
-.config/hypr/conf/animations.conf
-.config/hypr/conf/autostart.conf
-.config/hypr/conf/binds.conf
-.config/hypr/conf/cursor.conf
-.config/hypr/conf/decoration.conf
-.config/hypr/conf/environments.conf
-.config/hypr/conf/general.conf
-.config/hypr/conf/gestures.conf
-.config/hypr/conf/input.conf
-.config/hypr/conf/layouts.conf
-.config/hypr/conf/misc.conf
-.config/hypr/conf/monitor.conf
-.config/hypr/conf/windowrules.conf
-.config/hypr/conf/workspaces.conf
-.config/hypr/conf/input-layouts/*.conf
-{{-   else }}
-# Hyprland < 0.55 on this host → use .conf, ignore .lua
-.config/hypr/hyprland.lua
-.config/hypr/conf/animations.lua
-.config/hypr/conf/autostart.lua
-.config/hypr/conf/binds.lua
-.config/hypr/conf/cursor.lua
-.config/hypr/conf/decoration.lua
-.config/hypr/conf/environments.lua
-.config/hypr/conf/general.lua
-.config/hypr/conf/gestures.lua
-.config/hypr/conf/input.lua
-.config/hypr/conf/layouts.lua
-.config/hypr/conf/misc.lua
-.config/hypr/conf/monitor.lua
-.config/hypr/conf/windowrules.lua
-.config/hypr/conf/workspaces.lua
-.config/hypr/conf/input-layouts/*.lua
-{{-   end }}
 {{- end }}
 
 # Ignore Wayland desktop components if Hyprland is not selected

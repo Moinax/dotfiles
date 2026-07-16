@@ -18,7 +18,7 @@ set -euo pipefail
 
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-opacity-disabled"
 
-# Keep in sync with conf/decoration.lua and conf/decoration.conf.
+# Keep in sync with conf/decoration.lua.
 ACTIVE_DEFAULT=0.99
 INACTIVE_DEFAULT=0.90
 

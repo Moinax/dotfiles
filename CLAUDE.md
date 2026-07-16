@@ -70,4 +70,4 @@ Hypr, Waybar, Rofi, SwayNC, Wlogout (Wayland desktop), Kitty (terminal), Neovim 
 
 - Shell scripts use `set -e` and consistent color-coded output helpers (`print_info`, `print_success`, `print_error`, `print_warning`)
 - Base package YAML supports `core`, `desktop`, `aur`, and `desktop_aur` sections
-- **Keybinding changes**: When modifying keybindings in Hyprland (`home/dot_config/hypr/conf/binds.conf` / `binds.lua`), always update `KEYBINDINGS.md` at the repo root to keep the reference in sync
+- **Keybinding changes**: When modifying keybindings in Hyprland (`home/dot_config/hypr/conf/binds.lua.tmpl`), always update `KEYBINDINGS.md` at the repo root to keep the reference in sync

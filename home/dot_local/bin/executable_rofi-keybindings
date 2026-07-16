@@ -63,28 +63,9 @@ function xf86(k) {
 }
 '
 
-# ── Hyprland parser ───────────────────────────────────────────────
-# Two source formats coexist (see hyprland.conf vs hyprland.lua): older
-# Hyprland releases (e.g. shipped by Fedora) only understand the .conf
-# syntax; newer releases use the Lua plugin and load binds.lua. Pick the
-# one selected by Hyprland's active entrypoint.
+# ── Hyprland parser (Lua config, Hyprland 0.55+) ──────────────────
 
 parse_hyprland() {
-    if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
-        parse_hyprland_lua
-    elif [ -f "$HOME/.config/hypr/hyprland.conf" ]; then
-        parse_hyprland_conf
-    elif [ -f "$HOME/.config/hypr/conf/binds.lua" ]; then
-        parse_hyprland_lua
-    elif [ -f "$HOME/.config/hypr/conf/binds.conf" ]; then
-        parse_hyprland_conf
-    else
-        echo "No Hyprland config found at hyprland.{lua,conf} or conf/binds.{lua,conf}" >&2
-        return 1
-    fi
-}
-
-parse_hyprland_lua() {
     local config="$HOME/.config/hypr/conf/binds.lua"
     [ -f "$config" ] || { echo "Config not found: $config" >&2; return 1; }
 
@@ -314,106 +295,6 @@ parse_hyprland_lua() {
         } else {
             printf "[%s]  %s  →  %s\n", section, combo, desc
         }
-    }
-    ' "$config"
-}
-
-parse_hyprland_conf() {
-    local config="$HOME/.config/hypr/conf/binds.conf"
-    [ -f "$config" ] || { echo "Config not found: $config" >&2; return 1; }
-
-    awk "$XF86_AWK"'
-    function norm_key(k) {
-        if (k ~ /^[a-z]+$/)
-            return toupper(substr(k, 1, 1)) substr(k, 2)
-        if (k ~ /^[A-Z]+$/ && length(k) > 1)
-            return toupper(substr(k, 1, 1)) tolower(substr(k, 2))
-        return k
-    }
-
-    function dir(d) {
-        if (d == "r") return "right"
-        if (d == "l") return "left"
-        if (d == "u") return "up"
-        if (d == "d") return "down"
-        return d
-    }
-
-    BEGIN { section = ""; skip = 0 }
-
-    /^# ── [0-9]+\./ {
-        s = $0; sub(/^# ── [0-9]+\. /, "", s); sub(/ ─+$/, "", s)
-        section = s; skip = 0; next
-    }
-
-    /^# AZERTY/ || /^# Silent move/ { skip = 1; next }
-    /^# QWERTY/                      { skip = 0; next }
-    /^#/ || /^$/                      { next }
-    skip                              { next }
-    /^bindm/ || /^windowrule/         { next }
-
-    /^binde? = / {
-        line = $0; sub(/^binde? = /, "", line)
-
-        comment = ""
-        if (match(line, /[ \t]# /)) {
-            comment = substr(line, RSTART + 3)
-            line = substr(line, 1, RSTART - 1)
-            sub(/[ \t]+$/, "", line)
-        }
-
-        n = split(line, p, ",")
-        if (n < 3) next
-        for (i = 1; i <= n; i++) gsub(/^[ \t]+|[ \t]+$/, "", p[i])
-
-        mods = p[1]; key = p[2]; action = p[3]
-        args = ""
-        for (i = 4; i <= n; i++) {
-            a = p[i]; gsub(/^[ \t]+|[ \t]+$/, "", a)
-            if (a != "") { if (args != "") args = args " "; args = args a }
-        }
-
-        if (mods != "") {
-            gsub(/SUPER/, "Mod", mods)
-            gsub(/ +ALT/, "+Alt", mods);   gsub(/^ALT/, "Alt", mods)
-            gsub(/ +CTRL/, "+Ctrl", mods); gsub(/^CTRL/, "Ctrl", mods)
-            gsub(/ +SHIFT/, "+Shift", mods); gsub(/^SHIFT/, "Shift", mods)
-            combo = mods "+" norm_key(key)
-        } else {
-            combo = norm_key(key)
-        }
-
-        desc = comment
-        if (desc == "" && key ~ /^XF86/) desc = xf86(key)
-        if (desc == "") {
-            if (action == "movewindoworgroup")     desc = "Move window/group " dir(args)
-            else if (action == "swapwindow")       desc = "Swap window " dir(args)
-            else if (action == "movefocus")        desc = "Focus " dir(args)
-            else if (action == "cyclenext")        desc = "Cycle window " args
-            else if (action == "resizeactive") {
-                split(args, r, " ")
-                if (r[1]+0 > 0) desc = "Resize right"
-                else if (r[1]+0 < 0) desc = "Resize left"
-                else if (r[2]+0 > 0) desc = "Resize down"
-                else desc = "Resize up"
-            }
-            else if (action == "workspace")        desc = "Workspace " args
-            else if (action == "movetoworkspace") {
-                if (args == "special") desc = "Move to scratchpad"
-                else desc = "Move to workspace " args
-            }
-            else if (action == "movetoworkspacesilent") {
-                if (args == "special") desc = "Move to scratchpad (silent)"
-                else desc = "Move to workspace " args " (silent)"
-            }
-            else if (action == "tagwindow")        desc = "Toggle opacity"
-            else if (action == "exec") {
-                desc = args; sub(/.*\//, "", desc)
-            }
-            else { desc = action; if (args != "") desc = desc " " args }
-        }
-
-        printf "[%s]  %s  →  %s\n", section, combo, desc
     }
     ' "$config"
 }

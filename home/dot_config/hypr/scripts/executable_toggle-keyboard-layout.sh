@@ -4,20 +4,9 @@ set -e
 # Directory containing your input layout template files
 LAYOUTS_DIR="$HOME/.config/hypr/conf/input-layouts"
 
-# Detect the deployed flavor from Hyprland's active entrypoint. The layout
-# directory can contain stale files after switching languages; hyprland.lua vs
-# hyprland.conf is the source of truth.
-if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
-    EXT="lua"
-elif [ -f "$HOME/.config/hypr/hyprland.conf" ]; then
-    EXT="conf"
-else
-    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "No Hyprland entrypoint found at ~/.config/hypr/hyprland.{lua,conf}"
-    echo "Error: No Hyprland entrypoint found at ~/.config/hypr/hyprland.{lua,conf}" >&2
-    exit 1
-fi
+EXT="lua"
 
-# Path to the active input configuration file (matches the detected flavor)
+# Path to the active input configuration file
 ACTIVE_INPUT_CONF="$HOME/.config/hypr/conf/input.$EXT"
 
 # --- Discover available layouts and their order ---
@@ -34,7 +23,7 @@ declare -A layout_paths # Associative array to map display name to file path
 layout_display_names=() # Array to store names for Rofi display
 
 for layout_file_path in "${LAYOUT_FILES[@]}"; do
-    # Extract the display name (e.g., "English" from "1_english.conf")
+    # Extract the display name (e.g., "English" from "1_english.lua")
     display_name=$(basename "$layout_file_path" | sed -E 's/^[0-9]+_//' | sed -E "s/\.$EXT$//" | sed 's/_/ /g' | sed 's/\b\(.\)/\U\1/g')
 
     layout_paths["$display_name"]="$layout_file_path"

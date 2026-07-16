@@ -2,7 +2,7 @@
 
 > **Mod** = Super / Win key.
 >
-> Source file: `home/dot_config/hypr/conf/binds.conf` (or `binds.lua` on Hyprland ≥ 0.55)
+> Source file: `home/dot_config/hypr/conf/binds.lua.tmpl`
 
 ---
 
