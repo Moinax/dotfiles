@@ -38,6 +38,7 @@ descriptions:
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
+  herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
   claude-code: AI-powered coding assistant CLI
   ccstatusline: Claude Code status line with Catppuccin Powerline theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
@@ -93,6 +94,9 @@ packages:
 
     # Worktree management
     - worktrunk-bin  # AUR
+
+    # Agent multiplexer (dev/wts herdr backend)
+    - herdr-bin  # AUR
 
     # JS runtime & per-project env
     - bun
