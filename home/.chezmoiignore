@@ -131,6 +131,8 @@ LICENSE
 .config/worktrunk/**
 .config/ccstatusline
 .config/ccstatusline/**
+.config/herdr
+.config/herdr/**
 .claude
 .claude/**
 .zsh/rc.d/60-worktree.zsh
