@@ -7,6 +7,22 @@
 # open-notification-target jump to shift+o.
 open_notification_target = "prefix+shift+o"
 
+# Zellij-style direct pane navigation: alt+hjkl / alt+arrows, with the
+# prefix+hjkl defaults kept alongside.
+focus_pane_left = ["prefix+h", "alt+h", "alt+left"]
+focus_pane_down = ["prefix+j", "alt+j", "alt+down"]
+focus_pane_up = ["prefix+k", "alt+k", "alt+up"]
+focus_pane_right = ["prefix+l", "alt+l", "alt+right"]
+
+# Fullscreen (zoom) the focused pane. alt+f mirrors the zellij scratch
+# toggle; the prefix+z default is kept.
+zoom = ["prefix+z", "alt+f"]
+
+# Direct tab jump like zellij's Alt+1..9 (prefix+1..9 still works).
+# The AZERTY unshifted-symbol variants are bound below via herdr-nav,
+# same trick as the zellij config: & é " ' ( are identical on fr and be.
+switch_tab = ["prefix+1..9", "alt+1..9"]
+
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
 # project's dev environment via dev-mux — the in-herdr rofi-dev.
 [[keys.command]]
@@ -16,3 +32,67 @@ command = "dev-pick"
 width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
+
+# AZERTY tab jumps (alt + unshifted number-row symbol → tab 1..5), resolved
+# through herdr-nav since switch_tab only accepts digit ranges. Tabs 6-9
+# keep only alt+digit — the fr/be symbols there diverge (see zellij config).
+[[keys.command]]
+key = "alt+ampersand"
+type = "shell"
+command = "herdr-nav tab 1"
+description = "Go to tab 1 (AZERTY)"
+
+[[keys.command]]
+key = "alt+é"
+type = "shell"
+command = "herdr-nav tab 2"
+description = "Go to tab 2 (AZERTY)"
+
+[[keys.command]]
+key = 'alt+"'
+type = "shell"
+command = "herdr-nav tab 3"
+description = "Go to tab 3 (AZERTY)"
+
+[[keys.command]]
+key = "alt+'"
+type = "shell"
+command = "herdr-nav tab 4"
+description = "Go to tab 4 (AZERTY)"
+
+[[keys.command]]
+key = "alt+("
+type = "shell"
+command = "herdr-nav tab 5"
+description = "Go to tab 5 (AZERTY)"
+
+# Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
+# mode (prefix+r, then hjkl/arrows) also remains available.
+[[keys.command]]
+key = "alt+shift+h"
+type = "shell"
+command = "herdr-nav resize left"
+description = "Resize pane left"
+
+[[keys.command]]
+key = "alt+shift+j"
+type = "shell"
+command = "herdr-nav resize down"
+description = "Resize pane down"
+
+[[keys.command]]
+key = "alt+shift+k"
+type = "shell"
+command = "herdr-nav resize up"
+description = "Resize pane up"
+
+[[keys.command]]
+key = "alt+shift+l"
+type = "shell"
+command = "herdr-nav resize right"
+description = "Resize pane right"
+
+# Agent sidebar ordering ("spaces" | "priority") — herdr's UI toggle
+# persists this here, so keep it managed to avoid chezmoi drift.
+[ui]
+agent_panel_sort = "spaces"

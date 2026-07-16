@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Navigation helper for herdr shell keybindings (~/.config/herdr/config.toml).
+# Shell bindings run detached from any pane, so the target is resolved
+# explicitly from the `focused` flags instead of relying on pane env.
+#
+# Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
+#        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
+set -euo pipefail
+
+die() { echo "herdr-nav: $*" >&2; exit 1; }
+
+focused_workspace() {
+  herdr workspace list \
+    | jq -re '.result.workspaces[] | select(.focused) | .workspace_id' \
+    || die "no focused workspace"
+}
+
+case "${1:-}" in
+  tab)
+    n="${2:?usage: herdr-nav tab N}"
+    ws="$(focused_workspace)"
+    tab="$(herdr tab list --workspace "$ws" \
+      | jq -re --argjson n "$n" \
+          '.result.tabs[] | select(.number == $n) | .tab_id')" \
+      || exit 0  # no Nth tab — ignore, like zellij's GoToTab
+    herdr tab focus "$tab" >/dev/null
+    ;;
+  resize)
+    dir="${2:?usage: herdr-nav resize left|right|up|down}"
+    ws="$(focused_workspace)"
+    pane="$(herdr pane list --workspace "$ws" \
+      | jq -re '.result.panes[] | select(.focused) | .pane_id')" \
+      || die "no focused pane"
+    herdr pane resize --direction "$dir" --pane "$pane" >/dev/null
+    ;;
+  *)
+    die "unknown command: ${1:-<none>} (expected: tab | resize)"
+    ;;
+esac
