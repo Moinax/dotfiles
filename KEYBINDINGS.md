@@ -19,7 +19,9 @@
 | File manager (Dolphin) | `Mod+E` | |
 | Emoji selector | `Mod+I` | rofimoji (clipboard paste) |
 | Switch audio output | `Mod+A` | |
-| Toggle all herdr sessions | `Mod+Alt+A` | Any herdr client window open → detach all (servers/agents keep running); none open → revive any down servers (e.g. after a reboot) and open every persisted session as one tabbed Hyprland group |
+| Open all herdr sessions | `Mod+Alt+A` | Revives any down servers (e.g. after a reboot) and opens every persisted session as one tabbed Hyprland group; already-open windows are left as-is |
+| Detach all herdr sessions | `Mod+Alt+D` | Closes every herdr client window; servers and agents keep running |
+| Stop all herdr sessions | `Mod+Alt+Q` | Detaches all, then stops every running server — kills the agents; saved layouts persist, so `Mod+Alt+A` starts them fresh |
 | Switch keyboard layout | `Mod+K` | |
 | Window switcher (rofi) | `Mod+Tab` | |
 | Kill window (rofi) | `Mod+Escape` | Picks window like switcher, then `kill -9` |

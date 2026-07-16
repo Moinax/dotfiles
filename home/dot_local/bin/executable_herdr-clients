@@ -8,7 +8,7 @@
 #        herdr-clients ensure-server SESSION  boot the session's server if down, wait for it
 #        herdr-clients open-all               open a client window for every persisted session
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
-#        herdr-clients toggle                 detach-all if any client window is open, else open-all
+#        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -146,9 +146,17 @@ detach_all() {
     | while IFS= read -r pid; do kill "$pid" 2>/dev/null || true; done
 }
 
-any_client_open() {
-  hyprctl clients -j 2>/dev/null \
-    | jq -e 'any(.[]; .class | test("^herdr(-.*)?$"))' >/dev/null
+# Full shutdown for a fresh start: close the client windows, then stop every
+# running server. `session stop` kills the server process and everything in
+# it (agents included); the persisted session.json survives, so a later
+# open-all reboots the sessions with their saved workspaces/panes.
+stop_all() {
+  detach_all
+  local session
+  while IFS= read -r session; do
+    [[ -n "$session" ]] || continue
+    herdr session stop "$session" >/dev/null 2>&1 || true
+  done < <(running_sessions)
 }
 
 case "${1:-}" in
@@ -172,10 +180,8 @@ case "${1:-}" in
     ;;
   open-all)   open_all ;;
   detach-all) detach_all ;;
-  toggle)
-    if any_client_open; then detach_all; else open_all; fi
-    ;;
+  stop-all)   stop_all ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | toggle)"
+    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | stop-all)"
     ;;
 esac
