@@ -37,25 +37,10 @@ for a in "${agent_argv[@]:1}"; do
 done
 
 # --- detect a dev-server command -----------------------------------------
-# Prefer a justfile `dev` recipe (usually the project's own orchestrator, e.g.
-# frontend + backend + worker), then fall back to a package.json "dev" script
-# (package manager chosen from the lockfile).
+# Shared detection lives in dev-server-cmd (also used by dev-herdr).
 devcmd=()
-justfile=""
-for f in justfile Justfile .justfile; do
-  [[ -f "$dir/$f" ]] && { justfile="$dir/$f"; break; }
-done
-# `^dev([[:space:]]|:)` matches the `dev` recipe (`dev:` or `dev arg=...:`)
-# without matching siblings like `dev-backend:` / `dev-frontend:`.
-if [[ -n "$justfile" ]] && grep -Eq '^dev([[:space:]]|:)' "$justfile"; then
-  devcmd=(just dev)
-elif [[ -f "$dir/package.json" ]] && grep -Eq '"dev"[[:space:]]*:' "$dir/package.json"; then
-  if   [[ -f "$dir/bun.lockb" || -f "$dir/bun.lock" ]]; then devcmd=(bun run dev)
-  elif [[ -f "$dir/pnpm-lock.yaml" ]];                  then devcmd=(pnpm dev)
-  elif [[ -f "$dir/yarn.lock" ]];                       then devcmd=(yarn dev)
-  else                                                       devcmd=(npm run dev)
-  fi
-fi
+devcmd_str="$(dev-server-cmd "$dir")"
+[[ -n "$devcmd_str" ]] && read -ra devcmd <<< "$devcmd_str"
 
 # --- agent pane (block only when there are args) -------------------------
 # No size: agent + lazygit split the top region 50/50 (like the kitty vsplit).
