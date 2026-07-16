@@ -831,12 +831,11 @@ install_common_tools() {
     fi
 
     # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
-    # hunkdiff provides `hunk`, the git pager configured unconditionally in ~/.gitconfig.
     if command_exists npm; then
         print_info "Installing global npm packages..."
-        npm install -g yarn@1 pnpm hunkdiff || track_warning "Failed to install global npm packages"
+        npm install -g yarn@1 pnpm || track_warning "Failed to install global npm packages"
     else
-        track_warning "npm unavailable — skipped global npm packages (yarn, pnpm, hunkdiff)"
+        track_warning "npm unavailable — skipped global npm packages (yarn, pnpm)"
     fi
     
     # Install rofi themes when the Hyprland group is selected

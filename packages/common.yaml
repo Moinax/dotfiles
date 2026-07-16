@@ -6,7 +6,7 @@ tools:
     description: Smarter cd command
     install: curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
 
-  # Node LTS + global npm packages (yarn, pnpm, hunkdiff) are handled by
+  # Node LTS + global npm packages (yarn, pnpm) are handled by
   # install_common_tools() in install/installer.sh — this entry is informational.
   - name: fnm
     description: Fast Node.js version manager
