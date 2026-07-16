@@ -10,6 +10,21 @@ set -euo pipefail
 
 die() { echo "herdr-nav: $*" >&2; exit 1; }
 
+# Call a herdr socket API method not exposed on the CLI (e.g. tab.move).
+# Uses the same socket the CLI resolves: the session inherited via
+# HERDR_SOCKET_PATH (shell binds run inside a pane), else the default session.
+# Prints the JSON response; non-fatal on failure.
+api() {
+  # NB: don't default params with ${2:-{}} — the first } closes the expansion
+  # and a literal } gets appended to $2, producing invalid JSON.
+  local method="$1" params="${2:-}"
+  [[ -n "$params" ]] || params='{}'
+  local sock="${HERDR_SOCKET_PATH:-$HOME/.config/herdr/herdr.sock}"
+  [[ -S "$sock" ]] || return 1
+  printf '{"id":"1","method":"%s","params":%s}\n' "$method" "$params" \
+    | socat - "UNIX-CONNECT:$sock" 2>/dev/null
+}
+
 focused_workspace() {
   herdr workspace list \
     | jq -re '.result.workspaces[] | select(.focused) | .workspace_id' \
@@ -36,9 +51,9 @@ case "${1:-}" in
     ;;
   agent-tab)
     # Clone the dev-herdr "agent" tab layout into a new tab of the focused
-    # workspace (agent top-left + reviewr sidebar, dev/logs bottom row) so
-    # several agents can share one checkout — no worktree needed. Provider
-    # and project dir come from the workspace's existing agent pane.
+    # workspace (agent + lazygit top row, dev/logs bottom row) so several
+    # agents can share one checkout — no worktree needed. Provider and
+    # project dir come from the workspace's existing agent pane.
     ws="$(focused_workspace)"
     panes="$(herdr pane list --workspace "$ws")"
     src="$(jq -c '[.result.panes[] | select((.agent // "") != "")][0] // empty' <<<"$panes")"
@@ -52,27 +67,32 @@ case "${1:-}" in
     fi
     ws_label="$(herdr workspace list \
       | jq -re --arg w "$ws" '.result.workspaces[] | select(.workspace_id == $w) | .label')"
-    # Next free suffix after the existing "agent" / "agent N" tabs.
-    num="$(herdr tab list --workspace "$ws" \
+    # Existing "agent" / "agent N" tabs, in one pass: the next free suffix for
+    # the new label, and their count = where the new tab should land (right
+    # after the last agent tab — they stay contiguous at the front).
+    read -r num agent_count < <(herdr tab list --workspace "$ws" \
       | jq -r '[.result.tabs[].label
                 | capture("^agent(?: (?<n>[0-9]+))?$")
                 | ((.n // "1") | tonumber)]
-               | (max // 0) + 1')"
+               | "\((max // 0) + 1) \(length)"')
     label="agent"; [[ "$num" -gt 1 ]] && label="agent $num"
 
     tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
     t_new="$(jq -r '.result.tab.tab_id' <<<"$tab_json")"
     p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$tab_json")"
+    # tab create appends at the end (after nvim); move it up next to the other
+    # agent tabs. tab.move is socket-only (no CLI verb); non-fatal.
+    api tab.move "{\"tab_id\":\"$t_new\",\"insert_index\":$agent_count}" >/dev/null || true
     herdr pane rename "$p_agent" "$provider" >/dev/null
 
     # Same order as dev-herdr: bottom row first so it spans the full width,
-    # then the reviewr sidebar right of the agent (non-fatal if missing).
+    # then lazygit right of the agent.
     p_bottom="$(herdr pane split "$p_agent" --direction down --ratio 0.72 \
       --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-    herdr plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
-      --placement split --target-pane "$p_agent" \
-      --direction right --cwd "$dir" --no-focus >/dev/null \
-      || echo "herdr-nav: reviewr pane failed (plugin installed and enabled?)" >&2
+    p_git="$(herdr pane split "$p_agent" --direction right \
+      --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+    herdr pane rename "$p_git" git >/dev/null
+    herdr pane run "$p_git" "lazygit" >/dev/null
 
     mapfile -t agent_argv < <(dev-agent-argv "$provider" "$ws_label #$num" "")
     herdr pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
@@ -86,6 +106,6 @@ case "${1:-}" in
     herdr tab focus "$t_new" >/dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-tab)"
     ;;
 esac

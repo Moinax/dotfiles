@@ -24,6 +24,7 @@ packages:
     - btop
     - jq
     - yq
+    - socat  # talk to herdr's unix-socket API (tab.move, etc.) from dev scripts
     - rsync
     - unzip
     - fontconfig

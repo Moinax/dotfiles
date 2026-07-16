@@ -62,10 +62,6 @@ custom_install:
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
     requires: gh
-  - name: herdr-reviewr
-    check: herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr
-    install: herdr plugin install persiyanov/herdr-reviewr --yes
-    requires: herdr
 
 packages:
   arch:

@@ -4,10 +4,11 @@
 # see dev-herdr), so closing a client window only detaches: agents keep
 # running and reattaching restores everything.
 #
-# Usage: herdr-clients show SESSION   focus the session's client window, opening it if needed
-#        herdr-clients open-all       open a client window for every running session
-#        herdr-clients detach-all     close every client window (servers/agents keep running)
-#        herdr-clients toggle         detach-all if any client window is open, else open-all
+# Usage: herdr-clients show SESSION           focus the session's client window, opening it if needed
+#        herdr-clients ensure-server SESSION  boot the session's server if down, wait for it
+#        herdr-clients open-all               open a client window for every persisted session
+#        herdr-clients detach-all             close every client window (servers/agents keep running)
+#        herdr-clients toggle                 detach-all if any client window is open, else open-all
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -48,6 +49,37 @@ running_sessions() {
     | jq -r '.sessions[]? | select(.running) | .name'
 }
 
+# Bring the given sessions' servers up if down, and wait for them. The CLI
+# never auto-starts a server (a bare client errors on the missing socket), so
+# a dead session must be booted explicitly; starting the headless server
+# restores its saved workspaces/panes from session.json. Exit codes are
+# unreliable for a session whose socket does not exist yet (the CLI prints an
+# error but exits 0), so liveness comes from `session list`.
+# All down servers are started first, then one shared poll watches the whole
+# set — K dead servers boot in parallel instead of 5s each in sequence, and
+# each tick costs one `session list` instead of one per session.
+# Prints the names that failed to come up; returns non-zero if any did.
+ensure_servers() {
+  local -a pending=()
+  local session up i
+  up="$(running_sessions)"
+  for session in "$@"; do
+    grep -qxF "$session" <<<"$up" && continue
+    setsid herdr --session "$session" server >/dev/null 2>&1 &
+    pending+=("$session")
+  done
+  for ((i = 0; i < 20 && ${#pending[@]} > 0; i++)); do
+    sleep 0.25
+    up="$(running_sessions)"
+    local -a still=()
+    for session in "${pending[@]}"; do
+      grep -qxF "$session" <<<"$up" || still+=("$session")
+    done
+    pending=("${still[@]}")
+  done
+  [[ ${#pending[@]} -eq 0 ]] || { printf '%s\n' "${pending[@]}"; return 1; }
+}
+
 # Wait for a launched client's window to map (kitty is async).
 wait_for_window() {
   local class="$1"
@@ -60,12 +92,24 @@ wait_for_window() {
 }
 
 open_all() {
-  local -a to_open=()
-  local session class
-  while IFS= read -r session; do
-    [[ -z "$session" ]] && continue
+  local -a names=() to_open=()
+  local session class failed
+  # Start from ALL persisted sessions (not just running ones): a reboot kills
+  # the detached servers (setsid background procs, not services), so after a
+  # boot nothing is running and a running-only list would find nothing to
+  # revive — the whole point of the keybind is to reopen every session at any
+  # moment, including a cold boot with zero servers alive.
+  mapfile -t names < <(herdr session list --json 2>/dev/null \
+    | jq -r '.sessions[]? | .name')
+  [[ ${#names[@]} -eq 0 ]] && return 0
+  failed="$(ensure_servers "${names[@]}")" || true
+  for session in "${names[@]}"; do
+    if [[ -n "$failed" ]] && grep -qxF "$session" <<<"$failed"; then
+      echo "herdr-clients: server for '$session' did not start" >&2
+      continue
+    fi
     window_exists "$(class_for "$session")" || to_open+=("$session")
-  done < <(running_sessions)
+  done
   [[ ${#to_open[@]} -eq 0 ]] && return 0
 
   # Open the clients as one tabbed Hyprland group on the focused workspace:
@@ -116,8 +160,15 @@ case "${1:-}" in
       # (classic `dispatch focuswindow class:...` errors but still exits 0).
       hyprctl dispatch "hl.dsp.focus({ window = \"class:^($class)\$\" })" >/dev/null
     else
+      # Revive the server if it is down (e.g. after a reboot) — a bare client
+      # errors on the missing socket, so it must be booted first.
+      ensure_servers "$session" >/dev/null || die "server for '$session' did not start"
       launch_client "$session"
     fi
+    ;;
+  ensure-server)
+    session="${2:?usage: herdr-clients ensure-server SESSION}"
+    ensure_servers "$session" >/dev/null || die "server for '$session' did not start"
     ;;
   open-all)   open_all ;;
   detach-all) detach_all ;;
@@ -125,6 +176,6 @@ case "${1:-}" in
     if any_client_open; then detach_all; else open_all; fi
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show | open-all | detach-all | toggle)"
+    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | toggle)"
     ;;
 esac

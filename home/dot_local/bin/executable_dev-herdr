@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
-#   tab "agent":   agent (top-left) + reviewr sidebar (top-right); bottom
+#   tab "agent":   agent (top-left) + lazygit (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
-#   tab "git":     full-window lazygit
 #   tab "nvim":    full-window nvim
 #
 # Workspaces are grouped into one Herdr session per ~/Projects subdirectory
@@ -53,33 +52,10 @@ session="${session//[^[:alnum:]_.-]/_}"
 h() { herdr --session "$session" "$@"; }
 
 # --- server ---------------------------------------------------------------
-# The CLI does not auto-start the server (it errors on the missing socket),
-# so bring it up headless if needed. Exit codes are unreliable for a session
-# whose socket does not exist yet (the CLI prints an error but exits 0), so
-# liveness comes from `session list` instead of `status server`.
-session_running() {
-  herdr session list --json 2>/dev/null \
-    | jq -e --arg s "$session" \
-        'any(.sessions[]?; .name == $s and .running)' >/dev/null
-}
-if ! session_running; then
-  setsid herdr --session "$session" server >/dev/null 2>&1 &
-  for _ in $(seq 1 20); do
-    session_running && break
-    sleep 0.25
-  done
-  session_running || die "herdr server for session '$session' did not start"
-fi
-
-# --- plugins ----------------------------------------------------------------
-# Plugins are per-session state (installed under the session dir), so a
-# freshly bootstrapped group session has no reviewr — install it on demand.
-# Non-fatal: the layout below already tolerates a missing plugin.
-if ! h plugin list --json 2>/dev/null \
-    | jq -e '.result.plugins[]? | select(.plugin_id == "persiyanov.reviewr")' >/dev/null; then
-  h plugin install persiyanov/herdr-reviewr --yes >/dev/null 2>&1 \
-    || echo "dev-herdr: reviewr plugin install failed (offline?)" >&2
-fi
+# The CLI does not auto-start the server, so bring it up headless if needed.
+# The boot-and-poll dance is owned by herdr-clients (shared with the desktop
+# show / open-all keybinds); it dies with its own message on failure.
+herdr-clients ensure-server "$session"
 
 # --- client window (one per session; kitty class "herdr" / "herdr-<name>") -
 # Focus-or-launch lives in herdr-clients (shared with the desktop open-all /
@@ -107,22 +83,21 @@ t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 
 h tab rename "$t_agent" agent >/dev/null
 # Label the agent pane with its provider (claude, codex, opencode), like the
-# dev/logs/reviewr panes are labeled.
+# dev/logs/git panes are labeled.
 h pane rename "$p_agent" "$provider" >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
-# the full width), then the reviewr sidebar right of the agent.
+# the full width), then lazygit right of the agent.
 # --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
 p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 
-# Reviewr (agent diff review) fills the top-right slot. --target-pane
-# implies the workspace (passing --workspace alongside it is rejected).
-# Non-fatal: the layout still works without it if the plugin is missing.
-h plugin pane open --plugin persiyanov.reviewr --entrypoint sidebar \
-  --placement split --target-pane "$p_agent" \
-  --direction right --cwd "$dir" --no-focus >/dev/null \
-  || echo "dev-herdr: reviewr pane failed (plugin installed and enabled?)" >&2
+# lazygit fills the top-right slot; it lives in the agent tab instead of a
+# dedicated "git" tab, so a diff is one glance away from the agent.
+p_git="$(h pane split "$p_agent" --direction right \
+  --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
+h pane rename "$p_git" git >/dev/null
+h pane run "$p_git" "lazygit" >/dev/null
 
 # Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
 # into the pane's shell so prompts with spaces/quotes survive. The installed
@@ -138,11 +113,7 @@ p_logs="$(h pane split "$p_bottom" --direction right --ratio 0.5 \
 h pane rename "$p_bottom" dev >/dev/null
 h pane rename "$p_logs" logs >/dev/null
 
-# lazygit tab (created before nvim so the tab order is agent, git, nvim).
-p_git="$(h tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
-  | jq -r '.result.root_pane.pane_id')"
-h pane run "$p_git" "lazygit" >/dev/null
-
+# nvim tab (lazygit is now a pane in the agent tab, so there is no git tab).
 p_nvim="$(h tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
   | jq -r '.result.root_pane.pane_id')"
 h pane run "$p_nvim" "nvim" >/dev/null

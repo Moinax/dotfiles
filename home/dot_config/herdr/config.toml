@@ -2,6 +2,10 @@
 # (see `herdr --default-config`). The keybind legend is the built-in
 # prefix+? help overlay, which lists these bindings with their descriptions.
 
+# Skip the first-run onboarding (herdr persists this here after the first
+# launch; keep it managed to avoid chezmoi drift).
+onboarding = false
+
 [keys]
 # prefix+o is repurposed for the project picker below; move the default
 # open-notification-target jump to shift+o.
@@ -40,10 +44,10 @@ height = "60%"
 description = "Open project (dev picker)"
 
 # Open an extra agent tab in the focused workspace, cloning the dev-herdr
-# "agent" tab layout (agent + reviewr sidebar, dev/logs bottom row) with the
+# "agent" tab layout (agent + lazygit top row, dev/logs bottom row) with the
 # same provider and project dir — several agents on one checkout, no
-# worktree needed. ctrl+alt is free across the stack (Hyprland only uses
-# SUPER+CTRL / ALT+CTRL+TAB, kitty only ctrl+alt+enter/r).
+# worktree needed. ctrl+alt is mostly free across the stack (Hyprland only
+# uses SUPER+CTRL / ALT+CTRL+TAB; kitty uses ctrl+alt+enter and ctrl+alt+r).
 [[keys.command]]
 key = "ctrl+alt+a"
 type = "shell"
@@ -80,3 +84,6 @@ description = "Resize pane right"
 # persists this here, so keep it managed to avoid chezmoi drift.
 [ui]
 agent_panel_sort = "spaces"
+show_agent_labels_on_pane_borders = true
+[ui.toast]
+delivery = "herdr"
