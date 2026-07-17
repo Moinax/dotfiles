@@ -21,8 +21,13 @@ command -v jq    >/dev/null 2>&1 || die "jq is required"
 # clients attach to a dying server (empty kitty that closes itself) or open
 # fine and then get killed by the still-running stop loop. The lock makes the
 # second keypress wait for the first to finish instead.
+# Long-lived children (setsid'd servers, kitty clients) MUST close fd 9
+# (`9>&-`): flock belongs to the open file description, so an inherited fd
+# keeps the lock held after this script exits and every later invocation
+# hangs forever. The bounded wait turns any residual deadlock into an error
+# instead of a silent pile-up of queued keypresses.
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/herdr-clients.lock"
-flock 9
+flock -w 30 9 || die "timed out waiting for another herdr-clients invocation"
 
 # "default" is herdr's reserved alias for the unnamed session; its client
 # window keeps the bare "herdr" class (matches dev-herdr).
@@ -49,7 +54,7 @@ launch_client() {
   local v
   for v in "${!HERDR_@}"; do scrub+=(-u "$v"); done
   env "${scrub[@]}" kitty --class "$class" --title "$title" \
-    -e herdr --session "$session" >/dev/null 2>&1 &
+    -e herdr --session "$session" >/dev/null 2>&1 9>&- &
   disown
 }
 
@@ -123,7 +128,7 @@ ensure_servers() {
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
-    setsid herdr --session "$session" server >/dev/null 2>&1 &
+    setsid herdr --session "$session" server >/dev/null 2>&1 9>&- &
     pending+=("$session")
     booted+=("$session")
   done
