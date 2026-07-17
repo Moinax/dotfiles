@@ -808,6 +808,102 @@ sync_group_after_change() {
     fi
 }
 
+# ── Sync ─────────────────────────────────────────────────────────────────────
+
+# Base packages this machine should have: core (+ aur), plus the desktop
+# sections unless this is a terminal-only install.
+base_desired_packages() {
+    local base_file="$PACKAGES_DIR/$DISTRO_FAMILY/base.yaml"
+    [ -f "$base_file" ] || return 0
+    parse_packages "$base_file" "core"
+    parse_packages "$base_file" "aur"
+    if ! is_terminal_install; then
+        parse_packages "$base_file" "desktop"
+        parse_packages "$base_file" "desktop_aur"
+    fi
+}
+
+# Scan base.yaml + enabled groups for packages missing on this machine.
+# Emits one TSV line per miss: "distro<TAB>pkg" or "custom<TAB>pkg<TAB>file",
+# so it can run under spin_capture (a subshell) and be parsed afterwards.
+scan_missing_packages() {
+    declare -A seen=()
+    local pkg
+
+    while IFS= read -r pkg; do
+        [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ] && continue
+        seen["$pkg"]=1
+        is_package_installed "$(normalize_package_name_for_system "$pkg")" \
+            || printf 'distro\t%s\n' "$pkg"
+    done < <(base_desired_packages)
+
+    # Groups whose chezmoi flag is enabled
+    local file flag
+    for file in "$GROUPS_DIR"/*.yaml; do
+        flag=$(get_chezmoi_flag "$(get_group_id "$file")")
+        [ "$(get_chezmoi_flag_value "$flag")" = "true" ] || continue
+        while IFS= read -r pkg; do
+            [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ] && continue
+            seen["$pkg"]=1
+            is_group_package_installed "$pkg" "$file" && continue
+            if is_custom_install_pkg "$file" "$pkg"; then
+                printf 'custom\t%s\t%s\n' "$pkg" "$file"
+            else
+                printf 'distro\t%s\n' "$pkg"
+            fi
+        done < <(get_group_packages "$file")
+    done
+}
+
+# Install whatever base.yaml and the enabled groups define but this machine is
+# missing — the "a package was added to the dotfiles" path, no full setup run.
+do_sync() {
+    local scan
+    spin_capture scan "Scanning for missing packages..." scan_missing_packages
+
+    local missing_distro=() missing_custom=()
+    declare -A custom_src=()
+    local kind pkg src
+    while IFS=$'\t' read -r kind pkg src; do
+        case "$kind" in
+            distro) missing_distro+=("$pkg") ;;
+            custom) missing_custom+=("$pkg"); custom_src["$pkg"]="$src" ;;
+        esac
+    done <<< "$scan"
+
+    local n_missing=$(( ${#missing_distro[@]} + ${#missing_custom[@]} ))
+    if [ "$n_missing" -eq 0 ]; then
+        print_success "Everything in base.yaml and enabled groups is already installed"
+        return 0
+    fi
+
+    print_header "Sync packages"
+    print_info "Missing packages (${n_missing}):"
+    printf '  %s\n' "${missing_distro[@]}" "${missing_custom[@]}" | grep -v '^[[:space:]]*$'
+    echo ""
+    gum confirm "Install these packages?" || { echo "Cancelled."; return 0; }
+
+    if [ ${#missing_distro[@]} -gt 0 ]; then
+        install_packages "${missing_distro[@]}"
+    fi
+
+    for pkg in "${missing_custom[@]}"; do
+        local src="${custom_src[$pkg]}"
+        local install_cmd requires_cmd
+        install_cmd=$(parse_custom_install_cmd "$src" "$pkg")
+        requires_cmd=$(parse_custom_install_requires "$src" "$pkg")
+        if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
+            print_warning "$requires_cmd not found — skipping $pkg"
+            continue
+        fi
+        if [ -n "$install_cmd" ]; then
+            install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
+        fi
+    done
+
+    print_success "Sync complete."
+}
+
 # ── Main menu ────────────────────────────────────────────────────────────────
 
 usage() {
@@ -822,6 +918,7 @@ Commands:
   manage      Open the unified package manager (default)
   add         Alias for the unified manager
   remove      Alias for the unified manager
+  sync        Install packages added to base.yaml / enabled groups but missing here
   help        Show this help message
 EOF
 }
@@ -852,6 +949,7 @@ legacy_menu() {
 
 case "${1:-}" in
     add|remove|manage|"")   show_manage ;;
+    sync)                   do_sync ;;
     help|--help|-h)         usage ;;
     *)                      usage ;;
 esac

@@ -19,7 +19,7 @@ usage() {
 Usage: ./manage.sh [command]
 
 Commands:
-  packages    Manage packages (add/remove from groups)
+  packages    Manage packages (add/remove from groups, sync missing)
   apps        Manage AppImages and Distrobox apps
   cursor      Manage Cursor extensions
   reconfig    Reconfigure chezmoi data flags
@@ -27,6 +27,7 @@ Commands:
   setup       Run full installer (bootstrap + interactive setup)
   update      Update system packages and refresh vibewatch from source
   gaming      Gaming helpers (HDR launch string for Steam)
+  backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
 
@@ -369,6 +370,10 @@ do_gaming() {
     esac
 }
 
+do_backup() {
+    "$SCRIPT_DIR/tools/backup-projects.sh" "$@"
+}
+
 do_lazy_lock() {
     local src="$HOME/.config/nvim/lazy-lock.json"
     local dest="$SCRIPT_DIR/home/dot_config/nvim/lazy-lock.json"
@@ -398,6 +403,7 @@ do_menu() {
         local options=()
         options+=("Setup")
         options+=("Manage packages")
+        options+=("Sync missing packages")
         if external_apps_available; then
             options+=("External apps")
         fi
@@ -411,6 +417,7 @@ do_menu() {
         if hdr_monitor_available; then
             options+=("Gaming HDR launch")
         fi
+        options+=("Backup projects")
         options+=("Update system")
         options+=("Exit")
 
@@ -422,11 +429,13 @@ do_menu() {
         case "$choice" in
             "Setup")                   do_setup || true ;;
             "Manage packages")         do_packages || true ;;
+            "Sync missing packages")   do_packages sync || true; pause_for_user ;;
             "External apps")           do_apps || true ;;
             "Cursor extensions")       do_cursor || true ;;
             "Reconfigure flags")       do_reconfig || true ;;
             "Update whisper model")    do_whisper || true ;;
             "Gaming HDR launch")       do_gaming || true ;;
+            "Backup projects")         do_backup || true ;;
             "Update system")           do_update || true ;;
             "Exit")                    break ;;
         esac
@@ -444,6 +453,7 @@ case "${1:-}" in
     cursor)     shift; do_cursor "$@" ;;
     apps)       shift; do_apps "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
+    backup)     shift; do_backup "$@" ;;
     lazy-lock)  do_lazy_lock ;;
     help|--help|-h) usage ;;
     *)          do_menu ;;

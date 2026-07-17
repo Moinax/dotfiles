@@ -20,13 +20,14 @@ packages:
     - ripgrep
     - television
     - fastfetch
-    - tldr
+    - tealdeer  # tldr client; CachyOS ships this instead of `tldr` (they conflict)
     - btop
     - jq
     - yq
     - socat  # talk to herdr's unix-socket API (tab.move, etc.) from dev scripts
     - rsync
     - unzip
+    - age  # encrypt project backups (./manage.sh backup)
     - fontconfig
     - downgrade  # AUR — roll a package back to a cached/ALA version + offer to pin it via IgnorePkg
 

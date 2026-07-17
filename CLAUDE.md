@@ -32,6 +32,15 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
 ./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
 ./manage.sh update              # update system packages
+./manage.sh packages sync       # install packages newly added to base.yaml / enabled groups
+./manage.sh backup create       # encrypted backup of ~/Projects secrets + repo manifest → private GitHub repo
+./manage.sh backup restore      # re-clone all repos and restore secret files on a fresh machine
+./manage.sh backup list         # inspect backup contents
+
+# ./manage.sh backup is backed by tools/backup-projects.sh: repos are NOT archived
+# (only a manifest of remote+branch), just gitignored env/config files plus
+# ~/.npmrc, ~/.ssh, ~/.config/gh — age-encrypted with a passphrase. Extra include
+# regexes live in ~/.config/projects-backup/extra-includes.
 
 # ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.sh
 

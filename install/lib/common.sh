@@ -121,6 +121,14 @@ spin_run() {
     _spin_core "$__title" /dev/null "$@"
 }
 
+# Wait for a keypress before returning to a menu, so the output the user just
+# produced isn't immediately scrolled away by the menu redraw.
+pause_for_user() {
+    echo ""
+    read -rsn1 -p "Press any key to continue..."
+    echo ""
+}
+
 # Get the script directory
 get_script_dir() {
     cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
