@@ -165,8 +165,13 @@ def has_gum():
 
 
 def _run_gum(args, options):
-    """Run a gum picker over the given options; None means cancelled."""
-    res = subprocess.run(["gum", *args], input="\n".join(options), capture_output=True, text=True)
+    """Run a gum picker over the given options; None means cancelled.
+
+    Only stdout is captured (the selection): gum draws its interactive UI on
+    stderr, which must stay connected to the terminal to be visible.
+    """
+    res = subprocess.run(["gum", *args], input="\n".join(options),
+                         stdout=subprocess.PIPE, text=True)
     if res.returncode != 0:
         return None
     return res.stdout.rstrip("\n")
@@ -223,10 +228,11 @@ def prompt_with_default(header, default_value="", placeholder="", required=True)
     """Prompt for a value; returns the string or raises Cancelled."""
     while True:
         if has_gum():
+            # stdout only — gum renders the input UI on stderr (see _run_gum).
             res = subprocess.run(
                 ["gum", "input", "--header", header, "--value", default_value,
                  "--placeholder", placeholder],
-                capture_output=True, text=True)
+                stdout=subprocess.PIPE, text=True)
             if res.returncode != 0:
                 raise Cancelled()
             value = res.stdout.rstrip("\n")
