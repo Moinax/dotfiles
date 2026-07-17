@@ -203,6 +203,23 @@ is_group_package_installed() {
     fi
 }
 
+# Install one custom_install package via its declared command. A missing
+# "requires" prerequisite or a failed install warns and moves on (returns 0)
+# so callers can keep processing the rest of their list.
+install_custom_pkg() {
+    local file="$1" pkg="$2"
+    local install_cmd requires_cmd
+    install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
+    requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
+    if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
+        print_warning "$requires_cmd not found — skipping $pkg"
+        return 0
+    fi
+    if [ -n "$install_cmd" ]; then
+        install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
+    fi
+}
+
 # ── Group selection ──────────────────────────────────────────────────────────
 
 # Show a gum chooser with all groups and their install counts.
@@ -321,18 +338,7 @@ show_add() {
 
     # Install custom_install packages via their own commands
     for pkg in "${custom_packages[@]}"; do
-        local install_cmd requires_cmd
-        install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
-        requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
-
-        if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
-            print_warning "$requires_cmd not found — skipping $pkg"
-            continue
-        fi
-
-        if [ -n "$install_cmd" ]; then
-            install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
-        fi
+        install_custom_pkg "$file" "$pkg"
     done
 
     # Check if all group packages are now installed
@@ -700,17 +706,7 @@ apply_manage_diff() {
 
     local pkg
     for pkg in "${install_custom[@]}"; do
-        local file="${pkg_file[$pkg]}"
-        local install_cmd requires_cmd
-        install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
-        requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
-        if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
-            print_warning "$requires_cmd not found — skipping $pkg"
-            continue
-        fi
-        if [ -n "$install_cmd" ]; then
-            install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
-        fi
+        install_custom_pkg "${pkg_file[$pkg]}" "$pkg"
     done
 
     # ── Removals ─────────────────────────────────────────────────────────────
@@ -826,15 +822,18 @@ base_desired_packages() {
 # Scan base.yaml + enabled groups for packages missing on this machine.
 # Emits one TSV line per miss: "distro<TAB>pkg" or "custom<TAB>pkg<TAB>file",
 # so it can run under spin_capture (a subshell) and be parsed afterwards.
+# Relies on the same batch INSTALLED_SET index as the manage view — one
+# package-manager query for the whole scan, not one per package.
 scan_missing_packages() {
+    build_installed_index
     declare -A seen=()
-    local pkg
+    local pkg norm
 
     while IFS= read -r pkg; do
-        [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ] && continue
+        if [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ]; then continue; fi
         seen["$pkg"]=1
-        is_package_installed "$(normalize_package_name_for_system "$pkg")" \
-            || printf 'distro\t%s\n' "$pkg"
+        norm=$(normalize_package_name_for_system "$pkg")
+        [ -n "${INSTALLED_SET[$norm]:-}" ] || printf 'distro\t%s\n' "$pkg"
     done < <(base_desired_packages)
 
     # Groups whose chezmoi flag is enabled
@@ -842,14 +841,23 @@ scan_missing_packages() {
     for file in "$GROUPS_DIR"/*.yaml; do
         flag=$(get_chezmoi_flag "$(get_group_id "$file")")
         [ "$(get_chezmoi_flag_value "$flag")" = "true" ] || continue
+
+        # Custom-install names for this group (one yq call, not one per package).
+        local -A custom_set=()
+        local cn
+        while IFS= read -r cn; do
+            [ -n "$cn" ] && custom_set["$cn"]=1
+        done < <(parse_custom_install_names "$file")
+
         while IFS= read -r pkg; do
-            [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ] && continue
+            if [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ]; then continue; fi
             seen["$pkg"]=1
-            is_group_package_installed "$pkg" "$file" && continue
-            if is_custom_install_pkg "$file" "$pkg"; then
-                printf 'custom\t%s\t%s\n' "$pkg" "$file"
+            if [ -n "${custom_set[$pkg]:-}" ]; then
+                is_custom_install_installed "$file" "$pkg" \
+                    || printf 'custom\t%s\t%s\n' "$pkg" "$file"
             else
-                printf 'distro\t%s\n' "$pkg"
+                norm=$(normalize_package_name_for_system "$pkg")
+                [ -n "${INSTALLED_SET[$norm]:-}" ] || printf 'distro\t%s\n' "$pkg"
             fi
         done < <(get_group_packages "$file")
     done
@@ -879,7 +887,7 @@ do_sync() {
 
     print_header "Sync packages"
     print_info "Missing packages (${n_missing}):"
-    printf '  %s\n' "${missing_distro[@]}" "${missing_custom[@]}" | grep -v '^[[:space:]]*$'
+    printf '  %s\n' "${missing_distro[@]}" "${missing_custom[@]}"
     echo ""
     gum confirm "Install these packages?" || { echo "Cancelled."; return 0; }
 
@@ -888,17 +896,7 @@ do_sync() {
     fi
 
     for pkg in "${missing_custom[@]}"; do
-        local src="${custom_src[$pkg]}"
-        local install_cmd requires_cmd
-        install_cmd=$(parse_custom_install_cmd "$src" "$pkg")
-        requires_cmd=$(parse_custom_install_requires "$src" "$pkg")
-        if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
-            print_warning "$requires_cmd not found — skipping $pkg"
-            continue
-        fi
-        if [ -n "$install_cmd" ]; then
-            install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
-        fi
+        install_custom_pkg "${custom_src[$pkg]}" "$pkg"
     done
 
     print_success "Sync complete."

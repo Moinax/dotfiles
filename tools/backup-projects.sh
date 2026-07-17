@@ -86,20 +86,28 @@ find_repos() {
     find "$PROJECTS_DIR" -maxdepth 3 -name .git -type d -printf '%h\n' 2>/dev/null | sort
 }
 
+# Combined include regex (INCLUDE_PATTERNS + extra-includes lines), built once
+# on first use — it is constant for the whole run.
+INCLUDE_RE=""
+build_include_re() {
+    local extra
+    INCLUDE_RE=$(IFS='|'; echo "${INCLUDE_PATTERNS[*]}")
+    if [ -f "$EXTRA_INCLUDES_FILE" ]; then
+        while IFS= read -r extra; do
+            if [ -n "$extra" ] && [[ "$extra" != \#* ]]; then
+                INCLUDE_RE+="|$extra"
+            fi
+        done < "$EXTRA_INCLUDES_FILE"
+    fi
+}
+
 # Untracked + ignored files in a repo that match the include patterns.
 repo_secret_files() {
     local repo="$1"
-    local pattern extra
-    pattern=$(IFS='|'; echo "${INCLUDE_PATTERNS[*]}")
-    if [ -f "$EXTRA_INCLUDES_FILE" ]; then
-        while IFS= read -r extra; do
-            [ -n "$extra" ] && [[ "$extra" != \#* ]] && pattern+="|$extra"
-        done < "$EXTRA_INCLUDES_FILE"
-    fi
-    {
-        git -C "$repo" ls-files --others --ignored --exclude-standard
-        git -C "$repo" ls-files --others --exclude-standard
-    } 2>/dev/null | grep -vE "$EXCLUDE_DIRS_RE" | grep -E "$pattern" | sort -u || true
+    [ -n "$INCLUDE_RE" ] || build_include_re
+    # --others with no exclude flags lists every untracked file, ignored or not.
+    git -C "$repo" ls-files --others 2>/dev/null \
+        | grep -vE "$EXCLUDE_DIRS_RE" | grep -E "$INCLUDE_RE" | sort || true
 }
 
 # Warn about work that a manifest-based backup cannot save.

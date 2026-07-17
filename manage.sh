@@ -303,7 +303,7 @@ do_packages_menu() {
         case "$choice" in
             "Add / remove packages")   do_packages || true ;;
             "Sync missing packages")   do_packages sync || true; pause_for_user ;;
-            "Standalone apps"*)        do_apps || true ;;
+            "Standalone apps (AppImage / Distrobox)") do_apps || true ;;
             "Back")                    break ;;
         esac
     done
