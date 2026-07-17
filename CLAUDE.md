@@ -20,8 +20,6 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 ./manage.sh diff                # view dotfiles diff
 ./manage.sh whisper             # update whisper model for hyprvoice
 ./manage.sh reconfig            # toggle chezmoi data flags
-./manage.sh cursor export       # save current Cursor extensions list
-./manage.sh cursor install      # install Cursor extensions from saved list
 ./manage.sh apps import-appimage ~/Downloads/App.AppImage
 ./manage.sh apps install-github owner/repo --name App          # install latest GitHub release (AppImage or deb/rpm) + track updates
 ./manage.sh apps set-source --name App --repo owner/repo       # attach a release source to an already-installed app
@@ -31,7 +29,6 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
 ./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
-./manage.sh update              # update system packages
 ./manage.sh packages sync       # install packages newly added to base.yaml / enabled groups
 ./manage.sh backup create       # encrypted backup of ~/Projects secrets + repo manifest → private GitHub repo
 ./manage.sh backup restore      # re-clone all repos and restore secret files on a fresh machine

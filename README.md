@@ -54,8 +54,7 @@ The interactive installer will:
 dotfiles/
 ├── manage.sh                # Management script (single entry point)
 ├── tools/
-│   ├── setup.sh             # Bootstrap script (installs gum + git, runs installer)
-│   └── manage-cursor-extensions.sh # Export/install Cursor extensions list
+│   └── setup.sh             # Bootstrap script (installs gum + git, runs installer)
 ├── install/
 │   ├── installer.sh         # Main interactive installer
 │   ├── distros/
@@ -83,30 +82,6 @@ dotfiles/
 │   └── ...
 └── README.md
 ```
-
-## Cursor Extensions Script
-
-This repo includes a Cursor extensions manager to keep extensions reproducible across machines.
-
-It reads/writes the extension list at `home/dot_config/Cursor/extensions.txt`.
-
-### Usage
-
-```bash
-# Interactive menu
-./manage.sh cursor
-
-# Export currently installed extensions to extensions.txt
-./manage.sh cursor export
-
-# Install all extensions from extensions.txt
-./manage.sh cursor install
-```
-
-### Notes
-
-- Requires the `cursor` CLI in your `PATH`.
-- `install` is idempotent: already-installed extensions are skipped/reinstalled safely.
 
 ## External Apps Helper
 

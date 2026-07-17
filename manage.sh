@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
 source "$SCRIPT_DIR/install/lib/common.sh"
-source "$SCRIPT_DIR/install/lib/detect.sh"
 
 install_interrupt_trap
 
@@ -20,12 +19,10 @@ Usage: ./manage.sh [command]
 
 Commands:
   packages    Manage packages (add/remove from groups, sync missing)
-  apps        Manage AppImages and Distrobox apps
-  cursor      Manage Cursor extensions
+  apps        Manage standalone apps (AppImage / Distrobox)
   reconfig    Reconfigure chezmoi data flags
   whisper     Update whisper model for hyprvoice dictation
   setup       Run full installer (bootstrap + interactive setup)
-  update      Update system packages and refresh vibewatch from source
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
@@ -53,57 +50,6 @@ hdr_monitor_available() {
 
 do_setup() {
     "$SCRIPT_DIR/tools/setup.sh"
-}
-
-do_update() {
-    local family
-    family=$(get_distro_family "$(detect_distro)")
-    if [ "$family" = "unknown" ]; then
-        print_error "Unsupported distro, cannot update"
-        return 1
-    fi
-
-    source "$SCRIPT_DIR/install/distros/${family}.sh"
-    # "confirm" → list the available updates and prompt before applying.
-    if ! update_system confirm; then
-        print_info "System update cancelled."
-        return 0
-    fi
-
-    update_vibewatch || true
-    update_external_apps || true
-}
-
-update_vibewatch() {
-    if ! command_exists vibewatch; then
-        print_info "vibewatch not installed, skipping"
-        return 0
-    fi
-
-    local local_ver
-    if spin_capture local_ver "Checking vibewatch..." \
-        bash "$SCRIPT_DIR/tools/vibewatch-check-current.sh" --print-version; then
-        print_info "vibewatch already up to date (${local_ver:-unknown})"
-        return 0
-    fi
-
-    print_info "Refreshing vibewatch (from ${local_ver:-unknown})..."
-    if ! curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh; then
-        print_warning "vibewatch refresh failed (system update already applied)"
-        return 0
-    fi
-    print_success "vibewatch updated"
-
-    if systemctl --user restart vibewatch.service 2>/dev/null; then
-        print_success "vibewatch.service restarted"
-    fi
-}
-
-# Check external apps (AppImages / Distrobox) with a saved GitHub release
-# source and offer to update the outdated ones (confirm-first, like packages).
-update_external_apps() {
-    is_desktop_install || return 0
-    "$SCRIPT_DIR/tools/manage-external-apps.sh" check-updates --interactive
 }
 
 # Read a string value from chezmoi.toml [data] section
@@ -335,12 +281,32 @@ do_reconfig() {
     fi
 }
 
-do_cursor() {
-    "$SCRIPT_DIR/tools/manage-cursor-extensions.sh" "$@"
-}
-
 do_packages() {
     "$SCRIPT_DIR/tools/manage-packages.sh" "$@"
+}
+
+# Everything package-shaped under one submenu: the unified add/remove manager,
+# the "install what the dotfiles gained" sync, and standalone apps.
+do_packages_menu() {
+    while true; do
+        local options=()
+        options+=("Add / remove packages")
+        options+=("Sync missing packages")
+        if external_apps_available; then
+            options+=("Standalone apps (AppImage / Distrobox)")
+        fi
+        options+=("Back")
+
+        local choice
+        choice=$(printf '%s\n' "${options[@]}" | gum choose --cursor.foreground="212" --header "Packages:") || break
+
+        case "$choice" in
+            "Add / remove packages")   do_packages || true ;;
+            "Sync missing packages")   do_packages sync || true; pause_for_user ;;
+            "Standalone apps"*)        do_apps || true ;;
+            "Back")                    break ;;
+        esac
+    done
 }
 
 do_apps() {
@@ -403,13 +369,6 @@ do_menu() {
         local options=()
         options+=("Setup")
         options+=("Manage packages")
-        options+=("Sync missing packages")
-        if external_apps_available; then
-            options+=("External apps")
-        fi
-        if command_exists cursor; then
-            options+=("Cursor extensions")
-        fi
         options+=("Reconfigure flags")
         if command_exists hyprvoice; then
             options+=("Update whisper model")
@@ -418,7 +377,6 @@ do_menu() {
             options+=("Gaming HDR launch")
         fi
         options+=("Backup projects")
-        options+=("Update system")
         options+=("Exit")
 
         local choice
@@ -428,15 +386,11 @@ do_menu() {
         # cancelled inside it) must not kill the menu — swallow it here.
         case "$choice" in
             "Setup")                   do_setup || true ;;
-            "Manage packages")         do_packages || true ;;
-            "Sync missing packages")   do_packages sync || true; pause_for_user ;;
-            "External apps")           do_apps || true ;;
-            "Cursor extensions")       do_cursor || true ;;
+            "Manage packages")         do_packages_menu || true ;;
             "Reconfigure flags")       do_reconfig || true ;;
             "Update whisper model")    do_whisper || true ;;
             "Gaming HDR launch")       do_gaming || true ;;
             "Backup projects")         do_backup || true ;;
-            "Update system")           do_update || true ;;
             "Exit")                    break ;;
         esac
     done
@@ -446,11 +400,9 @@ do_menu() {
 
 case "${1:-}" in
     setup)      do_setup ;;
-    update)     do_update ;;
     whisper)    do_whisper ;;
     reconfig)   do_reconfig ;;
     packages)   shift; do_packages "$@" ;;
-    cursor)     shift; do_cursor "$@" ;;
     apps)       shift; do_apps "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
     backup)     shift; do_backup "$@" ;;
