@@ -9,11 +9,20 @@
 #        herdr-clients open-all               open a client window for every persisted session
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
+#        herdr-clients revive-panes SESSION   rerun lazygit/nvim in restored panes left as bare shells
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
 command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)"
 command -v jq    >/dev/null 2>&1 || die "jq is required"
+
+# Serialize invocations. stop-all takes a few seconds (one serial `session
+# stop` per server); an open-all racing it sees half-stopped sessions —
+# clients attach to a dying server (empty kitty that closes itself) or open
+# fine and then get killed by the still-running stop loop. The lock makes the
+# second keypress wait for the first to finish instead.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/herdr-clients.lock"
+flock 9
 
 # "default" is herdr's reserved alias for the unnamed session; its client
 # window keeps the bare "herdr" class (matches dev-herdr).
@@ -49,6 +58,53 @@ running_sessions() {
     | jq -r '.sessions[]? | select(.running) | .name'
 }
 
+# Herdr restores workspaces/panes from session.json when a server boots, but
+# only agent panes get their command relaunched (the claude integration
+# reports/restores agent sessions). Panes whose command was typed via `pane
+# run` — lazygit in the "git" pane, nvim in the "nvim" tab — come back as
+# bare shells. Rerun those commands. Only panes whose foreground process is
+# still a plain shell are touched, so this is idempotent and safe on a
+# session that never went down.
+pane_is_bare_shell() {
+  local session="$1" pane="$2"
+  herdr --session "$session" pane process-info --pane "$pane" 2>/dev/null \
+    | jq -e '.result.process_info.foreground_processes
+             | length == 1 and (.[0].name | test("^(zsh|bash|fish|sh)$"))' >/dev/null
+}
+
+revive_pane_cmd() {
+  local session="$1" pane="$2" cmd="$3" i
+  # Right after a boot the pane's shell may still be initializing (process
+  # list empty); give it a moment before typing the command in.
+  for ((i = 0; i < 10; i++)); do
+    if pane_is_bare_shell "$session" "$pane"; then
+      herdr --session "$session" pane run "$pane" "$cmd" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.3
+  done
+}
+
+revive_panes() {
+  local session="$1" panes tabs line pane cmd
+  panes="$(herdr --session "$session" pane list 2>/dev/null \
+    | jq -c '.result.panes // []')" || return 0
+  tabs="$(herdr --session "$session" tab list 2>/dev/null \
+    | jq -c '.result.tabs // []')" || return 0
+  # "git" panes get lazygit; single-pane "nvim" tabs get nvim (a split nvim
+  # tab is user-customized — leave it alone).
+  while IFS=$'\t' read -r pane cmd; do
+    [[ -n "$pane" ]] || continue
+    revive_pane_cmd "$session" "$pane" "$cmd"
+  done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" '
+    ($tabs | map(select(.label == "nvim") | .tab_id)) as $nvim_tabs
+    | ($panes | map(select(.label == "git") | [.pane_id, "lazygit"])),
+      ($panes | group_by(.tab_id)
+              | map(select(length == 1 and ([.[0].tab_id] | inside($nvim_tabs))))
+              | map([.[0].pane_id, "nvim"]))
+    | .[] | @tsv')
+}
+
 # Bring the given sessions' servers up if down, and wait for them. The CLI
 # never auto-starts a server (a bare client errors on the missing socket), so
 # a dead session must be booted explicitly; starting the headless server
@@ -58,15 +114,18 @@ running_sessions() {
 # All down servers are started first, then one shared poll watches the whole
 # set — K dead servers boot in parallel instead of 5s each in sequence, and
 # each tick costs one `session list` instead of one per session.
+# Freshly booted servers get their non-agent pane commands relaunched
+# (revive_panes) once up.
 # Prints the names that failed to come up; returns non-zero if any did.
 ensure_servers() {
-  local -a pending=()
+  local -a pending=() booted=()
   local session up i
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
     setsid herdr --session "$session" server >/dev/null 2>&1 &
     pending+=("$session")
+    booted+=("$session")
   done
   for ((i = 0; i < 20 && ${#pending[@]} > 0; i++)); do
     sleep 0.25
@@ -76,6 +135,11 @@ ensure_servers() {
       grep -qxF "$session" <<<"$up" || still+=("$session")
     done
     pending=("${still[@]}")
+  done
+  for session in "${booted[@]}"; do
+    [[ ${#pending[@]} -gt 0 ]] \
+      && grep -qxF "$session" < <(printf '%s\n' "${pending[@]}") && continue
+    revive_panes "$session"
   done
   [[ ${#pending[@]} -eq 0 ]] || { printf '%s\n' "${pending[@]}"; return 1; }
 }
@@ -115,13 +179,25 @@ open_all() {
   done
   [[ ${#to_open[@]} -eq 0 ]] && return 0
 
-  # Open the clients as one tabbed Hyprland group on the focused workspace:
-  # launch sequentially, turn the first mapped window into a group, and let
-  # the rest auto-join (group.auto_group = true in general.lua — a new
-  # window opening at a focused grouped window is added to the group).
-  # A single missing window just opens plain — no groupbar on a lone tile.
-  local group_pending=0
-  [[ ${#to_open[@]} -ge 2 ]] && group_pending=1
+  # Open the clients as one tabbed Hyprland group: launch sequentially, turn
+  # the first mapped window into a group, and let the rest auto-join
+  # (group.auto_group = true in general.lua — a new window opening at a
+  # focused grouped window is added to the group). If some herdr windows
+  # already exist (a partial open-all, or a lone `show`), join the new
+  # clients onto the existing one instead of forming a second group: focus
+  # it, make sure it is a group, and auto_group does the rest.
+  local group_pending=0 existing_class
+  existing_class="$(grep -m1 -E '^herdr(-.*)?$' <<<"$classes" || true)"
+  if [[ -n "$existing_class" ]]; then
+    hyprctl dispatch "hl.dsp.focus({ window = \"class:^($existing_class)\$\" })" >/dev/null
+    if ! hyprctl clients -j 2>/dev/null \
+        | jq -e --arg c "$existing_class" 'any(.[]; .class == $c and (.grouped | length) > 0)' >/dev/null; then
+      hyprctl dispatch "hl.dsp.group.toggle()" >/dev/null
+    fi
+  elif [[ ${#to_open[@]} -ge 2 ]]; then
+    # A single missing window just opens plain — no groupbar on a lone tile.
+    group_pending=1
+  fi
   for session in "${to_open[@]}"; do
     class="$(class_for "$session")"
     launch_client "$session"
@@ -155,11 +231,17 @@ detach_all() {
 # open-all reboots the sessions with their saved workspaces/panes.
 stop_all() {
   detach_all
-  local session
+  local session i
   while IFS= read -r session; do
     [[ -n "$session" ]] || continue
     herdr session stop "$session" >/dev/null 2>&1 || true
   done < <(running_sessions)
+  # `session stop` returns as the server exits, but give teardown a bounded
+  # grace so a follow-up open-all (queued on the lock) sees a clean slate.
+  for ((i = 0; i < 20; i++)); do
+    [[ -z "$(running_sessions)" ]] && return 0
+    sleep 0.25
+  done
 }
 
 case "${1:-}" in
@@ -181,10 +263,14 @@ case "${1:-}" in
     session="${2:?usage: herdr-clients ensure-server SESSION}"
     ensure_servers "$session" >/dev/null || die "server for '$session' did not start"
     ;;
+  revive-panes)
+    session="${2:?usage: herdr-clients revive-panes SESSION}"
+    revive_panes "$session"
+    ;;
   open-all)   open_all ;;
   detach-all) detach_all ;;
   stop-all)   stop_all ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | stop-all)"
+    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | stop-all | revive-panes)"
     ;;
 esac
