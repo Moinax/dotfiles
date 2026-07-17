@@ -87,8 +87,9 @@ packages:
     - cpio
     - base-devel
 
-    # Shell lint (pre-commit hook in this repo)
+    # Script linters (pre-commit hook in this repo)
     - shellcheck
+    - ruff
     
     # Networking
     - tailscale
