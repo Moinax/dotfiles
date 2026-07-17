@@ -21,7 +21,7 @@ descriptions:
 #         install before running `install`)
 custom_install:
   - name: vibewatch
-    check: bash "$DOTFILES_DIR/tools/vibewatch-check-current.sh"
+    check: command -v vibewatch
     install: curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh
     requires: cargo
     # System prerequisites for `cargo install --git`: Rust toolchain +
