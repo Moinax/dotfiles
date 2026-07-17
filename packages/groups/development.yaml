@@ -86,6 +86,9 @@ packages:
     - cmake
     - cpio
     - base-devel
+
+    # Shell lint (pre-commit hook in this repo)
+    - shellcheck
     
     # Networking
     - tailscale

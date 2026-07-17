@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Shared compositor-detection helpers for Wayland scripts.
 # Source from ~/.local/bin/* scripts:
 #   . "$HOME/.local/lib/compositor.sh"

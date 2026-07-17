@@ -1,0 +1,4 @@
+# Dynamic `source "$SCRIPT_DIR/..."` is the standard pattern in this repo;
+# shellcheck can't follow non-constant paths and annotating every call site
+# adds noise without value.
+disable=SC1090

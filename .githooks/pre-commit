@@ -1,0 +1,22 @@
+#!/bin/bash
+# Lint staged shell scripts with shellcheck before committing.
+# Enabled via: git config core.hooksPath .githooks (done by tools/setup.sh).
+# Skips silently when shellcheck is missing — it ships with the development
+# package group, so a fresh machine can still commit before the first sync.
+set -e
+
+command -v shellcheck >/dev/null 2>&1 || exit 0
+
+# Only staged, still-existing *.sh files (templates *.sh.tmpl don't match).
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR -- '*.sh')
+files=()
+for f in "${staged[@]}"; do
+    [ -f "$f" ] && files+=("$f")
+done
+[ ${#files[@]} -eq 0 ] && exit 0
+
+if ! shellcheck --severity=warning "${files[@]}"; then
+    echo ""
+    echo "shellcheck failed — fix the findings above or bypass with 'git commit --no-verify'."
+    exit 1
+fi
