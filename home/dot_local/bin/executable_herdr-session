@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Open, detach, or stop a single Herdr session from the shell.
+#   herdr-session open   [SESSION]   focus/open the session's client window (boots the server if down)
+#   herdr-session detach [SESSION]   close the client window; server + agents keep running
+#   herdr-session stop   [SESSION]   detach, then stop the server (kills its agents; session.json survives)
+#   herdr-session list               list persisted sessions (* = running)
+# SESSION omitted → interactive gum picker over persisted sessions.
+# Pure UI: all mechanism (locking, window-class mapping, hyprctl queries,
+# server boot) lives in herdr-clients — this script only consumes its `list`
+# table (NAME<TAB>RUNNING<TAB>ATTACHED) and dispatches verbs, so the gum
+# picker never holds the herdr-clients lock while the user thinks.
+set -euo pipefail
+
+die() { echo "herdr-session: $*" >&2; exit 1; }
+
+# Offer only sessions the verb can act on: any persisted session can be
+# opened, only running ones stopped, only ones with an open window detached.
+pick_session() {
+  local verb="$1" table names
+  command -v gum >/dev/null 2>&1 || die "no SESSION given and gum is not installed"
+  table="$(herdr-clients list)"
+  case "$verb" in
+    detach) names="$(awk -F'\t' '$3 == 1 { print $1 }' <<<"$table")"
+            [[ -n "$names" ]] || die "no open herdr client windows" ;;
+    stop)   names="$(awk -F'\t' '$2 == 1 { print $1 }' <<<"$table")"
+            [[ -n "$names" ]] || die "no running herdr sessions" ;;
+    *)      names="$(cut -f1 <<<"$table")"
+            [[ -n "$names" ]] || die "no herdr sessions found" ;;
+  esac
+  gum choose --header "herdr session to $verb" <<<"$names"
+}
+
+verb="${1:-}"
+case "$verb" in
+  open|detach|stop)
+    session="${2:-$(pick_session "$verb")}"
+    herdr-clients "$verb" "$session"
+    ;;
+  list|"")
+    herdr-clients list | awk -F'\t' '{ printf "%s %s\n", ($2 == 1 ? "*" : " "), $1 }'
+    ;;
+  *)
+    die "usage: herdr-session open|detach|stop [SESSION] | list"
+    ;;
+esac

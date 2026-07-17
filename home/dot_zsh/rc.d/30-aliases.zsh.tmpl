@@ -67,6 +67,14 @@ if command -v zellij &> /dev/null; then
   alias zls=za
 fi
 
+# Herdr — per-session control (omit the name for a gum picker)
+if command -v herdr &> /dev/null; then
+  alias hso="herdr-session open"    # focus/open a session's client window
+  alias hsd="herdr-session detach"  # close the window, keep server + agents
+  alias hss="herdr-session stop"    # stop the server (kills its agents)
+  alias hsl="herdr-session list"    # persisted sessions, * = running
+fi
+
 # Top 10 biggest entries (incl. hidden) in CWD
 alias big="sudo du -sh *(D) | sort -rh | head -n 10"
 

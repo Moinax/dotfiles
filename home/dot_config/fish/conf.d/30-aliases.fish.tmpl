@@ -29,6 +29,14 @@ if command -q zellij
     alias zj za
     alias zls za
 end
+
+# Herdr — per-session control (omit the name for a gum picker)
+if command -q herdr
+    alias hso "herdr-session open" # focus/open a session's client window
+    alias hsd "herdr-session detach" # close the window, keep server + agents
+    alias hss "herdr-session stop" # stop the server (kills its agents)
+    alias hsl "herdr-session list" # persisted sessions, * = running
+end
 {{- if ne .install_purpose "terminal" }}
 
 # Auto-copy terminfo to remote servers via kitten ssh

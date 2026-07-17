@@ -4,7 +4,10 @@
 # see dev-herdr), so closing a client window only detaches: agents keep
 # running and reattaching restores everything.
 #
-# Usage: herdr-clients show SESSION           focus the session's client window, opening it if needed
+# Usage: herdr-clients show SESSION           focus the session's client window, opening it if needed (alias: open)
+#        herdr-clients detach SESSION         close the session's client window (server/agents keep running)
+#        herdr-clients stop SESSION           detach, then stop the session's server (kills its agents)
+#        herdr-clients list                   persisted sessions, one NAME<TAB>RUNNING<TAB>ATTACHED line each (1/0 flags)
 #        herdr-clients ensure-server SESSION  boot the session's server if down, wait for it
 #        herdr-clients open-all               open a client window for every persisted session
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
@@ -61,6 +64,19 @@ launch_client() {
 running_sessions() {
   herdr session list --json 2>/dev/null \
     | jq -r '.sessions[]? | select(.running) | .name'
+}
+
+# Machine-readable session table for wrapper UIs (herdr-session): one line
+# per persisted session, NAME<TAB>RUNNING<TAB>ATTACHED with 1/0 flags.
+list_sessions() {
+  local classes name running attached
+  classes="$(hyprctl clients -j 2>/dev/null | jq -r '.[].class')"
+  while IFS=$'\t' read -r name running; do
+    attached=0
+    grep -qxF "$(class_for "$name")" <<<"$classes" && attached=1
+    printf '%s\t%s\t%s\n' "$name" "$running" "$attached"
+  done < <(herdr session list --json 2>/dev/null \
+    | jq -r '.sessions[]? | [.name, (if .running then 1 else 0 end)] | @tsv')
 }
 
 # Herdr restores workspaces/panes from session.json when a server boots, but
@@ -222,36 +238,53 @@ open_all() {
   done
 }
 
-detach_all() {
-  # SIGTERM the kitty processes hosting the clients — kitty closes
-  # cleanly, the herdr client exits, and the detached servers live on.
+# SIGTERM the kitty processes hosting matching clients — kitty closes
+# cleanly, the herdr client exits, and the detached servers live on.
+detach_matching() { # $1: jq filter applied to a window class
   hyprctl clients -j 2>/dev/null \
-    | jq -r '.[] | select(.class | test("^herdr(-.*)?$")) | .pid' \
-    | while IFS= read -r pid; do kill "$pid" 2>/dev/null || true; done
+    | jq -r ".[] | select(.class | $1) | .pid" \
+    | xargs -r kill 2>/dev/null || true
 }
 
-# Full shutdown for a fresh start: close the client windows, then stop every
-# running server. `session stop` kills the server process and everything in
-# it (agents included); the persisted session.json survives, so a later
-# open-all reboots the sessions with their saved workspaces/panes.
-stop_all() {
-  detach_all
-  local session i
-  while IFS= read -r session; do
-    [[ -n "$session" ]] || continue
+detach_all() { detach_matching 'test("^herdr(-.*)?$")'; }
+detach_one() { detach_matching ". == \"$(class_for "$1")\""; }
+
+# Stop the given sessions' servers. `session stop` kills the server process
+# and everything in it (agents included); the persisted session.json
+# survives, so a later show/open-all reboots them with their saved
+# workspaces/panes. Callers close the client windows first (detach_one /
+# detach_all). `session stop` returns as the server exits, but give teardown
+# a bounded grace so a follow-up open-all (queued on the lock) sees a clean
+# slate.
+stop_sessions() {
+  local session up alive i
+  for session in "$@"; do
     herdr session stop "$session" >/dev/null 2>&1 || true
-  done < <(running_sessions)
-  # `session stop` returns as the server exits, but give teardown a bounded
-  # grace so a follow-up open-all (queued on the lock) sees a clean slate.
+  done
   for ((i = 0; i < 20; i++)); do
-    [[ -z "$(running_sessions)" ]] && return 0
+    up="$(running_sessions)"
+    alive=0
+    for session in "$@"; do
+      grep -qxF "$session" <<<"$up" && { alive=1; break; }
+    done
+    ((alive)) || return 0
     sleep 0.25
   done
 }
 
+# Full shutdown for a fresh start: close every client window, then stop
+# every running server.
+stop_all() {
+  local -a up=()
+  detach_all
+  mapfile -t up < <(running_sessions)
+  [[ ${#up[@]} -gt 0 ]] || return 0
+  stop_sessions "${up[@]}"
+}
+
 case "${1:-}" in
-  show)
-    session="${2:?usage: herdr-clients show SESSION}"
+  show|open)
+    session="${2:?usage: herdr-clients show|open SESSION}"
     class="$(class_for "$session")"
     if window_exists "$class"; then
       # Hyprland 0.55 lua config: dispatch takes hl.dsp.* lua expressions
@@ -264,6 +297,16 @@ case "${1:-}" in
       launch_client "$session"
     fi
     ;;
+  detach)
+    session="${2:?usage: herdr-clients detach SESSION}"
+    detach_one "$session"
+    ;;
+  stop)
+    session="${2:?usage: herdr-clients stop SESSION}"
+    detach_one "$session"
+    stop_sessions "$session"
+    ;;
+  list) list_sessions ;;
   ensure-server)
     session="${2:?usage: herdr-clients ensure-server SESSION}"
     ensure_servers "$session" >/dev/null || die "server for '$session' did not start"
@@ -276,6 +319,6 @@ case "${1:-}" in
   detach-all) detach_all ;;
   stop-all)   stop_all ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show | ensure-server | open-all | detach-all | stop-all | revive-panes)"
+    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes)"
     ;;
 esac
