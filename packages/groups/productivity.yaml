@@ -93,7 +93,7 @@ custom_install:
     requires_packages:
       arch: [fuse2]
     install: |
-      "$DOTFILES_DIR/tools/manage-external-apps.sh" install-github imputnet/helium-linux \
+      "$DOTFILES_DIR/tools/manage-external-apps.py" install-github imputnet/helium-linux \
         --name helium --type appimage --non-interactive
 
   # Dropbox's in-app auto-updater downloads dist binaries to ~/.dropbox-dist/

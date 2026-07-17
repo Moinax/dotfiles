@@ -255,7 +255,7 @@ do_apps() {
         return 1
     fi
 
-    "$SCRIPT_DIR/tools/manage-external-apps.sh" "$@"
+    "$SCRIPT_DIR/tools/manage-external-apps.py" "$@"
 }
 
 do_gaming() {

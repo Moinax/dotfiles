@@ -40,7 +40,9 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 # ~/.config/projects-backup/: extra-includes (repo-relative path regexes),
 # extra-home-includes (paths relative to ~), extra-exclude-dirs (dir-name regexes).
 
-# ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.sh
+# ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.py
+# (Python, stdlib-only; state files in ~/.local/state/dotfiles/external-apps/ are
+# bash-quoted KEY=VALUE .env files kept compatible with the former shell version)
 
 # Direct chezmoi usage
 chezmoi diff                    # see what would change
