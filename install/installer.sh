@@ -1007,7 +1007,18 @@ setup_dotfiles() {
     if [ "$HAS_FINGERPRINT" = "true" ] && group_selected biometric && command_exists fprintd-enroll; then
         has_hyprlock_fingerprint="true"
     fi
-    
+
+    # Settings the setup flow never asks about (use_herdr is toggled via
+    # reconfig, dark_mode via the theme toggle) must survive re-runs: carry
+    # over existing values, defaulting only when absent.
+    local use_herdr="false" dark_mode="dark" existing_val
+    if [ -f "$chezmoi_config" ]; then
+        existing_val=$(grep -m1 -oP '^\s*use_herdr\s*=\s*\K(true|false)' "$chezmoi_config" || true)
+        [ -n "$existing_val" ] && use_herdr="$existing_val"
+        existing_val=$(grep -m1 -oP '^\s*dark_mode\s*=\s*"\K[^"]+' "$chezmoi_config" || true)
+        [ -n "$existing_val" ] && dark_mode="$existing_val"
+    fi
+
     cat > "$chezmoi_config" << EOF
 # Use this repo's home directory as chezmoi source (so 'chezmoi diff' etc. work without -S)
 sourceDir = "$source_dir"
@@ -1021,12 +1032,12 @@ sourceDir = "$source_dir"
     install_productivity = $install_productivity
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
-    use_herdr = false
+    use_herdr = $use_herdr
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
     install_purpose = "$INSTALL_PURPOSE"
-    dark_mode = "dark"
+    dark_mode = "$dark_mode"
 EOF
     
     print_info "Chezmoi config created at $chezmoi_config"
