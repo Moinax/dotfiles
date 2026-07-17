@@ -27,24 +27,32 @@ install_interrupt_trap
 
 # ── Preconditions ──────────────────────────────────────────────────────────────
 
-if ! command_exists hyprctl; then
-    print_error "hyprctl not found — this helper reads HDR monitor info from Hyprland"
-    exit 1
-fi
+# --check: report whether an HDR monitor is available (exit 0/1, no output).
+# manage.sh gates its "Gaming HDR launch" menu entry on this, so the HDR
+# detection lives only in this script.
+check_only=false
+[ "${1:-}" = "--check" ] && check_only=true
 
-if ! command_exists jq; then
-    print_error "jq is required to parse monitor info"
-    exit 1
+if $check_only; then
+    command_exists hyprctl && command_exists jq || exit 1
+else
+    require_tools hyprctl jq || exit 1
 fi
 
 # ── Find HDR monitor(s) ─────────────────────────────────────────────────────────
 # A monitor is HDR-capable in the running session when Hyprland reports its
 # colorManagementPreset as "hdr" (driven by the `cm,hdr` flag in monitor.conf).
 
+monitors_json=$(hyprctl monitors -j 2>/dev/null) || monitors_json=""
+
 mapfile -t hdr_monitors < <(
-    hyprctl monitors -j 2>/dev/null \
-        | jq -r '.[] | select(.colorManagementPreset == "hdr") | .name'
+    jq -r '.[] | select(.colorManagementPreset == "hdr") | .name' <<< "$monitors_json"
 )
+
+if $check_only; then
+    [ ${#hdr_monitors[@]} -gt 0 ] && exit 0
+    exit 1
+fi
 
 if [ ${#hdr_monitors[@]} -eq 0 ]; then
     print_error "No HDR monitor found in the current Hyprland session"
@@ -72,9 +80,9 @@ fi
 # Pull geometry for the chosen monitor (used by the gamescope route). Refresh is
 # a float (e.g. 174.96201); gamescope wants an integer, so round to nearest.
 read -r width height refresh < <(
-    hyprctl monitors -j 2>/dev/null \
-        | jq -r --arg n "$monitor" \
-            '.[] | select(.name == $n) | "\(.width) \(.height) \((.refreshRate + 0.5 | floor))"'
+    jq -r --arg n "$monitor" \
+        '.[] | select(.name == $n) | "\(.width) \(.height) \((.refreshRate + 0.5 | floor))"' \
+        <<< "$monitors_json"
 )
 
 if [ -z "$width" ] || [ -z "$height" ] || [ -z "$refresh" ]; then

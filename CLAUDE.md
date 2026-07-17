@@ -36,8 +36,9 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 
 # ./manage.sh backup is backed by tools/backup-projects.sh: repos are NOT archived
 # (only a manifest of remote+branch), just gitignored env/config files plus
-# ~/.npmrc, ~/.ssh, ~/.config/gh — age-encrypted with a passphrase. Extra include
-# regexes live in ~/.config/projects-backup/extra-includes.
+# ~/.npmrc, ~/.ssh, ~/.config/gh — age-encrypted with a passphrase. User config in
+# ~/.config/projects-backup/: extra-includes (repo-relative path regexes),
+# extra-home-includes (paths relative to ~), extra-exclude-dirs (dir-name regexes).
 
 # ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.sh
 

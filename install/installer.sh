@@ -9,6 +9,7 @@ DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Source library functions
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/hyprvoice.sh"
 
 # Detect distro
 DISTRO=$(detect_distro)
@@ -173,8 +174,9 @@ _build_tree_json() {
             [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
             pkg_seen["$pkg"]="$group"
 
-            local desc="$(_json_escape "${descs[$pkg]:-}")"
-            local name="$(_json_escape "$pkg")"
+            local desc name
+            desc=$(_json_escape "${descs[$pkg]:-}")
+            name=$(_json_escape "$pkg")
             pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
@@ -185,8 +187,9 @@ _build_tree_json() {
             [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
             pkg_seen["$pkg"]="$group"
 
-            local desc="$(_json_escape "${descs[$pkg]:-}")"
-            local name="$(_json_escape "$pkg")"
+            local desc name
+            desc=$(_json_escape "${descs[$pkg]:-}")
+            name=$(_json_escape "$pkg")
             pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
         done < <(parse_custom_install_names "$group_file")
 
@@ -197,9 +200,10 @@ _build_tree_json() {
             printf ','
         fi
 
-        local esc_id="$(_json_escape "$group")"
-        local esc_name="$(_json_escape "$group_label")"
-        local esc_icon="$(_json_escape "$group_icon")"
+        local esc_id esc_name esc_icon
+        esc_id=$(_json_escape "$group")
+        esc_name=$(_json_escape "$group_label")
+        esc_icon=$(_json_escape "$group_icon")
 
         printf '{"id":"%s","name":"%s","icon":"%s","packages":[' "$esc_id" "$esc_name" "$esc_icon"
 
@@ -865,21 +869,14 @@ install_common_tools() {
                 [ -n "$existing_model_cfg" ] && HYPRVOICE_MODEL="$existing_model_cfg"
                 print_info "Hyprvoice already configured (provider=$HYPRVOICE_PROVIDER, model=$HYPRVOICE_MODEL)"
             else
-                # First-time setup: choose provider
-                local provider_choice
-                provider_choice=$(printf '%s\n' "whisper-cpp (local)" "groq (cloud, free tier)" | \
-                    gum choose --cursor.foreground="212" \
-                    --header "Select transcription provider for dictation:") || provider_choice="whisper-cpp (local)"
-                HYPRVOICE_PROVIDER="${provider_choice%% (*}"
+                # First-time setup: choose provider (default to local on cancel)
+                HYPRVOICE_PROVIDER=$(hyprvoice_choose_provider "Select transcription provider for dictation:") \
+                    || HYPRVOICE_PROVIDER="whisper-cpp"
 
                 if [ "$HYPRVOICE_PROVIDER" = "whisper-cpp" ]; then
                     # Local provider: select and download a whisper model
                     local models=()
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^[[:space:]]*\[.\][[:space:]]+(.+)$ ]]; then
-                            models+=("${BASH_REMATCH[1]}")
-                        fi
-                    done <<< "$(hyprvoice model list 2>/dev/null)"
+                    mapfile -t models < <(hyprvoice_list_models)
 
                     if [ ${#models[@]} -gt 0 ]; then
                         models+=("Skip — download later")
@@ -892,10 +889,7 @@ install_common_tools() {
                     fi
 
                     if [ "$HYPRVOICE_MODEL" != "Skip" ]; then
-                        print_info "Downloading whisper model: $HYPRVOICE_MODEL"
-                        if hyprvoice model download "$HYPRVOICE_MODEL"; then
-                            print_success "Whisper model '$HYPRVOICE_MODEL' downloaded"
-                        else
+                        if ! hyprvoice_download_model "$HYPRVOICE_MODEL"; then
                             print_warning "Failed to download model — run 'hyprvoice model download $HYPRVOICE_MODEL' later"
                             HYPRVOICE_MODEL="small"
                         fi
@@ -903,10 +897,8 @@ install_common_tools() {
                         HYPRVOICE_MODEL="small"
                     fi
                 elif [ "$HYPRVOICE_PROVIDER" = "groq" ]; then
-                    local groq_choice
-                    groq_choice=$(printf '%s\n' "${GROQ_WHISPER_MODELS[@]}" | gum choose --cursor.foreground="212" \
-                        --header "Select Groq model:") || groq_choice="${GROQ_WHISPER_MODELS[0]}"
-                    HYPRVOICE_MODEL="${groq_choice%% *}"
+                    HYPRVOICE_MODEL=$(hyprvoice_choose_groq_model) \
+                        || HYPRVOICE_MODEL="${GROQ_WHISPER_MODELS[0]%% *}"
 
                     if ! setup_groq_api_key; then
                         track_warning "No Groq API key provided — set GROQ_API_KEY later"
@@ -1197,7 +1189,8 @@ enable_selected_services() {
     source "$SCRIPT_DIR/lib/services.sh"
     
     # Remove duplicates
-    local unique_services=($(echo "${SERVICES_TO_ENABLE[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+    local unique_services=()
+    mapfile -t unique_services < <(printf '%s\n' "${SERVICES_TO_ENABLE[@]}" | sort -u | grep -v '^$')
     
     for service in "${unique_services[@]}"; do
         enable_service "$service"
@@ -1475,7 +1468,8 @@ setup_ssh() {
         chmod 700 "$ssh_dir"
         
         echo ""
-        local passphrase=$(gum input --password --placeholder "Enter passphrase (or leave empty)")
+        local passphrase
+        passphrase=$(gum input --password --placeholder "Enter passphrase (or leave empty)") || true
         
         ssh-keygen -t ed25519 -f "$ssh_key" -N "$passphrase"
         chmod 600 "$ssh_key"
@@ -1557,7 +1551,8 @@ setup_plymouth() {
 setup_shell() {
     print_header "Shell Setup"
     
-    local zsh_path=$(which zsh)
+    local zsh_path
+    zsh_path=$(which zsh) || true
     
     if [ -z "$zsh_path" ]; then
         print_error "zsh not found"
@@ -1805,8 +1800,7 @@ main() {
     shopt -s nullglob
     local group_files=("$groups_dir"/*.yaml)
     shopt -u nullglob
-    IFS=$'\n' group_files=($(printf '%s\n' "${group_files[@]}" | sort))
-    unset IFS
+    mapfile -t group_files < <(printf '%s\n' "${group_files[@]}" | sort | grep -v '^$')
     for group_file in "${group_files[@]}"; do
         local group_name
         group_name=$(basename "$group_file" .yaml)

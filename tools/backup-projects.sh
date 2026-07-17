@@ -18,7 +18,14 @@ PROJECTS_DIR="$HOME/Projects"
 BACKUP_REPO_NAME="projects-backup"
 BACKUP_REPO_DIR="$HOME/Backups/$BACKUP_REPO_NAME"
 ARCHIVE_NAME="projects-backup.tar.zst.age"
-EXTRA_INCLUDES_FILE="$HOME/.config/projects-backup/extra-includes"
+
+# User-extensible config: one entry per line, # comments allowed. The in-script
+# arrays/regexes below are the defaults; these files extend them without
+# editing the versioned script.
+CONFIG_DIR="$HOME/.config/projects-backup"
+EXTRA_INCLUDES_FILE="$CONFIG_DIR/extra-includes"           # repo-relative path regexes
+EXTRA_HOME_INCLUDES_FILE="$CONFIG_DIR/extra-home-includes" # paths relative to ~
+EXTRA_EXCLUDE_DIRS_FILE="$CONFIG_DIR/extra-exclude-dirs"   # directory-name regexes
 
 # Gitignored/untracked files worth backing up, matched against repo-relative
 # paths. Anything not matched is assumed regenerable (node_modules, caches…).
@@ -63,21 +70,11 @@ restore:
                  pulled from the private GitHub backup repo
   --force        Overwrite existing secret files (default: skip them)
 
-Extra per-repo files can be added as regex lines (matched against paths
-relative to ~/Projects) in ~/.config/projects-backup/extra-includes.
+Config files in ~/.config/projects-backup/ (one entry per line, # comments):
+  extra-includes       extra path regexes to back up (repo-relative paths)
+  extra-home-includes  extra files/dirs to back up (relative to ~)
+  extra-exclude-dirs   extra directory names to skip while scanning repos
 EOF
-}
-
-require_tools() {
-    local missing=()
-    for tool in "$@"; do
-        command_exists "$tool" || missing+=("$tool")
-    done
-    if [ ${#missing[@]} -gt 0 ]; then
-        print_error "Missing required tools: ${missing[*]}"
-        print_info "Install with: sudo pacman -S ${missing[*]}"
-        return 1
-    fi
 }
 
 # ── Scanning ─────────────────────────────────────────────────────────────────
@@ -86,28 +83,36 @@ find_repos() {
     find "$PROJECTS_DIR" -maxdepth 3 -name .git -type d -printf '%h\n' 2>/dev/null | sort
 }
 
-# Combined include regex (INCLUDE_PATTERNS + extra-includes lines), built once
-# on first use — it is constant for the whole run.
+# Read non-comment, non-empty lines from a config file (missing file → nothing).
+read_config_lines() {
+    [ -f "$1" ] || return 0
+    grep -vE '^[[:space:]]*(#|$)' "$1" || true
+}
+
+# Combined include/exclude regexes (in-script defaults + config-file extras),
+# built once on first use — they are constant for the whole run.
 INCLUDE_RE=""
-build_include_re() {
+EXCLUDE_RE=""
+build_filter_res() {
     local extra
     INCLUDE_RE=$(IFS='|'; echo "${INCLUDE_PATTERNS[*]}")
-    if [ -f "$EXTRA_INCLUDES_FILE" ]; then
-        while IFS= read -r extra; do
-            if [ -n "$extra" ] && [[ "$extra" != \#* ]]; then
-                INCLUDE_RE+="|$extra"
-            fi
-        done < "$EXTRA_INCLUDES_FILE"
-    fi
+    while IFS= read -r extra; do
+        INCLUDE_RE+="|$extra"
+    done < <(read_config_lines "$EXTRA_INCLUDES_FILE")
+
+    EXCLUDE_RE="$EXCLUDE_DIRS_RE"
+    while IFS= read -r extra; do
+        EXCLUDE_RE+="|(^|/)(${extra})(/|\$)"
+    done < <(read_config_lines "$EXTRA_EXCLUDE_DIRS_FILE")
 }
 
 # Untracked + ignored files in a repo that match the include patterns.
 repo_secret_files() {
     local repo="$1"
-    [ -n "$INCLUDE_RE" ] || build_include_re
+    [ -n "$INCLUDE_RE" ] || build_filter_res
     # --others with no exclude flags lists every untracked file, ignored or not.
     git -C "$repo" ls-files --others 2>/dev/null \
-        | grep -vE "$EXCLUDE_DIRS_RE" | grep -E "$INCLUDE_RE" | sort || true
+        | grep -vE "$EXCLUDE_RE" | grep -E "$INCLUDE_RE" | sort || true
 }
 
 # Warn about work that a manifest-based backup cannot save.
@@ -170,16 +175,16 @@ do_create() {
         done < <(repo_secret_files "$repo")
     done < <(find_repos)
 
-    # Home files
+    # Home files (defaults + extra-home-includes config lines)
     local item
-    for item in "${HOME_INCLUDES[@]}"; do
+    while IFS= read -r item; do
         [ -e "$HOME/$item" ] || continue
         echo "  ~/$item"
         if ! $dry_run; then
             mkdir -p "$stage/home/$(dirname "$item")"
             cp -a "$HOME/$item" "$stage/home/$(dirname "$item")/"
         fi
-    done
+    done < <(printf '%s\n' "${HOME_INCLUDES[@]}"; read_config_lines "$EXTRA_HOME_INCLUDES_FILE")
 
     print_info "$repo_count repos in manifest, $file_count secret files collected"
 

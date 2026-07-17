@@ -7,7 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACKAGES_DIR="$DOTFILES_DIR/packages"
 GROUPS_DIR="$PACKAGES_DIR/groups"
-CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 
 # Source shared utilities
 source "$DOTFILES_DIR/install/lib/common.sh"
@@ -26,11 +25,6 @@ else
     print_error "Unsupported distribution family: $DISTRO_FAMILY"
     exit 1
 fi
-
-# Check if install purpose is "terminal" (for filtering desktop_only packages)
-is_terminal_install() {
-    [ -f "$CHEZMOI_CONF" ] && grep -Eq '^[[:space:]]*install_purpose[[:space:]]*=[[:space:]]*"terminal"' "$CHEZMOI_CONF"
-}
 
 # ── YAML helpers ─────────────────────────────────────────────────────────────
 
@@ -66,29 +60,14 @@ get_chezmoi_flag() {
     echo "install_${group_id}"
 }
 
-# Read current chezmoi flag value (true/false/empty if not found)
-get_chezmoi_flag_value() {
-    local flag="$1"
-    if [ -f "$CHEZMOI_CONF" ]; then
-        grep -E "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*(true|false)" "$CHEZMOI_CONF" 2>/dev/null \
-            | grep -oE '(true|false)' || true
-    fi
-}
-
-# Update a chezmoi flag value
+# Update a chezmoi flag value and confirm it to the user
 update_chezmoi_flag() {
-    local flag="$1"
-    local value="$2"
-
     if [ ! -f "$CHEZMOI_CONF" ]; then
         print_warning "chezmoi.toml not found, skipping flag update"
-        return
+        return 0
     fi
-
-    if grep -qF "${flag} = " "$CHEZMOI_CONF"; then
-        sed -i "s/^[[:space:]]*${flag} = .*/    ${flag} = ${value}/" "$CHEZMOI_CONF"
-        print_success "Updated ${flag} = ${value} in chezmoi.toml"
-    fi
+    chezmoi_data_set "$1" "$2"
+    print_success "Updated $1 = $2 in chezmoi.toml"
 }
 
 # ── Package list helpers ─────────────────────────────────────────────────────
@@ -98,33 +77,20 @@ update_chezmoi_flag() {
 # Outputs one package name per line.
 get_group_packages() {
     local file="$1"
-    local all_packages=""
-
-    local distro_pkgs custom_pkgs
-    distro_pkgs=$(parse_packages "$file" "$DISTRO_FAMILY")
-    custom_pkgs=$(parse_custom_install_names "$file")
-
-    # Combine distro and custom_install packages
-    [ -n "$distro_pkgs" ] && all_packages+="$distro_pkgs"$'\n'
-    [ -n "$custom_pkgs" ] && all_packages+="$custom_pkgs"$'\n'
-    all_packages=$(echo -n "$all_packages" | grep -v "^$" || true)
+    local all_packages
+    all_packages=$({ parse_packages "$file" "$DISTRO_FAMILY"; parse_custom_install_names "$file"; } \
+        | grep -v "^$" || true)
 
     if [ -z "$all_packages" ]; then
         return
     fi
 
     # Filter desktop_only packages when in terminal mode
-    if is_terminal_install; then
+    if install_purpose_is terminal; then
         local desktop_only_list
         desktop_only_list=$(parse_desktop_only "$file")
         if [ -n "$desktop_only_list" ]; then
-            local filtered=""
-            while IFS= read -r pkg; do
-                if ! echo "$desktop_only_list" | grep -qxF "$pkg"; then
-                    filtered+="${pkg}"$'\n'
-                fi
-            done <<< "$all_packages"
-            echo "$filtered" | grep -v "^$"
+            grep -vxFf <(printf '%s\n' "$desktop_only_list") <<< "$all_packages" || true
             return
         fi
     fi
@@ -166,15 +132,6 @@ extract_package_name() {
     echo "$line" | sed 's/ — .*//'
 }
 
-normalize_package_name_for_system() {
-    local pkg="$1"
-    if [[ "$pkg" == */* ]]; then
-        echo "${pkg#*/}"
-    else
-        echo "$pkg"
-    fi
-}
-
 # Check if a custom_install entry is installed using its check command.
 # Returns 0 if installed, 1 otherwise. Returns 1 if not a custom_install package.
 is_custom_install_pkg() {
@@ -199,7 +156,8 @@ is_group_package_installed() {
     if [ -n "$file" ] && is_custom_install_pkg "$file" "$pkg"; then
         is_custom_install_installed "$file" "$pkg"
     else
-        is_package_installed "$(normalize_package_name_for_system "$pkg")"
+        # Strip an AUR-style "repo/" prefix for the system package query
+        is_package_installed "${pkg#*/}"
     fi
 }
 
@@ -230,18 +188,17 @@ choose_group() {
     local labels=()
     local files=()
 
+    build_installed_index
     for file in "${group_files[@]}"; do
-        local name icon packages installed=0 total=0
+        local name icon installed=0 total=0
         name=$(get_group_name "$file")
         icon=$(get_group_icon "$file")
 
-        while IFS= read -r pkg; do
-            [ -z "$pkg" ] && continue
+        local pkg state
+        while IFS=$'\t' read -r pkg state; do
             total=$((total + 1))
-            if is_group_package_installed "$pkg" "$file"; then
-                installed=$((installed + 1))
-            fi
-        done < <(get_group_packages "$file")
+            [ "$state" = true ] && installed=$((installed + 1))
+        done < <(group_package_states "$file")
 
         # Skip groups with no packages for this distro
         [ "$total" -eq 0 ] && continue
@@ -274,20 +231,17 @@ show_add() {
     local file
     file=$(choose_group "Add packages from group") || return
 
-    local name group_id
+    local name
     name=$(get_group_name "$file")
-    group_id=$(get_group_id "$file")
     load_descriptions "$file"
 
     # Build list of NOT-installed packages
+    build_installed_index
     local available=()
-    local pkg
-    while IFS= read -r pkg; do
-        [ -z "$pkg" ] && continue
-        if ! is_group_package_installed "$pkg" "$file"; then
-            available+=("$(format_package "$pkg")")
-        fi
-    done < <(get_group_packages "$file")
+    local pkg state
+    while IFS=$'\t' read -r pkg state; do
+        [ "$state" = false ] && available+=("$(format_package "$pkg")")
+    done < <(group_package_states "$file")
 
     if [ ${#available[@]} -eq 0 ]; then
         print_success "All packages in ${name} are already installed"
@@ -341,54 +295,7 @@ show_add() {
         install_custom_pkg "$file" "$pkg"
     done
 
-    # Check if all group packages are now installed
-    local all_installed=true
-    while IFS= read -r pkg; do
-        [ -z "$pkg" ] && continue
-        if ! is_group_package_installed "$pkg" "$file"; then
-            all_installed=false
-            break
-        fi
-    done < <(get_group_packages "$file")
-
-    # Offer to enable chezmoi flag if the whole group is now installed
-    local flag flag_val
-    flag=$(get_chezmoi_flag "$group_id")
-    flag_val=$(get_chezmoi_flag_value "$flag")
-
-    if [ "$all_installed" = true ] && [ "$flag_val" = "false" ]; then
-        echo ""
-        if gum confirm "All ${name} packages are installed. Enable ${flag} in chezmoi.toml?"; then
-            update_chezmoi_flag "$flag" "true"
-            if gum confirm "Apply dotfiles now?"; then
-                chezmoi apply --force
-                print_success "Dotfiles applied"
-            fi
-        fi
-    fi
-
-    # Offer to enable services
-    local services
-    services=$(parse_services "$file")
-    if [ -n "$services" ]; then
-        local stopped_services=()
-        while IFS= read -r svc; do
-            [ -z "$svc" ] && continue
-            if ! systemctl is-enabled "$svc" &>/dev/null; then
-                stopped_services+=("$svc")
-            fi
-        done <<< "$services"
-
-        if [ ${#stopped_services[@]} -gt 0 ]; then
-            echo ""
-            print_info "Associated services not enabled: ${stopped_services[*]}"
-            if gum confirm "Enable these services?"; then
-                for svc in "${stopped_services[@]}"; do
-                    enable_service "$svc"
-                done
-            fi
-        fi
-    fi
+    sync_group_after_change "$file"
 }
 
 # ── Remove flow ──────────────────────────────────────────────────────────────
@@ -397,20 +304,17 @@ show_remove() {
     local file
     file=$(choose_group "Remove packages from group") || return
 
-    local name group_id
+    local name
     name=$(get_group_name "$file")
-    group_id=$(get_group_id "$file")
     load_descriptions "$file"
 
     # Build list of installed packages
+    build_installed_index
     local removable=()
-    local pkg
-    while IFS= read -r pkg; do
-        [ -z "$pkg" ] && continue
-        if is_group_package_installed "$pkg" "$file"; then
-            removable+=("$(format_package "$pkg")")
-        fi
-    done < <(get_group_packages "$file")
+    local pkg state
+    while IFS=$'\t' read -r pkg state; do
+        [ "$state" = true ] && removable+=("$(format_package "$pkg")")
+    done < <(group_package_states "$file")
 
     if [ ${#removable[@]} -eq 0 ]; then
         print_info "No packages from ${name} are currently installed"
@@ -450,7 +354,7 @@ show_remove() {
 
     local remove_args=()
     for pkg in "${distro_to_remove[@]}"; do
-        remove_args+=("$(normalize_package_name_for_system "$pkg")")
+        remove_args+=("${pkg#*/}")
     done
 
     echo ""
@@ -467,54 +371,7 @@ show_remove() {
         remove_packages "${remove_args[@]}"
     fi
 
-    # Check if any group packages remain installed
-    local any_installed=false
-    while IFS= read -r pkg; do
-        [ -z "$pkg" ] && continue
-        if is_group_package_installed "$pkg" "$file"; then
-            any_installed=true
-            break
-        fi
-    done < <(get_group_packages "$file")
-
-    # Offer to disable chezmoi flag if no group packages remain
-    local flag flag_val
-    flag=$(get_chezmoi_flag "$group_id")
-    flag_val=$(get_chezmoi_flag_value "$flag")
-
-    if [ "$any_installed" = false ] && [ "$flag_val" = "true" ]; then
-        echo ""
-        if gum confirm "No ${name} packages remain installed. Disable ${flag} in chezmoi.toml?"; then
-            update_chezmoi_flag "$flag" "false"
-            if gum confirm "Apply dotfiles now?"; then
-                chezmoi apply --force
-                print_success "Dotfiles applied"
-            fi
-        fi
-    fi
-
-    # Offer to disable services
-    local services
-    services=$(parse_services "$file")
-    if [ -n "$services" ]; then
-        local active_services=()
-        while IFS= read -r svc; do
-            [ -z "$svc" ] && continue
-            if systemctl is-enabled "$svc" &>/dev/null; then
-                active_services+=("$svc")
-            fi
-        done <<< "$services"
-
-        if [ ${#active_services[@]} -gt 0 ] && [ "$any_installed" = false ]; then
-            echo ""
-            print_info "Associated services still enabled: ${active_services[*]}"
-            if gum confirm "Disable these services?"; then
-                for svc in "${active_services[@]}"; do
-                    disable_service "$svc"
-                done
-            fi
-        fi
-    fi
+    sync_group_after_change "$file"
 }
 
 # ── Unified manage view ──────────────────────────────────────────────────────
@@ -527,6 +384,30 @@ build_installed_index() {
     while IFS= read -r pkg; do
         [ -n "$pkg" ] && INSTALLED_SET["$pkg"]=1
     done < <(list_installed_packages)
+}
+
+# Emit "pkg<TAB>true|false" installed-state lines for every package in a group.
+# Uses the batch INSTALLED_SET index (call build_installed_index first) and one
+# custom-name parse per group, instead of forking yq + pacman per package.
+group_package_states() {
+    local file="$1"
+    local -A custom_set=()
+    local cn
+    while IFS= read -r cn; do
+        [ -n "$cn" ] && custom_set["$cn"]=1
+    done < <(parse_custom_install_names "$file")
+
+    local pkg installed
+    while IFS= read -r pkg; do
+        [ -z "$pkg" ] && continue
+        installed=false
+        if [ -n "${custom_set[$pkg]:-}" ]; then
+            is_custom_install_installed "$file" "$pkg" && installed=true
+        elif [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ]; then
+            installed=true
+        fi
+        printf '%s\t%s\n' "$pkg" "$installed"
+    done < <(get_group_packages "$file")
 }
 
 # Build the installed index and the catalogue JSON together, so the whole scan
@@ -581,10 +462,8 @@ build_manage_json() {
             if [ -n "${custom_set[$pkg]:-}" ]; then
                 is_custom=true
                 is_custom_install_installed "$file" "$pkg" && installed=true
-            else
-                local norm
-                norm=$(normalize_package_name_for_system "$pkg")
-                [ -n "${INSTALLED_SET[$norm]:-}" ] && installed=true
+            elif [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ]; then
+                installed=true
             fi
 
             items+=("{\"name\":\"$(_json_escape "$pkg")\",\"desc\":\"$(_json_escape "${DESCRIPTIONS[$pkg]:-}")\",\"installed\":${installed},\"selected\":${installed},\"custom\":${is_custom}}")
@@ -713,7 +592,7 @@ apply_manage_diff() {
     if [ ${#remove_distro[@]} -gt 0 ]; then
         local remove_args=()
         for pkg in "${remove_distro[@]}"; do
-            remove_args+=("$(normalize_package_name_for_system "$pkg")")
+            remove_args+=("${pkg#*/}")
         done
         remove_packages "${remove_args[@]}"
     fi
@@ -737,19 +616,21 @@ sync_group_after_change() {
     group_id=$(get_group_id "$file")
     name=$(get_group_name "$file")
 
-    local all_installed=true any_installed=false pkg
-    while IFS= read -r pkg; do
-        [ -z "$pkg" ] && continue
-        if is_group_package_installed "$pkg" "$file"; then
+    # Packages just changed — re-index once and scan the group in one pass
+    # instead of forking yq + pacman per package.
+    build_installed_index
+    local all_installed=true any_installed=false pkg state
+    while IFS=$'\t' read -r pkg state; do
+        if [ "$state" = true ]; then
             any_installed=true
         else
             all_installed=false
         fi
-    done < <(get_group_packages "$file")
+    done < <(group_package_states "$file")
 
     local flag flag_val
     flag=$(get_chezmoi_flag "$group_id")
-    flag_val=$(get_chezmoi_flag_value "$flag")
+    flag_val=$(chezmoi_data_get "$flag")
 
     if [ "$all_installed" = true ] && [ "$flag_val" = "false" ]; then
         echo ""
@@ -813,7 +694,7 @@ base_desired_packages() {
     [ -f "$base_file" ] || return 0
     parse_packages "$base_file" "core"
     parse_packages "$base_file" "aur"
-    if ! is_terminal_install; then
+    if ! install_purpose_is terminal; then
         parse_packages "$base_file" "desktop"
         parse_packages "$base_file" "desktop_aur"
     fi
@@ -827,20 +708,19 @@ base_desired_packages() {
 scan_missing_packages() {
     build_installed_index
     declare -A seen=()
-    local pkg norm
+    local pkg
 
     while IFS= read -r pkg; do
         if [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ]; then continue; fi
         seen["$pkg"]=1
-        norm=$(normalize_package_name_for_system "$pkg")
-        [ -n "${INSTALLED_SET[$norm]:-}" ] || printf 'distro\t%s\n' "$pkg"
+        [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || printf 'distro\t%s\n' "$pkg"
     done < <(base_desired_packages)
 
     # Groups whose chezmoi flag is enabled
     local file flag
     for file in "$GROUPS_DIR"/*.yaml; do
         flag=$(get_chezmoi_flag "$(get_group_id "$file")")
-        [ "$(get_chezmoi_flag_value "$flag")" = "true" ] || continue
+        [ "$(chezmoi_data_get "$flag")" = "true" ] || continue
 
         # Custom-install names for this group (one yq call, not one per package).
         local -A custom_set=()
@@ -856,8 +736,7 @@ scan_missing_packages() {
                 is_custom_install_installed "$file" "$pkg" \
                     || printf 'custom\t%s\t%s\n' "$pkg" "$file"
             else
-                norm=$(normalize_package_name_for_system "$pkg")
-                [ -n "${INSTALLED_SET[$norm]:-}" ] || printf 'distro\t%s\n' "$pkg"
+                [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || printf 'distro\t%s\n' "$pkg"
             fi
         done < <(get_group_packages "$file")
     done

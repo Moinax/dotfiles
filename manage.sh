@@ -6,10 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
 source "$SCRIPT_DIR/install/lib/common.sh"
+source "$SCRIPT_DIR/install/lib/hyprvoice.sh"
 
 install_interrupt_trap
-
-CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -32,46 +31,10 @@ Run without arguments for an interactive menu.
 EOF
 }
 
-is_desktop_install() {
-    [ -f "$CHEZMOI_CONF" ] && grep -Eq '^[[:space:]]*install_purpose[[:space:]]*=[[:space:]]*"desktop"' "$CHEZMOI_CONF"
-}
-
-external_apps_available() {
-    is_desktop_install && command_exists distrobox-enter
-}
-
-hdr_monitor_available() {
-    command_exists hyprctl && command_exists jq || return 1
-    hyprctl monitors -j 2>/dev/null \
-        | jq -e 'any(.[]; .colorManagementPreset == "hdr")' >/dev/null 2>&1
-}
-
 # ── Actions ──────────────────────────────────────────────────────────────────
 
 do_setup() {
     "$SCRIPT_DIR/tools/setup.sh"
-}
-
-# Read a string value from chezmoi.toml [data] section
-get_chezmoi_data() {
-    local key="$1"
-    if [ -f "$CHEZMOI_CONF" ]; then
-        grep "$key" "$CHEZMOI_CONF" 2>/dev/null | sed 's/.*= *"\?\([^"]*\)"\?/\1/' || true
-    fi
-}
-
-# Set a string value in chezmoi.toml [data] section (upsert)
-set_chezmoi_data() {
-    local key="$1" value="$2"
-    if [ ! -f "$CHEZMOI_CONF" ]; then
-        print_warning "chezmoi.toml not found, skipping $key update"
-        return
-    fi
-    if grep -q "${key} = " "$CHEZMOI_CONF"; then
-        sed -i 's/'"${key}"' = .*/'"${key}"' = "'"${value}"'"/' "$CHEZMOI_CONF"
-    else
-        sed -i '/^\[data\]/a\    '"${key}"' = "'"${value}"'"' "$CHEZMOI_CONF"
-    fi
 }
 
 do_whisper() {
@@ -81,58 +44,38 @@ do_whisper() {
     fi
 
     local current_provider current_model
-    current_provider=$(get_chezmoi_data 'hyprvoice_provider')
-    current_model=$(get_chezmoi_data 'hyprvoice_model')
+    current_provider=$(chezmoi_data_get 'hyprvoice_provider')
+    current_model=$(chezmoi_data_get 'hyprvoice_model')
     : "${current_provider:=whisper-cpp}"
 
     # Choose provider
     local provider
-    provider=$(printf '%s\n' "whisper-cpp (local)" "groq (cloud, free tier)" | \
-        gum choose --cursor.foreground="212" \
-        --header "Select transcription provider (current: $current_provider):") || {
+    provider=$(hyprvoice_choose_provider "Select transcription provider (current: $current_provider):") || {
         echo "Cancelled."
         return
     }
-    provider="${provider%% (*}"
 
     local chosen=""
     if [ "$provider" = "whisper-cpp" ]; then
-        # Parse available local models from hyprvoice output (whisper-cpp section)
-        local model_list
-        model_list=$(hyprvoice model list 2>/dev/null)
+        # Mark the currently configured model in the list
         local models=()
-        local model_names=()
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^[[:space:]]*\[.\][[:space:]]+(.+)$ ]]; then
-                local entry="${BASH_REMATCH[1]}"
-                local name="${entry%% -*}"
-                name="${name%% *}"
-                if [ "$name" = "$current_model" ] && [ "$provider" = "$current_provider" ]; then
-                    models+=("$entry (current)")
-                else
-                    models+=("$entry")
-                fi
-                model_names+=("$name")
+        local entry name
+        while IFS= read -r entry; do
+            name="${entry%% -*}"
+            name="${name%% *}"
+            if [ "$name" = "$current_model" ] && [ "$provider" = "$current_provider" ]; then
+                models+=("$entry (current)")
+            else
+                models+=("$entry")
             fi
-        done <<< "$model_list"
+        done < <(hyprvoice_list_models)
 
         if [ ${#models[@]} -eq 0 ]; then
             print_error "No whisper models found"
             return 1
         fi
 
-        local cursor_arg=""
-        if [ -n "$current_model" ] && [ "$provider" = "$current_provider" ]; then
-            for i in "${!model_names[@]}"; do
-                if [ "${model_names[$i]}" = "$current_model" ]; then
-                    cursor_arg="$((i + 1))"
-                    break
-                fi
-            done
-        fi
-
         chosen=$(printf '%s\n' "${models[@]}" | gum choose --cursor.foreground="212" \
-            ${cursor_arg:+--cursor-prefix="> " --selected-prefix="> "} \
             --header "Select whisper model:") || {
             echo "Cancelled."
             return
@@ -143,20 +86,15 @@ do_whisper() {
         chosen="${chosen%% -*}"
         chosen="${chosen%% *}"
 
-        print_info "Downloading whisper model: $chosen"
-        if hyprvoice model download "$chosen"; then
-            print_success "Model '$chosen' downloaded"
-        else
+        hyprvoice_download_model "$chosen" || {
             print_error "Failed to download model '$chosen'"
             return 1
-        fi
+        }
     elif [ "$provider" = "groq" ]; then
-        chosen=$(printf '%s\n' "${GROQ_WHISPER_MODELS[@]}" | gum choose --cursor.foreground="212" \
-            --header "Select Groq model:") || {
+        chosen=$(hyprvoice_choose_groq_model) || {
             echo "Cancelled."
             return
         }
-        chosen="${chosen%% *}"
 
         setup_groq_api_key --allow-change
     fi
@@ -166,8 +104,8 @@ do_whisper() {
         return
     fi
 
-    set_chezmoi_data "hyprvoice_provider" "$provider"
-    set_chezmoi_data "hyprvoice_model" "$chosen"
+    chezmoi_data_set "hyprvoice_provider" "$provider"
+    chezmoi_data_set "hyprvoice_model" "$chosen"
     print_success "Updated hyprvoice config in chezmoi.toml (provider=$provider, model=$chosen)"
 
     print_info "Re-applying hyprvoice config..."
@@ -267,7 +205,7 @@ do_reconfig() {
         else
             new_val="true"
         fi
-        sed -i "s/${key} = ${val}/${key} = ${new_val}/" "$CHEZMOI_CONF"
+        chezmoi_data_set "$key" "$new_val"
         print_info "Toggled $key: $val → $new_val"
     done <<< "$selected"
 
@@ -292,7 +230,7 @@ do_packages_menu() {
         local options=()
         options+=("Add / remove packages")
         options+=("Sync missing packages")
-        if external_apps_available; then
+        if install_purpose_is desktop; then
             options+=("Standalone apps (AppImage / Distrobox)")
         fi
         options+=("Back")
@@ -309,15 +247,11 @@ do_packages_menu() {
     done
 }
 
+# Distrobox availability is NOT checked here: only some apps subcommands need
+# it, and the tool gates those itself (require_distrobox).
 do_apps() {
-    if ! is_desktop_install; then
+    if ! install_purpose_is desktop; then
         print_error "External apps helper is only available for desktop installs"
-        return 1
-    fi
-
-    if ! command_exists distrobox-enter; then
-        print_error "distrobox-enter is not installed"
-        print_info "Run the desktop installer or install Distrobox first."
         return 1
     fi
 
@@ -362,6 +296,13 @@ do_menu() {
         exit 1
     fi
 
+    # HDR availability doesn't change mid-session — probe once (the gaming
+    # script owns the detection via --check), not on every menu redraw.
+    local has_hdr=false
+    if "$SCRIPT_DIR/tools/gaming-hdr-launch.sh" --check 2>/dev/null; then
+        has_hdr=true
+    fi
+
     while true; do
         print_header "Dotfiles Manager"
 
@@ -373,7 +314,7 @@ do_menu() {
         if command_exists hyprvoice; then
             options+=("Update whisper model")
         fi
-        if hdr_monitor_available; then
+        if $has_hdr; then
             options+=("Gaming HDR launch")
         fi
         options+=("Backup projects")

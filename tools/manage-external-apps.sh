@@ -71,10 +71,6 @@ ensure_dirs() {
     mkdir -p "$APPIMAGE_DIR" "$APP_DESKTOP_DIR" "$APP_ICON_DIR" "$DISTROBOX_STATE_DIR" "$SOURCES_STATE_DIR"
 }
 
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
 slugify() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g; s/--*/-/g; s/^-//; s/-$//'
 }
@@ -150,7 +146,7 @@ prompt_with_default() {
             return 0
         fi
 
-        echo -e "${YELLOW}[WARNING]${NC} A value is required." >&2
+        print_warning "A value is required." >&2
     done
 }
 
@@ -197,7 +193,7 @@ pick_file_from_downloads() {
 
         selection=$(realpath "$selection" 2>/dev/null || true)
         if [ -z "$selection" ] || [ ! -f "$selection" ]; then
-            echo -e "${YELLOW}[WARNING]${NC} Please select an existing file." >&2
+            print_warning "Please select an existing file." >&2
             continue
         fi
 
@@ -205,13 +201,13 @@ pick_file_from_downloads() {
         case "$mode" in
             appimage)
                 if [[ "$selection_lower" != *.appimage ]]; then
-                    echo -e "${YELLOW}[WARNING]${NC} Please select a .AppImage file." >&2
+                    print_warning "Please select a .AppImage file." >&2
                     continue
                 fi
                 ;;
             package)
                 if ! [[ "$selection_lower" == *.deb || "$selection_lower" == *.rpm || "$selection_lower" == *.pkg.tar || "$selection_lower" == *.pkg.tar.* ]]; then
-                    echo -e "${YELLOW}[WARNING]${NC} Please select a .deb, .rpm, or .pkg.tar.* file." >&2
+                    print_warning "Please select a .deb, .rpm, or .pkg.tar.* file." >&2
                     continue
                 fi
                 ;;
@@ -304,6 +300,21 @@ extract_appimage_metadata() {
         else
             APPIMAGE_META_ICON=$(find -L "$extract_dir" -type f \( -name '*.png' -o -name '*.svg' -o -name '*.xpm' \) | head -1 || true)
         fi
+    fi
+}
+
+# Extract metadata and resolve the app's display name: the embedded desktop
+# entry name when present, a humanized filename otherwise. Sets the
+# APPIMAGE_META_* globals plus APPIMAGE_DETECTED_NAME (must therefore run in
+# the caller's shell, not a $(...) subshell).
+detect_appimage_name() {
+    local appimage_path="$1"
+    local extract_dir="$2"
+    extract_appimage_metadata "$appimage_path" "$extract_dir"
+    if [ -n "$APPIMAGE_META_NAME" ]; then
+        APPIMAGE_DETECTED_NAME="$APPIMAGE_META_NAME"
+    else
+        APPIMAGE_DETECTED_NAME="$(humanize_appimage_name "$(basename "$appimage_path")")"
     fi
 }
 
@@ -412,12 +423,8 @@ do_import_appimage() {
     if [ -z "$app_name" ]; then
         extract_dir=$(mktemp -d)
         trap 'rm -rf "$extract_dir"' RETURN
-        extract_appimage_metadata "$source_path" "$extract_dir"
-        if [ -n "$APPIMAGE_META_NAME" ]; then
-            app_name="$APPIMAGE_META_NAME"
-        else
-            app_name="$(humanize_appimage_name "$(basename "$source_path")")"
-        fi
+        detect_appimage_name "$source_path" "$extract_dir"
+        app_name="$APPIMAGE_DETECTED_NAME"
     fi
 
     execute_import_appimage "$source_path" "$app_name" "$extract_dir"
@@ -430,16 +437,9 @@ interactive_import_appimage_with_file() {
     local extract_dir=""
     extract_dir=$(mktemp -d)
     trap 'rm -rf "$extract_dir"' RETURN
-    extract_appimage_metadata "$source_path" "$extract_dir"
+    detect_appimage_name "$source_path" "$extract_dir"
 
-    local detected_name=""
-    if [ -n "$default_name" ]; then
-        detected_name="$default_name"
-    elif [ -n "$APPIMAGE_META_NAME" ]; then
-        detected_name="$APPIMAGE_META_NAME"
-    else
-        detected_name="$(humanize_appimage_name "$(basename "$source_path")")"
-    fi
+    local detected_name="${default_name:-$APPIMAGE_DETECTED_NAME}"
 
     local app_name=""
     app_name=$(prompt_with_default "App name" "$detected_name" "Launcher name") || return 0
@@ -599,23 +599,19 @@ EOF
 }
 
 list_distrobox_containers() {
+    local -a cmd
     if command_exists distrobox; then
-        distrobox list --no-color 2>/dev/null \
-            | tail -n +2 \
-            | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); if ($1 != "") print $1}' \
-            | sort -u
-        return 0
+        cmd=(distrobox list)
+    elif command_exists distrobox-list; then
+        cmd=(distrobox-list)
+    else
+        return 1
     fi
 
-    if command_exists distrobox-list; then
-        distrobox-list --no-color 2>/dev/null \
-            | tail -n +2 \
-            | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); if ($1 != "") print $1}' \
-            | sort -u
-        return 0
-    fi
-
-    return 1
+    "${cmd[@]}" --no-color 2>/dev/null \
+        | tail -n +2 \
+        | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); if ($1 != "") print $1}' \
+        | sort -u
 }
 
 distrobox_container_exists() {
@@ -743,13 +739,13 @@ select_exported_app_id() {
         return 0
     fi
 
-    local candidates=""
-    candidates=$(comm -13 "$before_file" "$after_file" || true)
+    local added=""
+    added=$(comm -13 "$before_file" "$after_file" || true)
     local count=""
-    count=$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l | tr -d ' ')
+    count=$(printf '%s\n' "$added" | sed '/^$/d' | wc -l | tr -d ' ')
 
     if [ "$count" -eq 1 ]; then
-        printf '%s\n' "$candidates" | sed '/^$/d'
+        printf '%s\n' "$added" | sed '/^$/d'
         return 0
     fi
 
@@ -757,7 +753,7 @@ select_exported_app_id() {
         print_error "Could not detect a new desktop entry automatically"
     else
         print_error "Multiple desktop entries were added; please specify one with --app"
-        printf '%s\n' "$candidates" | sed '/^$/d' | sed 's/^/  - /'
+        printf '%s\n' "$added" | sed '/^$/d' | sed 's/^/  - /'
     fi
     return 1
 }
@@ -900,12 +896,16 @@ load_distrobox_metadata() {
     APP_ARGS="${APP_ARGS:-}"
 }
 
+# One install pipeline for both the CLI and the interactive wizard; with
+# interactive=true (and no requested app id) an ambiguous export candidate is
+# resolved with a picker instead of an error.
 execute_install_distrobox() {
     local container="$1"
     local package_path="$2"
     local app_name="$3"
     local requested_app_id="$4"
     local app_args="${5:-}"
+    local interactive="${6:-false}"
 
     ensure_dirs
     require_distrobox || return 1
@@ -929,7 +929,10 @@ execute_install_distrobox() {
     }
 
     print_info "Installing package in container '$container'..."
-    install_package_in_distrobox "$container" "$package_path" "$package_type"
+    install_package_in_distrobox "$container" "$package_path" "$package_type" || {
+        print_error "Package installation failed."
+        return 1
+    }
 
     print_info "Collecting updated desktop entries..."
     list_desktop_ids_in_container "$container" > "$after_file" || {
@@ -938,14 +941,24 @@ execute_install_distrobox() {
     }
 
     local app_id=""
-    app_id=$(select_exported_app_id "$before_file" "$after_file" "$requested_app_id") || return 1
+    if [ -z "$requested_app_id" ] && [ "$interactive" = true ]; then
+        app_id=$(pick_exported_app_id_interactive "$before_file" "$after_file") || {
+            print_info "Cancelled."
+            return 0
+        }
+    else
+        app_id=$(select_exported_app_id "$before_file" "$after_file" "$requested_app_id") || return 1
+    fi
 
     if [ -z "$app_name" ]; then
         app_name="${app_id%.desktop}"
     fi
 
     print_info "Exporting '$app_id' to the host launcher..."
-    export_distrobox_app "$container" "$app_id"
+    export_distrobox_app "$container" "$app_id" || {
+        print_error "Export failed."
+        return 1
+    }
     apply_distrobox_app_args "$app_id" "$container" "$app_args"
     save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id" "$app_args"
 
@@ -1042,52 +1055,7 @@ interactive_install_distrobox_with_file() {
         return 0
     fi
 
-    ensure_dirs
-    ensure_distrobox_container "$container" "$package_type" || return 1
-
-    local before_file=""
-    local after_file=""
-    before_file=$(mktemp)
-    after_file=$(mktemp)
-    trap 'rm -f "$before_file" "$after_file"' RETURN
-
-    print_info "Collecting desktop entries from container '$container'..."
-    list_desktop_ids_in_container "$container" > "$before_file" || {
-        print_error "Could not list desktop entries in container '$container'."
-        return 1
-    }
-
-    print_info "Installing package in container '$container'..."
-    install_package_in_distrobox "$container" "$package_path" "$package_type" || {
-        print_error "Package installation failed."
-        return 1
-    }
-
-    print_info "Collecting updated desktop entries..."
-    list_desktop_ids_in_container "$container" > "$after_file" || {
-        print_error "Could not list desktop entries in container '$container'."
-        return 1
-    }
-
-    local app_id=""
-    app_id=$(pick_exported_app_id_interactive "$before_file" "$after_file") || {
-        print_info "Cancelled."
-        return 0
-    }
-
-    print_info "Exporting '$app_id' to the host launcher..."
-    export_distrobox_app "$container" "$app_id" || {
-        print_error "Export failed."
-        return 1
-    }
-
-    apply_distrobox_app_args "$app_id" "$container" "$app_args"
-    save_distrobox_metadata "$app_name" "$container" "$package_type" "$app_id" "$app_args"
-    print_success "Installed and exported Distrobox app"
-    echo "  App: $app_name"
-    echo "  Container: $container"
-    echo "  Desktop entry: $app_id"
-    [ -n "$app_args" ] && echo "  Launch args: $app_args"
+    execute_install_distrobox "$container" "$package_path" "$app_name" "" "$app_args" true
 }
 
 execute_update_distrobox() {
@@ -1114,10 +1082,16 @@ execute_update_distrobox() {
     fi
 
     print_info "Updating '$APP_NAME' in container '$CONTAINER'..."
-    install_package_in_distrobox "$CONTAINER" "$package_path" "$new_package_type"
+    install_package_in_distrobox "$CONTAINER" "$package_path" "$new_package_type" || {
+        print_error "Package update failed."
+        return 1
+    }
 
     print_info "Refreshing exported desktop entry '$APP_ID'..."
-    export_distrobox_app "$CONTAINER" "$APP_ID"
+    export_distrobox_app "$CONTAINER" "$APP_ID" || {
+        print_error "Export refresh failed."
+        return 1
+    }
     apply_distrobox_app_args "$APP_ID" "$CONTAINER" "$app_args"
     save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID" "$app_args"
 
@@ -1260,10 +1234,38 @@ github_normalize_repo() {
     printf '%s\n' "$repo"
 }
 
-# Latest release tag only (cheap call for update checks)
+# Session-scoped cache of /releases/latest JSON per repo: a check followed by
+# an update in the same run reuses the response instead of re-hitting the API
+# (the unauthenticated rate limit is 60 requests/hour). On-disk so it survives
+# the spinner/parallel-fetch subshells; removed when the script exits.
+GH_CACHE_DIR=$(mktemp -d)
+# Subshells inherit and run this EXIT trap when they exit, which would let the
+# first parallel fetcher to finish delete the cache out from under the others —
+# the $$/$BASHPID guard restricts cleanup to the top-level shell.
+trap '[ "$$" = "$BASHPID" ] && rm -rf "$GH_CACHE_DIR" || true' EXIT
+
+# Print the latest-release JSON of a repo, fetching it once per session.
+gh_release_json() {
+    local repo="$1"
+    local cache
+    cache="$GH_CACHE_DIR/$(slugify "$repo").json"
+    if [ ! -s "$cache" ]; then
+        # Write via temp + mv so parallel fetchers of the same repo can't
+        # interleave. The temp name must be resolved into a variable here:
+        # $BASHPID inside a redirection word expands in the forked child, not
+        # in this shell, so ">$cache.$BASHPID" would name a different file
+        # than the later mv. ($BASHPID, not $$: subshells keep the parent's $$.)
+        local tmp="$cache.$BASHPID"
+        curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+            > "$tmp" || { rm -f "$tmp"; return 1; }
+        mv "$tmp" "$cache"
+    fi
+    cat "$cache"
+}
+
+# Latest release tag only (cheap once the JSON is cached)
 github_latest_tag() {
-    curl -fsSL "https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
-        | grep -m1 '"tag_name"' | cut -d'"' -f4
+    gh_release_json "$1" | grep -m1 '"tag_name"' | cut -d'"' -f4
 }
 
 # Fetch the latest release of a repo; sets GH_RELEASE_TAG + GH_RELEASE_ASSET_URLS[].
@@ -1273,8 +1275,7 @@ github_fetch_latest_release() {
     GH_RELEASE_ASSET_URLS=()
 
     local json=""
-    spin_capture json "Fetching latest release of $repo..." \
-        curl -fsSL "https://api.github.com/repos/$repo/releases/latest" || true
+    spin_capture json "Fetching latest release of $repo..." gh_release_json "$repo" || true
     GH_RELEASE_TAG=$(printf '%s' "$json" | grep -m1 '"tag_name"' | cut -d'"' -f4 || true)
     mapfile -t GH_RELEASE_ASSET_URLS < <(printf '%s' "$json" \
         | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4)
@@ -1513,12 +1514,8 @@ do_install_github() {
             if [ -z "$app_name" ]; then
                 local extract_dir=""
                 extract_dir=$(mktemp -d)
-                extract_appimage_metadata "$DOWNLOADED_ASSET_PATH" "$extract_dir"
-                if [ -n "$APPIMAGE_META_NAME" ]; then
-                    app_name="$APPIMAGE_META_NAME"
-                else
-                    app_name="$(humanize_appimage_name "$asset_name")"
-                fi
+                detect_appimage_name "$DOWNLOADED_ASSET_PATH" "$extract_dir"
+                app_name="$APPIMAGE_DETECTED_NAME"
                 execute_import_appimage "$DOWNLOADED_ASSET_PATH" "$app_name" "$extract_dir" || rc=1
                 rm -rf "$extract_dir"
             else
@@ -1624,6 +1621,22 @@ do_set_source() {
     execute_set_source "$app_name" "$repo_input" "$asset_pattern" "$version"
 }
 
+# Warm the release-JSON cache for every source file, all requests concurrent —
+# serial curls stack seconds of pure latency. Results land in GH_CACHE_DIR, so
+# the report loop (and any update that follows) reads them without refetching.
+prefetch_release_json() {
+    local f
+    for f in "$@"; do
+        (
+            SOURCE_REPO=""
+            # shellcheck disable=SC1090
+            source "$f"
+            gh_release_json "$SOURCE_REPO" >/dev/null 2>&1 || true
+        ) &
+    done
+    wait
+}
+
 # Compare every app's installed tag against the latest GitHub release.
 # --porcelain prints only outdated apps as "name|installed|latest" lines.
 do_check_updates() {
@@ -1640,6 +1653,12 @@ do_check_updates() {
         return 0
     fi
 
+    if [ "$porcelain" = true ]; then
+        prefetch_release_json "${files[@]}"
+    else
+        spin_run "Checking ${#files[@]} app(s) for updates..." prefetch_release_json "${files[@]}"
+    fi
+
     local outdated=0 failed=0
     local file
     for file in "${files[@]}"; do
@@ -1648,11 +1667,7 @@ do_check_updates() {
         source "$file"
 
         local latest=""
-        if [ "$porcelain" = true ]; then
-            latest=$(github_latest_tag "$SOURCE_REPO" || true)
-        else
-            spin_capture latest "Checking $APP_NAME ($SOURCE_REPO)..." github_latest_tag "$SOURCE_REPO" || true
-        fi
+        latest=$(github_latest_tag "$SOURCE_REPO" || true)
         if [ -z "$latest" ]; then
             failed=$((failed + 1))
             [ "$porcelain" = false ] && print_warning "$APP_NAME: could not fetch the latest release of $SOURCE_REPO"
@@ -1840,6 +1855,35 @@ interactive_check_updates() {
     done <<< "$selected"
 }
 
+# Extract the display name / target container from a distrobox-exported
+# desktop file. The single home of these fragile parsing regexes.
+desktop_entry_name() { sed -n 's/^Name=//p' "$1" 2>/dev/null | head -1; }
+desktop_entry_container() { sed -n 's/.*distrobox-enter.*-n \([^ ]*\).*/\1/p' "$1" 2>/dev/null | head -1; }
+
+# Scan the host launcher for distrobox-exported desktop files not covered by
+# any of the given managed app ids. Emits "file<TAB>name<TAB>container" lines.
+list_unmanaged_distrobox_desktops() {
+    shopt -s nullglob
+    local -a desktop_files=("$APP_DESKTOP_DIR"/*.desktop)
+    shopt -u nullglob
+    local df mid
+    for df in "${desktop_files[@]}"; do
+        grep -q 'distrobox-enter' "$df" 2>/dev/null || continue
+
+        local df_basename already=false
+        df_basename=$(basename "$df")
+        for mid in "$@"; do
+            if [[ "$df_basename" == *"$mid"* || "$mid" == "$df_basename" ]]; then
+                already=true
+                break
+            fi
+        done
+        [ "$already" = true ] && continue
+
+        printf '%s\t%s\t%s\n' "$df" "$(desktop_entry_name "$df")" "$(desktop_entry_container "$df")"
+    done
+}
+
 do_list() {
     ensure_dirs
     local found=false
@@ -1887,30 +1931,12 @@ do_list() {
     fi
 
     # List unmanaged Distrobox apps (exported but no metadata)
-    shopt -s nullglob
-    local -a desktop_files=("$APP_DESKTOP_DIR"/*.desktop)
-    shopt -u nullglob
-    local df
-    for df in "${desktop_files[@]}"; do
-        grep -q 'distrobox-enter' "$df" 2>/dev/null || continue
-        local df_basename
-        df_basename=$(basename "$df")
-        local already=false
-        local mid
-        for mid in "${_listed_ids[@]}"; do
-            if [[ "$df_basename" == *"$mid"* || "$mid" == "$df_basename" ]]; then
-                already=true
-                break
-            fi
-        done
-        [ "$already" = true ] && continue
-
+    local df df_name df_container
+    while IFS=$'\t' read -r df df_name df_container; do
+        [ -z "$df" ] && continue
         found=true
-        local df_name df_container
-        df_name=$(sed -n 's/^Name=//p' "$df" | head -1)
-        df_container=$(sed -n 's/.*distrobox-enter.*-n \([^ ]*\).*/\1/p' "$df" | head -1)
-        echo "${df_name:-$df_basename} | type=distrobox (unmanaged) | container=${df_container:-unknown} | file=$df"
-    done
+        echo "${df_name:-$(basename "$df")} | type=distrobox (unmanaged) | container=${df_container:-unknown} | file=$df"
+    done < <(list_unmanaged_distrobox_desktops "${_listed_ids[@]}")
 
     if [ "$found" = false ]; then
         print_info "No managed apps found"
@@ -1975,39 +2001,13 @@ interactive_manage_apps() {
     done
 
     # Discover distrobox-exported apps without metadata (installed manually)
-    shopt -s nullglob
-    local -a desktop_files=("$APP_DESKTOP_DIR"/*.desktop)
-    shopt -u nullglob
-    local df
-    for df in "${desktop_files[@]}"; do
-        # Only match desktop files that invoke distrobox-enter
-        grep -q 'distrobox-enter' "$df" 2>/dev/null || continue
-
-        local df_basename
-        df_basename=$(basename "$df")
-
-        # Skip if already tracked by metadata
-        local already_managed=false
-        local mid
-        for mid in "${_managed_app_ids[@]}"; do
-            if [[ "$df_basename" == *"$mid"* || "$mid" == "$df_basename" ]]; then
-                already_managed=true
-                break
-            fi
-        done
-        [ "$already_managed" = true ] && continue
-
-        # Extract name and container from the desktop file
-        local df_name df_container
-        df_name=$(sed -n 's/^Name=//p' "$df" | head -1)
-        df_container=$(sed -n 's/.*distrobox-enter.*-n \([^ ]*\).*/\1/p' "$df" | head -1)
-        [ -z "$df_name" ] && df_name="$df_basename"
-        [ -z "$df_container" ] && df_container="unknown"
-
-        app_labels+=("$df_name [Distrobox: $df_container] (unmanaged)")
+    local df df_name df_container
+    while IFS=$'\t' read -r df df_name df_container; do
+        [ -z "$df" ] && continue
+        app_labels+=("${df_name:-$(basename "$df")} [Distrobox: ${df_container:-unknown}] (unmanaged)")
         app_types+=("distrobox-unmanaged")
         app_keys+=("$df")
-    done
+    done < <(list_unmanaged_distrobox_desktops "${_managed_app_ids[@]}")
 
     if [ ${#app_labels[@]} -eq 0 ]; then
         print_info "No installed apps found"
@@ -2066,8 +2066,8 @@ interactive_manage_apps() {
     # Pre-extract unmanaged distrobox info (used by both Update and Uninstall)
     local um_name="" um_container="" um_app_id=""
     if [ "$app_type" = "distrobox-unmanaged" ]; then
-        um_name=$(sed -n 's/^Name=//p' "$app_key" | head -1)
-        um_container=$(sed -n 's/.*distrobox-enter.*-n \([^ ]*\).*/\1/p' "$app_key" | head -1)
+        um_name=$(desktop_entry_name "$app_key")
+        um_container=$(desktop_entry_container "$app_key")
         # Host desktop file is named ${container}-${app_id}, strip the container prefix
         local _host_basename
         _host_basename=$(basename "$app_key")
@@ -2196,21 +2196,7 @@ interactive_manage_apps() {
                     return 0
                 fi
 
-                install_package_in_distrobox "$CONTAINER" "$package_path" "$new_package_type" || {
-                    print_error "Package update failed."
-                    return 1
-                }
-                export_distrobox_app "$CONTAINER" "$APP_ID" || {
-                    print_error "Export refresh failed."
-                    return 1
-                }
-                apply_distrobox_app_args "$APP_ID" "$CONTAINER" "$APP_ARGS"
-                save_distrobox_metadata "$APP_NAME" "$CONTAINER" "$new_package_type" "$APP_ID" "$APP_ARGS"
-                print_success "Updated Distrobox app"
-                echo "  App: $APP_NAME"
-                echo "  Container: $CONTAINER"
-                echo "  Desktop entry: $APP_ID"
-                [ -n "$APP_ARGS" ] && echo "  Launch args: $APP_ARGS"
+                execute_update_distrobox "$APP_NAME" "$package_path"
             fi
             ;;
         "Uninstall")
