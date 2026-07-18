@@ -4,11 +4,20 @@
 # (dev-pick, rofi-dev) list it; dev-herdr derives its session groups from it.
 # Override the root with DEV_PROJECTS_ROOT.
 #
-# Usage: dev-projects root   print the projects root directory
-#        dev-projects list   print candidate project dirs, relative to root
+# Usage: dev-projects root           print the projects root directory
+#        dev-projects list           print candidate project entries
+#        dev-projects resolve ENTRY  print the absolute path for a list entry
 set -euo pipefail
 
 root="${DEV_PROJECTS_ROOT:-$HOME/Projects}"
+
+# Pinned entries living outside the root, listed before the tree scan.
+# Pickers must resolve selections via `resolve` (not "$root/$entry") so
+# these map to their real locations.
+declare -A extras=(
+  [dotfiles]="$HOME/dotfiles"
+)
+extras_order=(dotfiles)
 
 case "${1:-}" in
   root)
@@ -16,10 +25,16 @@ case "${1:-}" in
     ;;
   list)
     command -v fd >/dev/null 2>&1 || { echo "dev-projects: fd not found" >&2; exit 1; }
+    printf '%s\n' "${extras_order[@]}"
     fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix
     ;;
+  resolve)
+    entry="${2:-}"
+    [[ -z "$entry" ]] && { echo "dev-projects: resolve requires an entry" >&2; exit 1; }
+    echo "${extras[$entry]:-$root/$entry}"
+    ;;
   *)
-    echo "dev-projects: unknown command '${1:-}' (expected: root | list)" >&2
+    echo "dev-projects: unknown command '${1:-}' (expected: root | list | resolve)" >&2
     exit 1
     ;;
 esac

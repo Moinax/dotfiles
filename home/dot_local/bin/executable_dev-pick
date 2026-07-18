@@ -14,4 +14,4 @@ sel="$(tv --source-command "dev-projects list" \
   --no-status-bar --input-header "Dev project" < /dev/tty)" || exit 0
 [[ -z "$sel" ]] && exit 0
 
-dev "$(dev-projects root)/$sel"
+dev "$(dev-projects resolve "$sel")"

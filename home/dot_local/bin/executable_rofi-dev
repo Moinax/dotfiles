@@ -6,5 +6,5 @@
 selection=$(dev-projects list 2>/dev/null | rofi -dmenu -i -p "Dev")
 
 if [ -n "$selection" ]; then
-    dev "$(dev-projects root)/$selection"
+    dev "$(dev-projects resolve "$selection")"
 fi
