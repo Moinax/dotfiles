@@ -2,7 +2,8 @@
 # Emit a Zellij layout for the dev/wts dev environment (persistent, detachable).
 #
 # Layout:
-#   tab "agent": claude (top-left) + lazygit (top-right), terminal across the bottom
+#   agent tab (named by provider): agent (top-left) + lazygit (top-right),
+#                terminal across the bottom
 #   tab "nvim":  a full-window nvim
 # For web projects (a package.json with a "dev" script) the bottom terminal is
 # replaced by a *suspended* dev-server pane — press Enter in it to start the
@@ -82,7 +83,7 @@ layout {
             plugin location="zellij:status-bar"
         }
     }
-    tab name="agent" focus=true {
+    tab name="$pane_name" focus=true {
         pane split_direction="horizontal" {
             pane split_direction="vertical" size="72%" {
 $agent_pane

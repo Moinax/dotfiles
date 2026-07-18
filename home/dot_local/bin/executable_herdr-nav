@@ -5,7 +5,9 @@
 #
 # Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
 #        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
-#        herdr-nav agent-tab        add another agent tab to the focused workspace
+#        herdr-nav agent-tab [PROV] add another agent tab to the focused
+#                                   workspace; PROV overrides the inherited
+#                                   provider (e.g. claudex for a GPT tab)
 set -euo pipefail
 
 die() { echo "herdr-nav: $*" >&2; exit 1; }
@@ -53,7 +55,15 @@ case "${1:-}" in
     # Clone the dev-herdr "agent" tab layout into a new tab of the focused
     # workspace (agent + lazygit top row, dev/logs bottom row) so several
     # agents can share one checkout — no worktree needed. Provider and
-    # project dir come from the workspace's existing agent pane.
+    # project dir come from the workspace's existing agent pane; an explicit
+    # PROVIDER argument overrides it (ctrl+alt+x passes claudex). Tabs are
+    # labeled by provider, so mixed tabs stay tellable apart.
+    provider_override="${2:-}"
+    # One list serves both the fail-fast check here and the tab-family regex
+    # below; the per-provider CLI shape still lives in dev-agent-argv.
+    providers="claude claudex codex opencode"
+    [[ -z "$provider_override" || " $providers " == *" $provider_override "* ]] \
+      || die "agent-tab: unknown provider '$provider_override'"
     # Workspace id + label in one `workspace list` call.
     IFS=$'\t' read -r ws ws_label < <(herdr workspace list \
       | jq -re '.result.workspaces[] | select(.focused) | [.workspace_id, .label] | @tsv') \
@@ -68,15 +78,21 @@ case "${1:-}" in
       dir="$(jq -re '.result.panes[] | select(.focused) | .cwd' <<<"$panes")" \
         || die "no focused pane"
     fi
-    # Existing "agent" / "agent N" tabs, in one pass: the next free suffix for
-    # the new label, and their count = where the new tab should land (right
-    # after the last agent tab — they stay contiguous at the front).
+    [[ -n "$provider_override" ]] && provider="$provider_override"
+    # Tabs are labeled by provider — "claude", "claude 2", "claudex", ... —
+    # one numbered family per provider. One pass over the tab labels: the
+    # next free suffix within this provider's family, and the count of ALL
+    # agent-family tabs ("agent" = pre-rename workspaces) = where the new
+    # tab should land (right after the last one — they stay contiguous at
+    # the front, whatever their provider).
     read -r num agent_count < <(herdr tab list --workspace "$ws" \
-      | jq -r '[.result.tabs[].label
-                | capture("^agent(?: (?<n>[0-9]+))?$")
-                | ((.n // "1") | tonumber)]
-               | "\((max // 0) + 1) \(length)"')
-    label="agent"; [[ "$num" -gt 1 ]] && label="agent $num"
+      | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
+          [.result.tabs[].label] as $ls
+          | ([$ls[] | capture("^\($base)(?: (?<n>[0-9]+))?$")
+              | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
+          | ([$ls[] | select(test($fam))] | length) as $cnt
+          | "\($num) \($cnt)"')
+    label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
 
     tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
     t_new="$(jq -r '.result.tab.tab_id' <<<"$tab_json")"
@@ -88,8 +104,9 @@ case "${1:-}" in
     # Panes (agent + lazygit top row, dev/logs bottom row) are built by
     # herdr-agent-layout, shared with dev-herdr's create path. No -s: the
     # session comes from the inherited HERDR_SOCKET_PATH, like every other
-    # herdr call in this script.
-    herdr-agent-layout "$p_agent" "$dir" "$provider" "$ws_label #$num"
+    # herdr call in this script. The agent display name carries the tab
+    # label: "ws (claude 2)".
+    herdr-agent-layout "$p_agent" "$dir" "$provider" "$ws_label ($label)"
 
     # tab create does not switch the workspace's active tab — land on the
     # new agent explicitly.

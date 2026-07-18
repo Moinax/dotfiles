@@ -54,6 +54,15 @@ type = "shell"
 command = "herdr-nav agent-tab"
 description = "New agent tab (same project)"
 
+# Same layout clone, but the agent is claudex (Claude Code on the ChatGPT
+# subscription via claude-code-proxy) — a GPT tab next to the Claude one,
+# labeled "claudex" so mixed tabs stay tellable apart.
+[[keys.command]]
+key = "ctrl+alt+x"
+type = "shell"
+command = "herdr-nav agent-tab claudex"
+description = "New claudex tab (same project)"
+
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]
