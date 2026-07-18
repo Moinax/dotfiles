@@ -5,6 +5,8 @@
 #
 # Each provider has its own CLI shape:
 #   claude   -> claude -n NAME [prompt]   (-n = display name; prompt auto-submits)
+#   claudex  -> claudex -n NAME [prompt]  (wrapper that execs claude against
+#                                           claude-code-proxy — same CLI shape)
 #   codex    -> codex [prompt]            (prompt positional; no name flag)
 #   opencode -> opencode                  (TUI; positional is a PATH not a prompt,
 #                                           so no name and no auto-prompt)
@@ -17,8 +19,8 @@ set -euo pipefail
 provider="${1:-}"; name="${2:-}"; prompt="${3:-}"
 
 case "$provider" in
-  claude)
-    set -- claude
+  claude|claudex)
+    set -- "$provider"
     [[ -n "$name" ]]   && set -- "$@" -n "$name"
     [[ -n "$prompt" ]] && set -- "$@" "$prompt"
     ;;
@@ -31,7 +33,7 @@ case "$provider" in
     set -- opencode
     ;;
   *)
-    echo "dev-agent-argv: unknown provider '$provider' (want: claude|codex|opencode)" >&2
+    echo "dev-agent-argv: unknown provider '$provider' (want: claude|claudex|codex|opencode)" >&2
     exit 1
     ;;
 esac

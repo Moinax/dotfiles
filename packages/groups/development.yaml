@@ -41,6 +41,7 @@ descriptions:
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
   claude-code: AI-powered coding assistant CLI
+  claude-code-proxy: Anthropic-compatible proxy — Claude Code on a ChatGPT subscription (claudex)
   ccstatusline: Claude Code status line with Catppuccin Powerline theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
@@ -62,6 +63,11 @@ custom_install:
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
     requires: gh
+  # Backs the `claudex` wrapper / dev -p claudex (Claude Code on the ChatGPT
+  # subscription). One-time auth after install: claude-code-proxy codex auth login
+  - name: claude-code-proxy
+    check: command -v claude-code-proxy
+    install: mkdir -p ~/.local/bin && curl -fsSL "https://github.com/raine/claude-code-proxy/releases/latest/download/claude-code-proxy-linux-amd64.tar.gz" | tar xz -C ~/.local/bin claude-code-proxy
 
 packages:
   arch:

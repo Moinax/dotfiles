@@ -4,7 +4,8 @@
 # function: it has no parent-shell side effects, and one copy serves fish,
 # zsh, and the pickers (dev-pick, rofi-dev) alike.
 #   -n <name>  append " - <name>" after the directory name in the title
-#   -p <prov>  AI agent provider: claude (default), codex, opencode
+#   -p <prov>  AI agent provider: claude (default), claudex (claude on the
+#              ChatGPT subscription via claude-code-proxy), codex, opencode
 #
 # Usage: dev [-n NAME] [-p PROVIDER] [DIR]
 set -euo pipefail
@@ -17,8 +18,8 @@ while [[ "${1:-}" == -* ]]; do
       name_override="$2"; shift 2 ;;
     -p)
       case "${2:-}" in
-        claude|codex|opencode) provider="$2"; shift 2 ;;
-        *) echo "dev: -p must be claude|codex|opencode" >&2; exit 1 ;;
+        claude|claudex|codex|opencode) provider="$2"; shift 2 ;;
+        *) echo "dev: -p must be claude|claudex|codex|opencode" >&2; exit 1 ;;
       esac ;;
     --) shift; break ;;
     *) echo "dev: unknown option $1" >&2; exit 1 ;;
