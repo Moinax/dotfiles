@@ -8,6 +8,8 @@
 #        herdr-nav agent-tab [PROV] add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
 #                                   provider (e.g. claudex for a GPT tab)
+#        herdr-nav quit             stop the current session and close its
+#                                   client window (the in-herdr `hss`)
 set -euo pipefail
 
 die() { echo "herdr-nav: $*" >&2; exit 1; }
@@ -112,7 +114,24 @@ case "${1:-}" in
     # new agent explicitly.
     herdr tab focus "$t_new" >/dev/null
     ;;
+  quit)
+    # Stop the current session — detach its client window, then stop its
+    # server (kills the agents; session.json survives). The session name
+    # comes from the inherited socket path: named sessions live in
+    # ~/.config/herdr/sessions/<name>/herdr.sock, the default session's
+    # socket sits directly in ~/.config/herdr.
+    session="default"
+    sessions_dir="$HOME/.config/herdr/sessions"
+    if [[ "${HERDR_SOCKET_PATH:-}" == "$sessions_dir"/?*/* ]]; then
+      session="${HERDR_SOCKET_PATH#"$sessions_dir/"}"
+      session="${session%%/*}"
+    fi
+    # herdr-clients stop tears down this very process's ancestors (the
+    # client window, then the server that ran this shell bind) — detach
+    # fully so the stop sequence survives its own teardown.
+    setsid -f herdr-clients stop "$session" >/dev/null 2>&1 </dev/null
+    ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-tab)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-tab | quit)"
     ;;
 esac

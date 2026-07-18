@@ -63,6 +63,16 @@ type = "shell"
 command = "herdr-nav agent-tab claudex"
 description = "New claudex tab (same project)"
 
+# Stop the current session and close its client window — the in-herdr
+# equivalent of `hss <session>` (kills the agents; the saved layout
+# persists, so reopening the session restores it fresh). Mirrors the
+# desktop Mod+Alt+Q stop-all, scoped to this session.
+[[keys.command]]
+key = "ctrl+alt+q"
+type = "shell"
+command = "herdr-nav quit"
+description = "Stop session & close window (kills agents)"
+
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]
