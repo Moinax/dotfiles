@@ -5,6 +5,8 @@
 #
 # Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
 #        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
+#        herdr-nav agent-picker     pick an agent provider, then add it as a
+#                                   tab to the focused workspace
 #        herdr-nav agent-tab [PROV] add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
 #                                   provider (e.g. claudex for a GPT tab)
@@ -35,6 +37,11 @@ focused_workspace() {
     || die "no focused workspace"
 }
 
+# Known agent providers — one list serves the agent-picker menu, agent-tab's
+# fail-fast check, and its tab-family regex; the per-provider CLI shape still
+# lives in dev-agent-argv.
+providers="claude claudex codex opencode"
+
 case "${1:-}" in
   tab)
     n="${2:?usage: herdr-nav tab N}"
@@ -53,17 +60,21 @@ case "${1:-}" in
       || die "no focused pane"
     herdr pane resize --direction "$dir" --pane "$pane" >/dev/null
     ;;
+  agent-picker)
+    command -v tv >/dev/null 2>&1 || die "agent-picker: television is not installed"
+    provider="$(tv --source-command "printf '%s\\n' $providers" \
+      --no-status-bar --input-header "New agent" < /dev/tty)" || exit 0
+    [[ -n "$provider" ]] || exit 0
+    exec "$0" agent-tab "$provider"
+    ;;
   agent-tab)
     # Clone the dev-herdr "agent" tab layout into a new tab of the focused
     # workspace (agent + lazygit top row, dev/logs bottom row) so several
     # agents can share one checkout — no worktree needed. Provider and
     # project dir come from the workspace's existing agent pane; an explicit
-    # PROVIDER argument overrides it (ctrl+alt+x passes claudex). Tabs are
-    # labeled by provider, so mixed tabs stay tellable apart.
+    # PROVIDER argument overrides it (the ctrl+alt+a picker passes the chosen
+    # agent). Tabs are labeled by provider, so mixed tabs stay tellable apart.
     provider_override="${2:-}"
-    # One list serves both the fail-fast check here and the tab-family regex
-    # below; the per-provider CLI shape still lives in dev-agent-argv.
-    providers="claude claudex codex opencode"
     [[ -z "$provider_override" || " $providers " == *" $provider_override "* ]] \
       || die "agent-tab: unknown provider '$provider_override'"
     # Workspace id + label in one `workspace list` call.
@@ -82,18 +93,21 @@ case "${1:-}" in
     fi
     [[ -n "$provider_override" ]] && provider="$provider_override"
     # Tabs are labeled by provider — "claude", "claude 2", "claudex", ... —
-    # one numbered family per provider. One pass over the tab labels: the
-    # next free suffix within this provider's family, and the count of ALL
-    # agent-family tabs ("agent" = pre-rename workspaces) = where the new
-    # tab should land (right after the last one — they stay contiguous at
-    # the front, whatever their provider).
-    read -r num agent_count < <(herdr tab list --workspace "$ws" \
+    # one numbered family per provider. One pass over the tab labels finds
+    # the next free suffix and the insertion point. Prefer immediately before
+    # nvim (therefore after the contiguous agent block); without nvim, insert
+    # immediately after the last agent tab. Unlike merely counting agents,
+    # this remains correct if the user has manually rearranged other tabs.
+    read -r num insert_index < <(herdr tab list --workspace "$ws" \
       | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
           [.result.tabs[].label] as $ls
           | ([$ls[] | capture("^\($base)(?: (?<n>[0-9]+))?$")
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
-          | ([$ls[] | select(test($fam))] | length) as $cnt
-          | "\($num) \($cnt)"')
+          | ($ls | index("nvim")) as $nvim
+          | ([range(0; $ls | length) | select($ls[.] | test($fam))]
+              | max // -1) as $last_agent
+          | ($nvim // ($last_agent + 1)) as $insert
+          | "\($num) \($insert)"')
     label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
 
     tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
@@ -101,7 +115,7 @@ case "${1:-}" in
     p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$tab_json")"
     # tab create appends at the end (after nvim); move it up next to the other
     # agent tabs. tab.move is socket-only (no CLI verb); non-fatal.
-    api tab.move "{\"tab_id\":\"$t_new\",\"insert_index\":$agent_count}" >/dev/null || true
+    api tab.move "{\"tab_id\":\"$t_new\",\"insert_index\":$insert_index}" >/dev/null || true
 
     # Panes (agent + lazygit top row, dev/logs bottom row) are built by
     # herdr-agent-layout, shared with dev-herdr's create path. No -s: the
@@ -132,6 +146,6 @@ case "${1:-}" in
     setsid -f herdr-clients stop "$session" >/dev/null 2>&1 </dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-tab | quit)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | quit)"
     ;;
 esac

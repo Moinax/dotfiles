@@ -48,32 +48,25 @@ previous_tab = ["prefix+p", "ctrl+alt+p"]
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
 # project's dev environment via dev-mux — the in-herdr rofi-dev.
 [[keys.command]]
-key = "prefix+o"
+key = ["prefix+o", "ctrl+alt+o"]
 type = "popup"
 command = "dev-pick"
 width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
 
-# Open an extra agent tab in the focused workspace, cloning the dev-herdr
-# "agent" tab layout (agent + lazygit top row, dev/logs bottom row) with the
-# same provider and project dir — several agents on one checkout, no
-# worktree needed. ctrl+alt is mostly free across the stack (Hyprland only
-# uses SUPER+CTRL / ALT+CTRL+TAB; kitty uses ctrl+alt+enter and ctrl+alt+r).
+# Pick an agent provider (herdr-nav's shared list), then open it as an extra
+# agent tab in the focused workspace. The tab clones the dev-herdr layout
+# (agent + lazygit top row, dev/logs bottom row) in the same project directory
+# — several agents on one checkout, no worktree needed. ctrl+alt is mostly
+# free across the stack.
 [[keys.command]]
 key = "ctrl+alt+a"
-type = "shell"
-command = "herdr-nav agent-tab"
-description = "New agent tab (same project)"
-
-# Same layout clone, but the agent is claudex (Claude Code on the ChatGPT
-# subscription via claude-code-proxy) — a GPT tab next to the Claude one,
-# labeled "claudex" so mixed tabs stay tellable apart.
-[[keys.command]]
-key = "ctrl+alt+x"
-type = "shell"
-command = "herdr-nav agent-tab claudex"
-description = "New claudex tab (same project)"
+type = "popup"
+command = "herdr-nav agent-picker"
+width = "40%"
+height = "35%"
+description = "New agent tab (pick provider)"
 
 # Stop the current session and close its client window — the in-herdr
 # equivalent of `hss <session>` (kills the agents; the saved layout
