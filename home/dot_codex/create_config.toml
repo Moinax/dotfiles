@@ -1,0 +1,18 @@
+# Run without approval prompts or filesystem/network sandboxing. This gives
+# Codex the same privileges as the user who launched it; use only on trusted
+# repositories and prompts.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+# Closest native Codex equivalent to the ccstatusline layout. Codex currently
+# supports built-in single-line items, not an external command renderer.
+[tui]
+status_line = [
+  "model-with-reasoning",
+  "context-used",
+  "five-hour-limit",
+  "weekly-limit",
+  "project-root",
+  "git-branch",
+]
+status_line_use_colors = true
