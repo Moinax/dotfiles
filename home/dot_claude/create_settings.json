@@ -6,16 +6,10 @@
     "refreshInterval": 5
   },
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true,
     "mbrella@mbrella": true,
     "worktrunk@worktrunk": true,
-    "superpowers@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "context7@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "mbrella": {
@@ -31,7 +25,7 @@
       }
     }
   },
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "permissions": {
     "defaultMode": "auto"
   }
