@@ -9,6 +9,7 @@ dotfiles:
   - dot_config/nvim
   - dot_config/Cursor
   - dot_config/delta
+  - dot_config/tuicr
   - dot_config/gh-dash
   - dot_config/worktrunk
   - dot_config/ccstatusline
@@ -28,6 +29,7 @@ descriptions:
   github-cli: GitHub CLI
   lazygit: Terminal UI for git
   git-delta: Syntax-highlighting diff pager
+  tuicr: Code review TUI with vim keybindings (local diffs + GitHub PRs)
   tea: Command-line client for Gitea servers
   docker: Container runtime engine
   docker-compose: Multi-container orchestration
@@ -81,6 +83,7 @@ packages:
     - github-cli
     - lazygit
     - git-delta
+    - tuicr
     - tea
     
     # Containers

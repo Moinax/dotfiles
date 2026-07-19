@@ -201,6 +201,7 @@ if command -v chezmoi &>/dev/null; then
         ~/.gitconfig \
         ~/.config/gh-dash/config.yml \
         ~/.config/starship.toml \
+        ~/.config/tuicr/config.toml \
         ~/.config/yazi/theme.toml \
         ~/.local/share/rofi/themes/wallpaper.rasi \
         2>/dev/null || true

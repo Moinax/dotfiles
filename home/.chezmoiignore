@@ -59,6 +59,8 @@ LICENSE
 .config/Cursor/**
 .config/delta
 .config/delta/**
+.config/tuicr
+.config/tuicr/**
 .config/gh-dash
 .config/gh-dash/**
 .config/worktrunk

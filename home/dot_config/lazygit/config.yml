@@ -9,3 +9,22 @@ gui:
 os:
   editPreset: "nvim-remote"
   open: 'if [ -n "$NVIM" ]; then nvim --server "$NVIM" --remote {{filename}}; else xdg-open {{filename}}; fi'
+customCommands:
+  # tuicr code review on Ctrl+V, context-aware: working tree in the files
+  # panel, branch..HEAD in the branches panel, selected commit(s) in the
+  # commits panel (range selection reviews the whole range).
+  - key: <c-v>
+    context: files
+    command: tuicr -w
+    output: terminal
+    description: Review working changes in tuicr
+  - key: <c-v>
+    context: localBranches
+    command: tuicr -r {{.SelectedLocalBranch.Name}}..HEAD
+    output: terminal
+    description: Review selected branch..HEAD in tuicr
+  - key: <c-v>
+    context: commits
+    command: tuicr -r {{.SelectedCommitRange.From}}^..{{.SelectedCommitRange.To}}
+    output: terminal
+    description: Review selected commit(s) in tuicr
