@@ -33,6 +33,18 @@ next_workspace = "ctrl+alt+down"
 # it at runtime, misaligning every later [[keys.command]] binding.
 switch_tab = ["prefix+1..9", "alt+1..9"]
 
+# Browser-style tab management. ctrl+alt+t/w instead of plain ctrl+t/w:
+# direct bindings swallow the key from every pane, and ctrl+t is the
+# television file picker in the shells while ctrl+w is shell delete-word
+# and nvim's window prefix. ctrl+alt matches the agent-tab cluster below.
+# ctrl+tab/ctrl+shift+tab cycle tabs too, but they have no legacy terminal
+# encoding and herdr 0.7.4 never receives them — kitty translates them to
+# ctrl+alt+n/p (see kitty.conf), which is what's actually bound here.
+new_tab = ["prefix+c", "ctrl+alt+t"]
+close_tab = ["prefix+shift+x", "ctrl+alt+w"]
+next_tab = ["prefix+n", "ctrl+alt+n"]
+previous_tab = ["prefix+p", "ctrl+alt+p"]
+
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
 # project's dev environment via dev-mux — the in-herdr rofi-dev.
 [[keys.command]]
