@@ -13,9 +13,8 @@
 | Open terminal (kitty) | `Mod+Return` | |
 | Dev terminal (Zellij session) | `Mod+Alt+Return` | Rofi directory picker, then a persistent Zellij dev session (agent + nvim tabs) |
 | App launcher (rofi) | `Mod+Space` | |
-| Open browser (Helium) | `Mod+B` | Default browser |
-| Open browser (Zen) | `Mod+Alt+B` | |
-| Open browser (Chrome) | `Mod+Ctrl+B` | |
+| Open default browser | `Mod+B` | Launches the system default web browser |
+| Pick browser (rofi) | `Mod+Alt+B` | Rofi menu of all installed browsers |
 | File manager (Dolphin) | `Mod+E` | |
 | Emoji selector | `Mod+I` | rofimoji (clipboard paste) |
 | Switch audio output | `Mod+A` | |
