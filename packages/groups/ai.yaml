@@ -34,4 +34,9 @@ packages:
   arch:
     # Dictation (speech-to-text)
     - hyprvoice-bin
-    - whisper.cpp
+    # NOTE: whisper.cpp (the local engine) is intentionally NOT listed here.
+    # On NVIDIA systems paru resolves it to whisper.cpp-cuda, which pulls the
+    # full CUDA toolkit and compiles ggml-cuda-git — a long, heavy build that is
+    # pure waste for anyone using the Groq (cloud) provider. Instead the
+    # installer installs whisper.cpp on demand, only when the user picks the
+    # whisper-cpp (local) provider. See install/installer.sh (hyprvoice setup).

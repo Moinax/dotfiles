@@ -21,8 +21,6 @@ descriptions:
   ark: KDE archive manager (Dolphin right-click "Extract here")
   ffmpegthumbnailer: Video thumbnail generator
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
-  snapper: BTRFS snapshot manager
-  snap-pac: Auto-snapshot on pacman upgrades
   slack-desktop: Team communication app (AUR)
   telegram-desktop: Telegram messaging app
   bitwarden: Bitwarden password manager desktop app
@@ -48,10 +46,10 @@ packages:
     - okular
     - ark
 
-    # Backup and snapshots (boot-entry sync for snapshots is handled by
-    # CachyOS's limine-snapper-sync)
-    - snapper
-    - snap-pac
+    # BTRFS snapshots are handled entirely by CachyOS's stock stack
+    # (snapper + snap-pac + limine-snapper-sync + btrfs-assistant, pulled in by
+    # the cachyos-snapper-support meta-package at install time), so we install
+    # nothing here. On non-CachyOS Arch derivatives, set up snapshots manually.
 
     # Communication
     - slack-desktop  # AUR

@@ -38,50 +38,6 @@ HYPRVOICE_MODEL="small"
 HYPRVOICE_PROVIDER="whisper-cpp"
 INSTALL_PURPOSE="desktop"
 
-# Check if root filesystem is BTRFS
-is_root_btrfs() {
-    local fstype
-    fstype=$(findmnt -n -o FSTYPE / 2>/dev/null)
-    [ "$fstype" = "btrfs" ]
-}
-
-# Read a value from `snapper -c root get-config`.
-# Tries without sudo first (works when ALLOW_USERS includes $USER), falls back to sudo.
-snapper_root_config_value() {
-    local key="$1"
-    local line raw
-
-    raw=$(snapper -c root --csvout get-config 2>/dev/null || sudo snapper -c root --csvout get-config 2>/dev/null) || return 1
-
-    line=$(printf '%s\n' "$raw" | awk -F',' -v key="$key" '
-        $1 == key {
-            print $2
-            exit
-        }
-    ')
-
-    [ -n "$line" ] || return 1
-    printf '%s\n' "$line"
-}
-
-# Return success when BTRFS snapshot setup is complete enough to skip rerunning it.
-is_btrfs_snapshots_configured() {
-    local timeline_value allow_users
-
-    command_exists snapper || return 1
-    [ -f /etc/snapper/configs/root ] || return 1
-
-    timeline_value=$(snapper_root_config_value "TIMELINE_CREATE") || return 1
-    [ "$timeline_value" = "no" ] || return 1
-
-    allow_users=$(snapper_root_config_value "ALLOW_USERS") || return 1
-    if ! printf '%s\n' "$allow_users" | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -Fxq "$USER"; then
-        return 1
-    fi
-
-    return 0
-}
-
 # Check if gum is available
 check_gum() {
     if ! command_exists gum; then
@@ -606,6 +562,50 @@ install_base_packages() {
     print_success "Base packages installed"
 }
 
+# Install fnm and a Node.js LTS if missing. Idempotent, safe to call more than
+# once. fnm's LTS is our npm provider — Arch's nodejs package ships without
+# npm/npx — so npm-dependent custom installs (codex, global yarn/pnpm) need
+# this to have run first.
+ensure_node_toolchain() {
+    # Called twice per run — from main() before group packages (so npm-based
+    # custom installs work) and again from install_common_tools. The first
+    # successful pass sets this flag; the second returns immediately instead of
+    # re-spawning fnm to re-confirm what we already know.
+    [ "${NODE_TOOLCHAIN_READY:-false}" = true ] && return 0
+
+    if ! command_exists fnm; then
+        install_curl_tool "fnm" "curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell"
+        # The fnm installer (--skip-shell) drops the binary in ~/.local/share/fnm,
+        # which is not on the installer's PATH.
+        export PATH="$HOME/.local/share/fnm:$PATH"
+        hash -r 2>/dev/null || true
+    else
+        print_info "fnm is already installed"
+    fi
+
+    # Ensure a Node.js version is actually installed — fnm can exist with no
+    # versions (e.g. from a run that died before this step).
+    if command_exists fnm; then
+        eval "$(fnm env --use-on-cd --shell bash)" || true
+        if ! fnm ls | grep -q 'lts\|v[0-9]'; then
+            print_info "Installing Node.js LTS via fnm..."
+            if fnm install --lts && fnm default lts-latest; then
+                eval "$(fnm env --use-on-cd --shell bash)" || true
+                hash -r 2>/dev/null || true
+                print_success "Node.js LTS installed via fnm"
+            else
+                track_warning "Failed to install Node.js LTS via fnm"
+            fi
+        else
+            print_info "Node.js already installed via fnm"
+        fi
+    else
+        track_warning "fnm unavailable — Node.js LTS not installed"
+    fi
+
+    NODE_TOOLCHAIN_READY=true
+}
+
 # Install group packages
 install_group_packages() {
     if [ ${#SELECTED_GROUP_NAMES[@]} -eq 0 ]; then
@@ -789,37 +789,9 @@ install_common_tools() {
         print_info "zoxide is already installed"
     fi
     
-    # Install fnm
-    if ! command_exists fnm; then
-        install_curl_tool "fnm" "curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell"
-        # The fnm installer (--skip-shell) drops the binary in ~/.local/share/fnm,
-        # which is not on the installer's PATH.
-        export PATH="$HOME/.local/share/fnm:$PATH"
-        hash -r 2>/dev/null || true
-    else
-        print_info "fnm is already installed"
-    fi
-
-    # Ensure a Node.js version is actually installed — fnm can exist with no
-    # versions (e.g. from a run that died before this step), and Arch's nodejs
-    # package ships without npm/npx, so fnm's LTS is our npm provider.
-    if command_exists fnm; then
-        eval "$(fnm env --use-on-cd --shell bash)" || true
-        if ! fnm ls | grep -q 'lts\|v[0-9]'; then
-            print_info "Installing Node.js LTS via fnm..."
-            if fnm install --lts && fnm default lts-latest; then
-                eval "$(fnm env --use-on-cd --shell bash)" || true
-                hash -r 2>/dev/null || true
-                print_success "Node.js LTS installed via fnm"
-            else
-                track_warning "Failed to install Node.js LTS via fnm"
-            fi
-        else
-            print_info "Node.js already installed via fnm"
-        fi
-    else
-        track_warning "fnm unavailable — Node.js LTS not installed"
-    fi
+    # Install fnm + a Node.js LTS (idempotent). Also called earlier, before
+    # group packages, so npm-based custom installs (e.g. codex) can run.
+    ensure_node_toolchain
 
     # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
     if command_exists npm; then
@@ -874,6 +846,16 @@ install_common_tools() {
                     || HYPRVOICE_PROVIDER="whisper-cpp"
 
                 if [ "$HYPRVOICE_PROVIDER" = "whisper-cpp" ]; then
+                    # Local provider: install the whisper.cpp engine on demand.
+                    # It is deliberately kept out of the AI group's package list
+                    # (see packages/groups/ai.yaml) so Groq users never pay for
+                    # the CUDA toolkit + ggml-cuda-git compile.
+                    if ! command_exists whisper-cli && ! command_exists whisper-cpp; then
+                        print_info "Installing local whisper.cpp engine (may build against CUDA)..."
+                        install_packages whisper.cpp \
+                            || track_warning "Failed to install whisper.cpp — local dictation will not work"
+                    fi
+
                     # Local provider: select and download a whisper model
                     local models=()
                     mapfile -t models < <(hyprvoice_list_models)
@@ -1003,7 +985,7 @@ setup_dotfiles() {
     # Settings the setup flow never asks about (use_herdr is toggled via
     # reconfig, dark_mode via the theme toggle) must survive re-runs: carry
     # over existing values, defaulting only when absent.
-    local use_herdr="false" dark_mode="dark" existing_val
+    local use_herdr="true" dark_mode="dark" existing_val
     if [ -f "$chezmoi_config" ]; then
         existing_val=$(grep -m1 -oP '^\s*use_herdr\s*=\s*\K(true|false)' "$chezmoi_config" || true)
         [ -n "$existing_val" ] && use_herdr="$existing_val"
@@ -1626,131 +1608,6 @@ setup_shell() {
     fi
 }
 
-# Setup BTRFS snapshots with Snapper (conditional on BTRFS + productivity group)
-setup_btrfs_snapshots() {
-    # Only run if productivity group was selected
-    if ! group_selected productivity; then
-        return 0
-    fi
-
-    # Check if root filesystem is BTRFS
-    if ! is_root_btrfs; then
-        print_info "Root filesystem is not BTRFS — skipping snapshot setup"
-        return 0
-    fi
-
-    # Verify snapper is installed
-    if ! command_exists snapper; then
-        print_info "snapper not found — skipping BTRFS snapshot setup"
-        return 0
-    fi
-
-    if is_btrfs_snapshots_configured; then
-        print_info "BTRFS snapshots already configured, skipping"
-        BTRFS_SNAPSHOTS_CONFIGURED=true
-        return 0
-    fi
-
-    echo ""
-    print_info "BTRFS root detected with snapper installed"
-    if ! gum confirm "Configure automatic BTRFS snapshots before package upgrades?"; then
-        return 0
-    fi
-
-    print_info "Configuring BTRFS snapshots..."
-
-    # Create snapper root config if it doesn't exist
-    local config_created=false
-    if [ ! -f /etc/snapper/configs/root ]; then
-        print_info "Creating snapper root config..."
-        # Safety: if /.snapshots contains numbered snapshot dirs, snapper was previously
-        # configured — the root config check above likely failed due to permissions.
-        # Bail out rather than destroying existing snapshots.
-        if ls -d /.snapshots/[0-9]* &>/dev/null; then
-            print_warning "/.snapshots contains existing snapshots but no snapper root config was detected"
-            print_warning "This likely means snapper is configured but the check failed — skipping destructive setup"
-            print_warning "Run 'snapper list-configs' manually to verify"
-            return 0
-        fi
-        # Remove pre-existing .snapshots subvolume/directory that blocks snapper create-config
-        # archinstall creates a top-level @.snapshots subvolume mounted at /.snapshots
-        if findmnt -n /.snapshots &>/dev/null; then
-            print_info "Unmounting pre-existing /.snapshots..."
-            sudo umount /.snapshots || {
-                print_warning "Failed to unmount /.snapshots — skipping snapshot setup"
-                return 0
-            }
-            # Delete the top-level @.snapshots subvolume (e.g. from archinstall)
-            local root_dev
-            root_dev=$(findmnt -n -o SOURCE / | sed 's/\[.*\]//')
-            if [ -n "$root_dev" ]; then
-                local tmp_mnt
-                tmp_mnt=$(mktemp -d)
-                if sudo mount -o subvolid=5 "$root_dev" "$tmp_mnt"; then
-                    if sudo btrfs subvolume show "$tmp_mnt/@.snapshots" &>/dev/null; then
-                        print_info "Deleting top-level @.snapshots subvolume..."
-                        # Delete nested snapshot subvolumes first
-                        for snap_dir in "$tmp_mnt/@.snapshots"/*/snapshot; do
-                            [ -d "$snap_dir" ] && sudo btrfs subvolume delete "$snap_dir" 2>/dev/null || true
-                        done
-                        sudo btrfs subvolume delete "$tmp_mnt/@.snapshots" || true
-                    fi
-                    sudo umount "$tmp_mnt" || print_warning "Failed to unmount $tmp_mnt"
-                fi
-                rmdir "$tmp_mnt" 2>/dev/null
-            fi
-        fi
-        if sudo btrfs subvolume show /.snapshots &>/dev/null; then
-            print_info "Removing pre-existing /.snapshots subvolume..."
-            # Delete nested snapshot subvolumes first (btrfs refuses to delete non-empty subvolumes)
-            for snap_dir in /.snapshots/*/snapshot; do
-                [ -d "$snap_dir" ] && sudo btrfs subvolume delete "$snap_dir" 2>/dev/null || true
-            done
-            sudo btrfs subvolume delete /.snapshots || {
-                print_warning "Failed to remove /.snapshots subvolume — skipping snapshot setup"
-                return 0
-            }
-        fi
-        if [ -d /.snapshots ]; then
-            sudo rmdir /.snapshots || {
-                print_warning "Failed to remove /.snapshots directory — skipping snapshot setup"
-                return 0
-            }
-        fi
-        sudo snapper create-config / || {
-            print_warning "Failed to create snapper root config — skipping snapshot setup"
-            return 0
-        }
-        config_created=true
-    fi
-
-    # Disable timeline snapshots (we only want pre-upgrade snapshots)
-    sudo snapper -c root set-config "TIMELINE_CREATE=no" || {
-        print_warning "Failed to configure snapper timeline settings"
-    }
-
-    # Allow the current user to run snapper without sudo
-    sudo snapper -c root set-config "ALLOW_USERS=$USER" || {
-        print_warning "Failed to set ALLOW_USERS for snapper"
-    }
-
-    # Remove stale @.snapshots fstab entry (archinstall leftover, now managed by snapper)
-    if grep -q '^UUID=.*@\.snapshots' /etc/fstab; then
-        print_info "Removing stale @.snapshots fstab entry..."
-        sudo sed -i '/^UUID=.*@\.snapshots/d' /etc/fstab
-    fi
-
-    # Create initial snapshot only when config was freshly created
-    if [ "$config_created" = true ]; then
-        sudo snapper create --description "Initial snapshot after dotfiles setup" || {
-            print_warning "Failed to create initial snapshot"
-        }
-    fi
-
-    BTRFS_SNAPSHOTS_CONFIGURED=true
-    print_success "BTRFS snapshot setup complete"
-}
-
 # Show completion message
 show_completion() {
     echo ""
@@ -1790,11 +1647,6 @@ show_completion() {
         next_step=$((next_step + 1))
     fi
 
-    if [ "$BTRFS_SNAPSHOTS_CONFIGURED" = true ]; then
-        steps+=("  $next_step. Run 'snapper list' to verify BTRFS snapshots are working")
-        next_step=$((next_step + 1))
-    fi
-
     # Show warnings summary if any
     if [ ${#INSTALL_WARNINGS[@]} -gt 0 ]; then
         local warning_lines=()
@@ -1831,7 +1683,7 @@ main() {
     SELECTED_GROUP_NAMES=()
     SERVICES_TO_ENABLE=()
     PLYMOUTH_CONFIGURED=false
-    BTRFS_SNAPSHOTS_CONFIGURED=false
+    NODE_TOOLCHAIN_READY=false
     SHELL_CHANGED=false
     SSH_KEY_GENERATED=false
     SSH_KEY_RESTORED=false
@@ -1891,6 +1743,9 @@ main() {
     # never reach the package installs below. Warn and continue.
     update_system || track_warning "System update failed; continuing with package installation"
     install_base_packages
+    # Bootstrap Node/npm before group packages so npm-based custom installs
+    # (e.g. codex in the development group) can run on a fresh machine.
+    ensure_node_toolchain
     install_group_packages
     install_common_tools
     setup_dotfiles
@@ -1903,7 +1758,6 @@ main() {
     tune_boot_performance
     setup_clamav
     setup_biometric
-    setup_btrfs_snapshots
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_plymouth
     fi

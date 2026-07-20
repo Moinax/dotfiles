@@ -7,17 +7,17 @@
 {{- end -}}
 {{- $imageViewer := "org.kde.gwenview.desktop" -}}
 {{- $pdfViewer := "org.kde.okular.desktop" -}}
-{{- $browser := "google-chrome.desktop" -}}
-{{- if lookPath "zen-browser" -}}
-{{-   if stat (joinPath "/usr/share/applications" "zen.desktop") -}}
-{{-     $browser = "zen.desktop" -}}
-{{-   else -}}
-{{-     $browser = "zen-browser.desktop" -}}
-{{-   end -}}
-{{- end -}}
-{{- if stat (joinPath .chezmoi.homeDir ".local/share/applications/helium.desktop") -}}
-{{-   $browser = "helium.desktop" -}}
-{{- end -}}
+{{- /* This file uses chezmoi's `create_` attribute (see the source filename:
+       create_mimeapps.list.tmpl): it is seeded ONCE on a fresh machine and
+       then never managed again. That is deliberate — browsers and KDE rewrite
+       ~/.config/mimeapps.list themselves via xdg-settings/xdg-mime when you set
+       a default browser, so if chezmoi kept managing it you'd get perpetual
+       `chezmoi diff` churn and your browser choice reverted on every apply.
+       Instead we seed sane defaults (Firefox — the only browser on a fresh
+       CachyOS — plus the image/video/pdf associations below), then hand the
+       file over to you and your apps. Set your real default browser through the
+       browser itself; chezmoi won't fight it. */ -}}
+{{- $browser := "firefox.desktop" -}}
 [Default Applications]
 # Images
 image/bmp={{ $imageViewer }}

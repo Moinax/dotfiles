@@ -43,6 +43,7 @@ descriptions:
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
   claude-code: AI-powered coding assistant CLI
+  codex: OpenAI Codex coding agent CLI (npm @openai/codex)
   claude-code-proxy: Anthropic-compatible proxy — Claude Code on a ChatGPT subscription (claudex)
   ccstatusline: Claude Code status line with Catppuccin Powerline theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
@@ -61,6 +62,12 @@ custom_install:
   - name: claude-code
     check: command -v claude
     install: curl -fsSL https://claude.ai/install.sh | bash
+  # OpenAI Codex CLI — installed via npm like a global JS tool (self-updates
+  # with `npm update -g @openai/codex`). Needs node/npm, which fnm provides.
+  - name: codex
+    check: command -v codex
+    install: npm install -g @openai/codex
+    requires: npm
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash

@@ -19,7 +19,6 @@ descriptions:
   gamemode: Game performance optimization daemon
   heroic-games-launcher-bin: Launcher for Epic, GOG, and Amazon Prime games (AUR)
   xpadneo-dkms: Advanced Linux driver for Xbox One/Series wireless controllers — Bluetooth + rumble (AUR)
-  linux-cachyos-headers: Kernel headers for the CachyOS default kernel — required to build the xpadneo DKMS module
   dualsensectl: PS5 DualSense control tool — light bar, player LEDs, battery, mic, adaptive triggers (AUR)
 
 # The PS5 DualSense needs no driver — it is fully supported by the mainline
@@ -33,5 +32,10 @@ packages:
     - gamemode  # Optional: Game performance optimization
     - heroic-games-launcher-bin  # AUR — Epic/GOG/Amazon Prime games
     - xpadneo-dkms  # AUR — Xbox One/Series controller driver (Bluetooth + rumble)
-    - linux-cachyos-headers  # Headers for the CachyOS default kernel (adjust if running another kernel variant)
+    # NOTE: xpadneo-dkms needs kernel headers to build its DKMS module, but we
+    # do NOT list linux-cachyos-headers here — a build dependency isn't a
+    # user-facing choice and shouldn't clutter the package selector. paru pulls
+    # the right headers provider as a dependency, and on CachyOS the headers for
+    # the default kernel are already installed by the base system anyway. If you
+    # run a non-default kernel variant, install its matching -headers manually.
     - dualsensectl  # AUR — PS5 DualSense control (LEDs, battery, mic, adaptive triggers); the driver itself is in-kernel (hid-playstation)
