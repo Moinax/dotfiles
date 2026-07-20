@@ -1113,6 +1113,29 @@ migrate_dropbox_to_dist() {
     fi
 }
 
+# Open LocalSend's port on ufw when the productivity group (which ships
+# localsend-bin) is installed and ufw is present. Port 53317 carries both the
+# TCP file transfers and the UDP multicast announcements — without the UDP hole
+# peers only show up as raw IPs instead of by device name. ufw persists rules to
+# /etc/ufw and skips duplicates, so this is safe to re-run on every apply.
+configure_localsend_firewall() {
+    if ! group_selected productivity; then
+        return 0
+    fi
+    if ! command -v ufw &>/dev/null; then
+        return 0
+    fi
+
+    print_info "Opening LocalSend port 53317 (tcp+udp) on ufw..."
+    sudo ufw allow 53317/tcp comment 'LocalSend transfer'  > /dev/null
+    sudo ufw allow 53317/udp comment 'LocalSend discovery' > /dev/null
+    # Only reload a firewall that is actually active; `ufw reload` errors when inactive.
+    if sudo ufw status 2>/dev/null | grep -q '^Status: active'; then
+        sudo ufw reload > /dev/null
+    fi
+    print_success "LocalSend firewall rules ensured (53317 tcp+udp)"
+}
+
 # Apply initial dark mode defaults (creates active theme files not tracked by chezmoi)
 apply_dark_mode_defaults() {
     local state_file="$HOME/.local/share/dark-light-mode"
@@ -1752,6 +1775,7 @@ main() {
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         migrate_notification_daemon
         migrate_dropbox_to_dist
+        configure_localsend_firewall
         apply_dark_mode_defaults
     fi
     enable_selected_services
