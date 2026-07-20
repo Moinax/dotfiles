@@ -1452,36 +1452,90 @@ setup_biometric() {
 }
 
 # Setup SSH key
+SSH_KEY_FILE="$HOME/.ssh/id_ed25519"
+
 setup_ssh() {
     print_header "SSH Key Setup"
-    
-    local ssh_dir="$HOME/.ssh"
-    local ssh_key="$ssh_dir/id_ed25519"
-    
-    if [ -f "$ssh_key" ]; then
+
+    if [ -f "$SSH_KEY_FILE" ]; then
         print_info "SSH key already exists"
         return 0
     fi
-    
-    if gum confirm "Generate a new SSH key?"; then
-        mkdir -p "$ssh_dir"
-        chmod 700 "$ssh_dir"
-        
-        echo ""
-        local passphrase
-        passphrase=$(gum input --password --placeholder "Enter passphrase (or leave empty)") || true
-        
-        ssh-keygen -t ed25519 -f "$ssh_key" -N "$passphrase"
-        chmod 600 "$ssh_key"
-        SSH_KEY_GENERATED=true
 
-        print_success "SSH key generated"
-        echo ""
-        gum style --foreground 39 "Public key:"
-        cat "$ssh_key.pub"
-        echo ""
-        print_info "Add this key to your GitHub/GitLab account"
+    local opt_restore="Restore from backup (private GitHub repo)"
+    local opt_generate="Generate a new SSH key"
+    local choice
+    choice=$(printf '%s\n' \
+        "$opt_restore" \
+        "$opt_generate" \
+        "Skip" | gum choose --cursor.foreground="212" --header "No SSH key found:") || true
+
+    case "$choice" in
+        "$opt_restore")
+            if ! restore_ssh_from_backup; then
+                if gum confirm "Generate a new SSH key instead?"; then
+                    generate_ssh_key
+                fi
+            fi
+            ;;
+        "$opt_generate")
+            generate_ssh_key
+            ;;
+    esac
+}
+
+generate_ssh_key() {
+    local ssh_dir="${SSH_KEY_FILE%/*}"
+
+    mkdir -p "$ssh_dir"
+    chmod 700 "$ssh_dir"
+
+    echo ""
+    local passphrase
+    passphrase=$(gum input --password --placeholder "Enter passphrase (or leave empty)") || true
+
+    ssh-keygen -t ed25519 -f "$SSH_KEY_FILE" -N "$passphrase"
+    chmod 600 "$SSH_KEY_FILE"
+    SSH_KEY_GENERATED=true
+
+    print_success "SSH key generated"
+    echo ""
+    gum style --foreground 39 "Public key:"
+    cat "$SSH_KEY_FILE.pub"
+    echo ""
+    print_info "Add this key to your GitHub/GitLab account"
+}
+
+# Restore ~/.ssh (and the other home secrets) from the encrypted projects
+# backup. Bootstrap for the auth chicken-and-egg: gh's OAuth device flow works
+# over HTTPS with no SSH key, so the only secrets needed on a fresh machine
+# are the GitHub login and the age passphrase.
+restore_ssh_from_backup() {
+    if ! command_exists gh; then
+        print_info "Installing GitHub CLI..."
+        install_packages github-cli || {
+            print_error "Failed to install GitHub CLI"
+            return 1
+        }
     fi
+
+    if ! gh auth status &>/dev/null; then
+        print_info "Authenticating with GitHub via browser device flow (no SSH key needed)..."
+        # --git-protocol https so gh can clone the backup repo without a key
+        gh auth login --hostname github.com --git-protocol https --web || {
+            print_error "GitHub authentication failed"
+            return 1
+        }
+    fi
+
+    "$DOTFILES_DIR/tools/backup-projects.sh" restore --home-only || return 1
+
+    if [ ! -f "$SSH_KEY_FILE" ]; then
+        print_warning "Backup restored, but it contained no $SSH_KEY_FILE"
+        return 1
+    fi
+    SSH_KEY_RESTORED=true
+    print_success "SSH key restored from backup"
 }
 
 # Setup Plymouth boot splash screen (CachyOS usually ships Plymouth
@@ -1715,6 +1769,11 @@ show_completion() {
         next_step=$((next_step + 1))
     fi
 
+    if [ "$SSH_KEY_RESTORED" = true ]; then
+        steps+=("  $next_step. Run './manage.sh backup restore' to re-clone ~/Projects")
+        next_step=$((next_step + 1))
+    fi
+
     # Hyprland reload only if currently running in Hyprland
     if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
         steps+=("  $next_step. Run 'hyprctl reload' to reload Hyprland config")
@@ -1775,6 +1834,7 @@ main() {
     BTRFS_SNAPSHOTS_CONFIGURED=false
     SHELL_CHANGED=false
     SSH_KEY_GENERATED=false
+    SSH_KEY_RESTORED=false
     unset GROUP_PACKAGE_MODE GROUP_CUSTOM_PACKAGE_LIST
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()

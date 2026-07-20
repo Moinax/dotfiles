@@ -39,6 +39,9 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 # ~/.npmrc, ~/.ssh, ~/.config/gh — age-encrypted with a passphrase. User config in
 # ~/.config/projects-backup/: extra-includes (repo-relative path regexes),
 # extra-home-includes (paths relative to ~), extra-exclude-dirs (dir-name regexes).
+# `restore --home-only` restores just the home secrets; the installer's SSH
+# setup uses it to bootstrap a fresh machine (gh OAuth device flow over HTTPS
+# needs no SSH key, so GitHub login + age passphrase are the only secrets).
 
 # ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.py
 # (Python, stdlib-only; state files in ~/.local/state/dotfiles/external-apps/ are

@@ -57,7 +57,8 @@ Usage: backup-projects.sh <command> [options]
 
 Commands:
   create [--dry-run] [--local-only]   Build encrypted backup (and push it)
-  restore [archive] [--force]         Re-clone repos and restore secret files
+  restore [archive] [--force] [--home-only]
+                                      Re-clone repos and restore secret files
   list [archive]                      Show contents of a backup archive
   help                                Show this help message
 
@@ -69,6 +70,8 @@ restore:
   archive        Path to a .tar.zst.age file; defaults to the latest one
                  pulled from the private GitHub backup repo
   --force        Overwrite existing secret files (default: skip them)
+  --home-only    Only restore home secrets (~/.ssh, ~/.npmrc, ~/.config/gh, ...);
+                 skip re-cloning ~/Projects repos
 
 Config files in ~/.config/projects-backup/ (one entry per line, # comments):
   extra-includes       extra path regexes to back up (repo-relative paths)
@@ -285,10 +288,11 @@ decrypt_to() {
 }
 
 do_restore() {
-    local archive="" force=false
+    local archive="" force=false home_only=false
     for arg in "$@"; do
         case "$arg" in
             --force) force=true ;;
+            --home-only) home_only=true ;;
             -*) print_error "Unknown option: $arg"; return 1 ;;
             *) archive="$arg" ;;
         esac
@@ -302,7 +306,33 @@ do_restore() {
     trap 'rm -rf "$stage"' EXIT
     decrypt_to "$archive" "$stage"
 
-    print_header "Restoring ~/Projects"
+    if $home_only; then
+        print_header "Restoring home secrets"
+    else
+        print_header "Restoring ~/Projects"
+    fi
+
+    # Home secrets go first: the manifest remotes are usually SSH URLs, so the
+    # restored ~/.ssh (key + known_hosts) must be in place before any clone.
+    restore_tree "$stage/home" "$HOME" "$force"
+
+    # tar as non-root applies the umask, so re-tighten ssh perms explicitly.
+    if [ -d "$HOME/.ssh" ]; then
+        chmod 700 "$HOME/.ssh"
+        find "$HOME/.ssh" -type f ! -name '*.pub' -exec chmod 600 {} +
+    fi
+
+    if $home_only; then
+        print_success "Home secrets restored"
+        print_info "Run './manage.sh backup restore' later to re-clone ~/Projects"
+        return 0
+    fi
+
+    # Load the key into the agent once, so a passphrase-protected key doesn't
+    # prompt on every clone below. No agent or no key → ssh prompts per clone.
+    if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -f "$HOME/.ssh/id_ed25519" ]; then
+        ssh-add -q "$HOME/.ssh/id_ed25519" 2>/dev/null || true
+    fi
 
     # Re-clone every repo from the manifest, then check out its branch.
     local rel remote branch dest
@@ -325,16 +355,9 @@ do_restore() {
         fi
     done < "$stage/manifest/repos.tsv"
 
-    # Drop secret files back into repos and $HOME. Existing files are kept
-    # unless --force, so a restore never silently clobbers newer local state.
+    # Drop secret files back into the freshly cloned repos. Existing files are
+    # kept unless --force, so a restore never silently clobbers newer state.
     restore_tree "$stage/projects" "$PROJECTS_DIR" "$force"
-    restore_tree "$stage/home" "$HOME" "$force"
-
-    # tar as non-root applies the umask, so re-tighten ssh perms explicitly.
-    if [ -d "$HOME/.ssh" ]; then
-        chmod 700 "$HOME/.ssh"
-        find "$HOME/.ssh" -type f ! -name '*.pub' -exec chmod 600 {} +
-    fi
 
     print_success "Restore complete"
     print_info "Repos are fresh clones — reinstall dependencies per project (npm install, uv sync, ...)"
