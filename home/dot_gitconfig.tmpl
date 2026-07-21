@@ -3,7 +3,7 @@
 	email = jerome@moinax.com
 [core]
 	autocrlf = input
-	pager = delta
+	pager = hunk pager
 	editor = nvim
 [credential "https://github.com"]
 	helper = 
@@ -20,11 +20,5 @@
 	defaultBranch = main
 [color]
 	ui = auto
-[interactive]
-	diffFilter = delta --paging=never
-[include]
-	path = ~/.config/delta/themes.gitconfig
-[delta]
-	features = catppuccin-{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }} line-numbers
 [push]
 	default = current

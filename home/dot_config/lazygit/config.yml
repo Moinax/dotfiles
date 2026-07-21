@@ -1,9 +1,8 @@
 git:
   pagers:
-    - colorArg: always
-      # lazygit sets COLUMNS to the diff pane width and re-renders on resize:
-      # side-by-side when wide, inline when narrow.
-      pager: bash -c '[ "${COLUMNS:-80}" -ge 160 ] && exec delta --paging=never --side-by-side; exec delta --paging=never'
+    # Hunk needs a terminal for its interactive UI. LazyGit captures pager
+    # output, so keep its built-in renderer here.
+    - {}
 gui:
   nerdFontsVersion: "3"
 os:

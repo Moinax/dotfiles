@@ -57,8 +57,8 @@ LICENSE
 .config/nvim/**
 .config/Cursor
 .config/Cursor/**
-.config/delta
-.config/delta/**
+.config/hunk
+.config/hunk/**
 .config/tuicr
 .config/tuicr/**
 .config/gh-dash

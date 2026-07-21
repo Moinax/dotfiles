@@ -69,7 +69,7 @@ case "${1:-}" in
     ;;
   agent-tab)
     # Clone the dev-herdr "agent" tab layout into a new tab of the focused
-    # workspace (agent + lazygit top row, dev/logs bottom row) so several
+    # workspace (agent + hunk review top row, dev/logs bottom row) so several
     # agents can share one checkout — no worktree needed. Provider and
     # project dir come from the workspace's existing agent pane; an explicit
     # PROVIDER argument overrides it (the ctrl+alt+a picker passes the chosen
@@ -94,19 +94,21 @@ case "${1:-}" in
     [[ -n "$provider_override" ]] && provider="$provider_override"
     # Tabs are labeled by provider — "claude", "claude 2", "claudex", ... —
     # one numbered family per provider. One pass over the tab labels finds
-    # the next free suffix and the insertion point. Prefer immediately before
-    # nvim (therefore after the contiguous agent block); without nvim, insert
-    # immediately after the last agent tab. Unlike merely counting agents,
-    # this remains correct if the user has manually rearranged other tabs.
+    # the next free suffix and the insertion point. Insert immediately after
+    # the last agent tab so the agent block stays contiguous and lands before
+    # the "git" and "nvim" tabs. If no agent tab exists, insert before the
+    # first shared utility tab, or at the end if neither exists.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
       | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
           [.result.tabs[].label] as $ls
           | ([$ls[] | capture("^\($base)(?: (?<n>[0-9]+))?$")
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
-          | ($ls | index("nvim")) as $nvim
           | ([range(0; $ls | length) | select($ls[.] | test($fam))]
               | max // -1) as $last_agent
-          | ($nvim // ($last_agent + 1)) as $insert
+          | ([$ls | index("git"), index("nvim")] | map(select(. != null))
+              | min // ($ls | length)) as $first_utility
+          | (if $last_agent >= 0 then $last_agent + 1
+             else $first_utility end) as $insert
           | "\($num) \($insert)"')
     label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
 
@@ -117,7 +119,7 @@ case "${1:-}" in
     # agent tabs. tab.move is socket-only (no CLI verb); non-fatal.
     api tab.move "{\"tab_id\":\"$t_new\",\"insert_index\":$insert_index}" >/dev/null || true
 
-    # Panes (agent + lazygit top row, dev/logs bottom row) are built by
+    # Panes (agent + hunk review top row, dev/logs bottom row) are built by
     # herdr-agent-layout, shared with dev-herdr's create path. No -s: the
     # session comes from the inherited HERDR_SOCKET_PATH, like every other
     # herdr call in this script. The agent display name carries the tab

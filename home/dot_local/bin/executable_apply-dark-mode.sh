@@ -200,6 +200,7 @@ if command -v chezmoi &>/dev/null; then
     chezmoi apply \
         ~/.gitconfig \
         ~/.config/gh-dash/config.yml \
+        ~/.config/hunk/config.toml \
         ~/.config/starship.toml \
         ~/.config/tuicr/config.toml \
         ~/.config/yazi/theme.toml \

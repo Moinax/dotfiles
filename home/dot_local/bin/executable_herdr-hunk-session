@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Print the Hunk session ID paired with the current Herdr agent tab.
+# Agent and review panes have different pane IDs but inherit the same tab ID.
+set -euo pipefail
+
+die() { echo "herdr-hunk-session: $*" >&2; exit 1; }
+
+command -v hunk >/dev/null 2>&1 || die "hunk is not installed"
+command -v jq >/dev/null 2>&1 || die "jq is required"
+[[ -n "${HERDR_TAB_ID:-}" ]] || die "not running inside a Herdr tab"
+
+matches=()
+while IFS=$'\t' read -r session_id pid; do
+  [[ -r "/proc/$pid/environ" ]] || continue
+  if tr '\0' '\n' < "/proc/$pid/environ" \
+      | grep -qxF "HERDR_TAB_ID=$HERDR_TAB_ID"; then
+    matches+=("$session_id")
+  fi
+done < <(hunk session list --json \
+  | jq -r '.sessions[] | [.sessionId, (.pid | tostring)] | @tsv')
+
+case "${#matches[@]}" in
+  1) printf '%s\n' "${matches[0]}" ;;
+  0) die "no Hunk session found for Herdr tab $HERDR_TAB_ID" ;;
+  *) die "multiple Hunk sessions found for Herdr tab $HERDR_TAB_ID: ${matches[*]}" ;;
+esac

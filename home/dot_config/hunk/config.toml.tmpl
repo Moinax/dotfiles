@@ -1,0 +1,27 @@
+# hunk — review-first terminal diff viewer.
+# Used as the top-right "review" pane of the herdr `dev` agent layout
+# (see ~/.local/bin/herdr-agent-layout), launched as `hunk diff --watch`.
+
+# Follow the global Mod+N Catppuccin toggle. Hunk's "auto" mode only chooses
+# GitHub Light/Dark, so select the matching Catppuccin flavor explicitly.
+# Hunk resolves this once at startup; press `t` to change a running pane.
+theme = "catppuccin-{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}"
+
+# Stack the diff vertically when the pane is narrow (the review slot is a
+# quarter of the screen), split side-by-side when there's room.
+mode = "auto"
+
+vcs = "git"
+
+# Keep refreshing as the agent edits, so a plain `hunk diff` also watches.
+watch = true
+
+# Show inline agent/AI annotations beside the code (pairs with the hunk
+# skill loaded into Claude: `hunk skill path`).
+agent_notes = true
+
+menu_bar = false
+transparent_background = true
+
+line_numbers = true
+wrap_lines = false

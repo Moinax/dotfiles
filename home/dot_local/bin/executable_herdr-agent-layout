@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Build the standard "agent" tab layout inside an existing tab's root pane:
-# agent (top-left) + lazygit (top-right); bottom row = "dev" + "logs"
+# agent (top-left) + hunk review (top-right); bottom row = "dev" + "logs"
 # terminals (both plain shells). Single source of truth shared by dev-herdr
 # (workspace create) and herdr-nav agent-tab — layout tweaks happen here only.
+# hunk here is review-only; real git ops (stage/commit/push) live in the
+# workspace's dedicated "git" tab (lazygit), created once by dev-herdr.
 #
 # Usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]
 #        Without -s the CLI resolves the session itself (default session, or
@@ -23,21 +25,21 @@ h() {
 }
 
 # Label the agent pane with its provider (claude, claudex, codex, opencode),
-# like the dev/logs/git panes are labeled.
+# like the dev/logs/review panes are labeled.
 h pane rename "$p_agent" "$provider" >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
-# the full width), then lazygit right of the agent.
+# the full width), then hunk right of the agent.
 # --ratio is the share the ORIGINAL pane keeps, so 0.72 leaves a 28% bottom.
 p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 
-# lazygit fills the top-right slot; it lives in the agent tab instead of a
-# dedicated "git" tab, so a diff is one glance away from the agent.
-p_git="$(h pane split "$p_agent" --direction right \
+# hunk fills the top-right slot with a live, auto-reloading review of whatever
+# the agent writes. Real git operations remain in the workspace's "git" tab.
+p_review="$(h pane split "$p_agent" --direction right \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
-h pane rename "$p_git" git >/dev/null
-h pane run "$p_git" "lazygit" >/dev/null
+h pane rename "$p_review" review >/dev/null
+h pane run "$p_review" "hunk diff --watch" >/dev/null
 
 # Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
 # into the pane's shell so prompts with spaces/quotes survive. The installed

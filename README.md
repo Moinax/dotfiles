@@ -42,7 +42,7 @@ The interactive installer will:
 | Group | Description |
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `hyprpaper`, `hyprshot`, `waybar`, `rofi`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
-| **Development** | `neovim`, Cursor, Git tooling (`gh`, `lazygit`, `delta`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
+| **Development** | `neovim`, Cursor, Git tooling (`gh`, `lazygit`, `hunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam + Discord with performance helpers (`mangohud`, `gamemode`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape) |
 | **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), BTRFS snapshots (`snapper`, `snap-pac`), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
@@ -187,7 +187,7 @@ After running the installer:
 - **Shell**: zsh with starship prompt, zoxide, television
 - **Terminal**: kitty
 - **Editor**: Neovim (AstroNvim-based), Cursor
-- **Git**: delta for diffs, lazygit
+- **Git**: Hunk for diffs and reviews, lazygit for Git operations
 - **Multiplexer**: Zellij
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout

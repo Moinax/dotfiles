@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
 #   agent tab (labeled by provider: "claude", "claudex", ...):
-#                  agent (top-left) + lazygit (top-right); bottom
+#                  agent (top-left) + hunk review (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
+#   tab "git":     full-window lazygit (git operations)
 #   tab "nvim":    full-window nvim
 #
 # Workspaces are grouped into one Herdr session per ~/Projects subdirectory
@@ -84,11 +85,18 @@ t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 
 h tab rename "$t_agent" "$provider" >/dev/null
-# Panes (agent + lazygit top row, dev/logs bottom row) are built by
+# Panes (agent + hunk review top row, dev/logs bottom row) are built by
 # herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
 herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" "$name" "$prompt"
 
-# nvim tab (lazygit is now a pane in the agent tab, so there is no git tab).
+# git tab: full-window lazygit for real git operations (stage/commit/push).
+# Diff review is handled live by hunk in each agent tab. One git tab is shared
+# by all agent tabs in this workspace/checkout.
+p_git="$(h tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
+  | jq -r '.result.root_pane.pane_id')"
+h pane run "$p_git" "lazygit" >/dev/null
+
+# nvim tab.
 p_nvim="$(h tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
   | jq -r '.result.root_pane.pane_id')"
 h pane run "$p_nvim" "nvim" >/dev/null
