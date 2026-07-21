@@ -1,8 +1,3 @@
-git:
-  pagers:
-    # Hunk needs a terminal for its interactive UI. LazyGit captures pager
-    # output, so keep its built-in renderer here.
-    - {}
 gui:
   nerdFontsVersion: "3"
 os:

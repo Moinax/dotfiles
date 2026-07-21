@@ -76,7 +76,7 @@ The `home/` directory is the Chezmoi source. Files use Chezmoi naming convention
 - `home/.chezmoiignore` — conditionally excludes configs based on template variables like `.install_hyprland`, `.install_development`, `.install_productivity`
 
 ### Managed configs (`home/dot_config/`)
-Hypr, Waybar, Rofi, SwayNC, Wlogout (Wayland desktop), Kitty (terminal), Neovim (AstroNvim-based), Delta (git diffs), Starship (prompt), Yazi (file manager), Cursor (editor).
+Hypr, Waybar, Rofi, SwayNC, Wlogout (Wayland desktop), Kitty (terminal), Neovim (AstroNvim-based), Hunk (git diffs and reviews), Starship (prompt), Yazi (file manager), Cursor (editor).
 
 ## Conventions
 

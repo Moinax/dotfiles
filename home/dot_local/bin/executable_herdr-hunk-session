@@ -12,8 +12,8 @@ command -v jq >/dev/null 2>&1 || die "jq is required"
 matches=()
 while IFS=$'\t' read -r session_id pid; do
   [[ -r "/proc/$pid/environ" ]] || continue
-  if tr '\0' '\n' < "/proc/$pid/environ" \
-      | grep -qxF "HERDR_TAB_ID=$HERDR_TAB_ID"; then
+  # /proc/PID/environ is NUL-delimited; -z lets grep match a whole entry.
+  if grep -qzxF "HERDR_TAB_ID=$HERDR_TAB_ID" "/proc/$pid/environ"; then
     matches+=("$session_id")
   fi
 done < <(hunk session list --json \
