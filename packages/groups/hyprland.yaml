@@ -42,6 +42,7 @@ descriptions:
   pavucontrol-qt: PulseAudio volume control GUI (Qt)
   blueman: Bluetooth device manager
   bluez-utils: Bluetooth utilities
+  network-manager-applet: NetworkManager tray applet (nm-applet)
   xorg-xhost: X server access control
   inotify-tools: File system event monitor
   cmatrix: Terminal matrix rain animation
@@ -82,6 +83,9 @@ packages:
     - pavucontrol-qt
     - blueman
     - bluez-utils
+
+    # Network tray applet (SNI icon in Waybar tray)
+    - network-manager-applet
 
     # On-screen display (volume, brightness, caps-lock)
     - swayosd

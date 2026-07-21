@@ -1,0 +1,24 @@
+[Unit]
+Description=NetworkManager tray applet (nm-applet)
+Documentation=man:nm-applet(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+# No Requisite=graphical-session.target — it demands the target already be
+# active when the job runs, which races under uwsm and silently drops the unit
+# at session start (no retry). PartOf= still stops it on logout;
+# StartLimitIntervalSec=0 avoids start-limit-hit on inter-session tray races.
+StartLimitIntervalSec=0
+
+# network-manager-applet ships no systemd user unit (only an XDG autostart
+# .desktop), so this unit is authored here. --indicator forces the StatusNotifier
+# (SNI) backend so the icon lands in Waybar's tray under Wayland.
+
+[Service]
+Slice=background-graphical.slice
+Type=simple
+ExecStart=/usr/bin/nm-applet --indicator
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

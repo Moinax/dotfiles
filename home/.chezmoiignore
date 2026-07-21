@@ -35,6 +35,8 @@ LICENSE
 .config/systemd/user/swayosd-server.service
 .config/systemd/user/wayland-wm@.service.d
 .config/systemd/user/wayland-wm@.service.d/**
+.config/systemd/user/nm-applet.service
+.config/systemd/user/graphical-session.target.wants/nm-applet.service
 {{- end }}
 
 # Ignore AI configs if not selected
