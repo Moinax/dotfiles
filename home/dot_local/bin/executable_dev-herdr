@@ -89,17 +89,20 @@ h tab rename "$t_agent" "$provider" >/dev/null
 # herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
 herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" "$name" "$prompt"
 
-# git tab: full-window lazygit for real git operations (stage/commit/push).
-# Diff review is handled live by hunk in each agent tab. One git tab is shared
-# by all agent tabs in this workspace/checkout.
-p_git="$(h tab create --workspace "$ws" --label git --cwd "$dir" --no-focus \
-  | jq -r '.result.root_pane.pane_id')"
-h pane run "$p_git" "lazygit" >/dev/null
-
-# nvim tab.
-p_nvim="$(h tab create --workspace "$ws" --label nvim --cwd "$dir" --no-focus \
-  | jq -r '.result.root_pane.pane_id')"
-h pane run "$p_nvim" "nvim" >/dev/null
+# Full-window utility tabs: "git" (lazygit, for real git operations —
+# stage/commit/push; diff review is handled live by hunk in each agent tab)
+# and "nvim". One of each is shared by all agent tabs in this workspace.
+# The root pane gets the tab's label so herdr-clients revive-panes can match
+# it after a server restart; herdr-pane-cmd owns the label→command map.
+util_tab() {
+  local pane
+  pane="$(h tab create --workspace "$ws" --label "$1" --cwd "$dir" --no-focus \
+    | jq -r '.result.root_pane.pane_id')"
+  h pane rename "$pane" "$1" >/dev/null
+  h pane run "$pane" "$(herdr-pane-cmd "$1")" >/dev/null
+}
+util_tab git
+util_tab nvim
 
 h workspace focus "$ws" >/dev/null
 show_client

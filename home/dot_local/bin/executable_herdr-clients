@@ -12,7 +12,7 @@
 #        herdr-clients open-all               open a client window for every persisted session
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
-#        herdr-clients revive-panes SESSION   rerun lazygit/nvim in restored panes left as bare shells
+#        herdr-clients revive-panes SESSION   rerun utility-pane commands in restored panes left as bare shells
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -82,48 +82,55 @@ list_sessions() {
 # Herdr restores workspaces/panes from session.json when a server boots, but
 # only agent panes get their command relaunched (the claude integration
 # reports/restores agent sessions). Panes whose command was typed via `pane
-# run` — lazygit in the "git" pane, nvim in the "nvim" tab — come back as
-# bare shells. Rerun those commands. Only panes whose foreground process is
-# still a plain shell are touched, so this is idempotent and safe on a
-# session that never went down.
-pane_is_bare_shell() {
-  local session="$1" pane="$2"
-  herdr --session "$session" pane process-info --pane "$pane" 2>/dev/null \
-    | jq -e '.result.process_info.foreground_processes
-             | length == 1 and (.[0].name | test("^(zsh|bash|fish|sh)$"))' >/dev/null
-}
-
+# run` — hunk in "review" panes, lazygit/nvim in the utility tabs — come back
+# as bare shells. Rerun those commands (herdr-pane-cmd maps label → command).
+# Only panes whose foreground process is still a plain shell are touched, so
+# this is idempotent and safe on a session that never went down.
 revive_pane_cmd() {
-  local session="$1" pane="$2" cmd="$3" i
-  # Right after a boot the pane's shell may still be initializing (process
-  # list empty); give it a moment before typing the command in.
+  local session="$1" pane="$2" cmd="$3" i state
+  # Right after a boot the pane's shell may still be initializing (no
+  # foreground process yet) — wait for it. A pane already running a non-shell
+  # command (it survived, or the user started one) is left alone immediately
+  # instead of burning the whole timeout.
   for ((i = 0; i < 10; i++)); do
-    if pane_is_bare_shell "$session" "$pane"; then
-      herdr --session "$session" pane run "$pane" "$cmd" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 0.3
+    state="$(herdr --session "$session" pane process-info --pane "$pane" 2>/dev/null \
+      | jq -r '.result.process_info.foreground_processes
+               | if length == 0 then "starting"
+                 elif length == 1 and (.[0].name | test("^(zsh|bash|fish|sh)$")) then "shell"
+                 else "busy" end' 2>/dev/null)" || state=""
+    case "$state" in
+      shell) herdr --session "$session" pane run "$pane" "$cmd" >/dev/null 2>&1 || true
+             return 0 ;;
+      busy)  return 0 ;;
+      *)     sleep 0.3 ;;
+    esac
   done
 }
 
 revive_panes() {
-  local session="$1" panes tabs line pane cmd
+  local session="$1" panes tabs pane label cmd
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
     | jq -c '.result.tabs // []')" || return 0
-  # "git" panes get lazygit; single-pane "nvim" tabs get nvim (a split nvim
-  # tab is user-customized — leave it alone).
-  while IFS=$'\t' read -r pane cmd; do
-    [[ -n "$pane" ]] || continue
-    revive_pane_cmd "$session" "$pane" "$cmd"
+  # Panes are matched by label; herdr-pane-cmd owns the label→command map
+  # (labels without a fixed command make it exit 1, filtering agent/dev/logs
+  # panes out here). Workspaces created before dev-herdr labeled utility-tab
+  # root panes fall back to the tab label for single-pane tabs (a split tab
+  # is user-customized — leave it alone). Panes revive concurrently: each
+  # waits up to ~3s for its shell, so serial cost would grow with pane count.
+  while IFS=$'\t' read -r pane label; do
+    [[ -n "$pane" && -n "$label" ]] || continue
+    cmd="$(herdr-pane-cmd "$label")" || continue
+    revive_pane_cmd "$session" "$pane" "$cmd" &
   done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" '
-    ($tabs | map(select(.label == "nvim") | .tab_id)) as $nvim_tabs
-    | ($panes | map(select(.label == "git") | [.pane_id, "lazygit"])),
+    ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
+    | ($panes | map(select(.label) | [.pane_id, .label])),
       ($panes | group_by(.tab_id)
-              | map(select(length == 1 and ([.[0].tab_id] | inside($nvim_tabs))))
-              | map([.[0].pane_id, "nvim"]))
+              | map(select(length == 1) | .[0] | select(.label == null)
+                    | [.pane_id, ($tab_label[.tab_id] // empty)]))
     | .[] | @tsv')
+  wait
 }
 
 # Bring the given sessions' servers up if down, and wait for them. The CLI

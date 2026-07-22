@@ -36,10 +36,11 @@ p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
 
 # hunk fills the top-right slot with a live, auto-reloading review of whatever
 # the agent writes. Real git operations remain in the workspace's "git" tab.
+# The command comes from herdr-pane-cmd (shared with revive-panes).
 p_review="$(h pane split "$p_agent" --direction right \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 h pane rename "$p_review" review >/dev/null
-h pane run "$p_review" "hunk diff --watch" >/dev/null
+h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
 
 # Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
 # into the pane's shell so prompts with spaces/quotes survive. The installed

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Print the launch command for a herdr utility pane label — the single source
+# of truth shared by herdr-agent-layout / dev-herdr (pane creation) and
+# herdr-clients revive-panes (relaunch after a server restart), so the spawned
+# and the revived command can never drift. Mirrors dev-agent-argv, which owns
+# agent argv the same way. Exits 1 for labels with no fixed command (agent,
+# dev, logs panes).
+#
+# Usage: herdr-pane-cmd LABEL
+case "${1:-}" in
+  # watch = true in ~/.config/hunk/config.toml makes plain `hunk diff` watch.
+  review) echo "hunk diff" ;;
+  git)    echo "lazygit" ;;
+  nvim)   echo "nvim" ;;
+  *)      exit 1 ;;
+esac
