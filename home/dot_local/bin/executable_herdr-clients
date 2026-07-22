@@ -24,11 +24,11 @@ command -v jq    >/dev/null 2>&1 || die "jq is required"
 # clients attach to a dying server (empty kitty that closes itself) or open
 # fine and then get killed by the still-running stop loop. The lock makes the
 # second keypress wait for the first to finish instead.
-# Long-lived children (setsid'd servers, kitty clients) MUST close fd 9
-# (`9>&-`): flock belongs to the open file description, so an inherited fd
-# keeps the lock held after this script exits and every later invocation
-# hangs forever. The bounded wait turns any residual deadlock into an error
-# instead of a silent pile-up of queued keypresses.
+# Long-lived spawns (servers, kitty clients) MUST close fd 9 (`9>&-`, owned
+# by spawn_detached): flock belongs to the open file description, so an
+# inherited fd keeps the lock held after this script exits and every later
+# invocation hangs forever. The bounded wait turns any residual deadlock into
+# an error instead of a silent pile-up of queued keypresses.
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/herdr-clients.lock"
 flock -w 30 9 || die "timed out waiting for another herdr-clients invocation"
 
@@ -62,6 +62,19 @@ scrub_env() {
   env "${scrub[@]}" "$@"
 }
 
+# Fully detach a long-lived spawn (server, kitty client): scrub context
+# markers, fork it into its own session, drop stdio, and close the flock fd.
+# -f is load-bearing: setsid(2) only implies a fork when the caller is a
+# process-group leader, which a script's child never is — without it the
+# spawn gets its own session but stays a child of this shell for its whole
+# life, and a never-exiting child keeps bash's bare `wait` (revive_panes)
+# blocked in waitpid(-1) forever while it holds the flock (observed: a wedged
+# open-all starving every later `dev` against the lock). With -f the setsid
+# parent returns immediately, so callers need no `&`/disown.
+spawn_detached() {
+  scrub_env setsid -f "$@" >/dev/null 2>&1 </dev/null 9>&-
+}
+
 launch_client() {
   local session="$1"
   # kitty -T permanently fixes the OS window title (herdr's own OSC title —
@@ -69,9 +82,8 @@ launch_client() {
   # session/group it is.
   local class title="herdr — $session"
   class="$(class_for "$session")"
-  scrub_env kitty --class "$class" --title "$title" \
-    -e herdr --session "$session" >/dev/null 2>&1 9>&- &
-  disown
+  spawn_detached kitty --class "$class" --title "$title" \
+    -e herdr --session "$session"
 }
 
 running_sessions() {
@@ -158,9 +170,9 @@ revive_panes() {
               | map(select(length == 1) | .[0] | select(.label == null)
                     | [.pane_id, ($tab_label[.tab_id] // "")]))
     | .[] | @tsv')
-  # Reaps only the revive jobs: every long-lived spawn is disowned at its `&`
-  # (launch_client's kitty, ensure_servers' server), so none can sit in the
-  # job table and turn this wait into a forever-block.
+  # Reaps only the revive jobs: long-lived spawns (launch_client's kitty,
+  # ensure_servers' server) go through spawn_detached, so they are never this
+  # shell's children and cannot turn this wait into a forever-block.
   wait
 }
 
@@ -182,12 +194,7 @@ ensure_servers() {
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
-    scrub_env setsid herdr --session "$session" server >/dev/null 2>&1 9>&- &
-    # Off the job table, like launch_client's kitty: revive_panes' `wait` must
-    # reap only its revive jobs — an un-disowned server (which never exits)
-    # blocks that wait forever while it holds the flock, and every later
-    # invocation (every `dev`) then times out against the lock.
-    disown
+    spawn_detached herdr --session "$session" server
     pending+=("$session")
     booted+=("$session")
   done
