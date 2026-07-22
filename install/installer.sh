@@ -1122,17 +1122,15 @@ configure_localsend_firewall() {
     if ! group_selected productivity; then
         return 0
     fi
-    if ! command -v ufw &>/dev/null; then
+    if ! command_exists ufw; then
         return 0
     fi
 
     print_info "Opening LocalSend port 53317 (tcp+udp) on ufw..."
+    # `ufw allow` applies to the live ruleset immediately when the firewall
+    # is active (and just persists when inactive) — no reload needed.
     sudo ufw allow 53317/tcp comment 'LocalSend transfer'  > /dev/null
     sudo ufw allow 53317/udp comment 'LocalSend discovery' > /dev/null
-    # Only reload a firewall that is actually active; `ufw reload` errors when inactive.
-    if sudo ufw status 2>/dev/null | grep -q '^Status: active'; then
-        sudo ufw reload > /dev/null
-    fi
     print_success "LocalSend firewall rules ensured (53317 tcp+udp)"
 }
 
