@@ -1,10 +1,11 @@
 {{- if .install_development -}}
 #!/bin/bash
 # Converge canonical Claude Code settings into ~/.claude/settings.json.
-# create_settings.json only applies when the target file is missing, so
+# create_settings.json.tmpl only applies when the target file is missing, so
 # machines where it already exists never pick up later edits — this script
 # jq-merges the canonical keys on every change while leaving machine-specific
-# keys (hooks, model, theme, ...) untouched.
+# keys (model, theme, ...) untouched. Hooks ARE canonical (vibewatch), so a
+# wiped settings.json gets them back on the next apply.
 set -e
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
@@ -24,7 +25,7 @@ fi
 # Canonical settings, inlined from dot_claude/create_settings.json at chezmoi
 # render time — editing that file changes this script's content, which is what
 # re-triggers the run_onchange execution.
-CANONICAL='{{ include "dot_claude/create_settings.json" }}'
+CANONICAL='{{ includeTemplate "dot_claude/create_settings.json.tmpl" . }}'
 
 # Merge into existing settings (jq * operator does a recursive merge)
 tmp=$(mktemp)

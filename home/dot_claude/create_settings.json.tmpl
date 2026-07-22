@@ -1,0 +1,54 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0,
+    "refreshInterval": 5
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "mbrella@mbrella": true,
+    "worktrunk@worktrunk": true,
+    "context7@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "mbrella": {
+      "source": {
+        "source": "directory",
+        "path": "/home/moinax/Projects/mbrella/ai-skills"
+      }
+    },
+    "worktrunk": {
+      "source": {
+        "source": "github",
+        "repo": "max-sixty/worktrunk"
+      }
+    }
+  },
+  "effortLevel": "high",
+  "permissions": {
+    "defaultMode": "auto"
+  }{{ if .install_vibewatch }},
+  {{- /* vibewatch hook per event, mirroring `vibewatch install`'s merge (the
+         CLI subcommand is the kebab-cased event name). PermissionRequest is
+         the one sync hook, as vibewatch installs it. */}}
+  "hooks": {
+    {{- range $i, $event := list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "UserPromptSubmit" }}
+    {{- if $i }},{{ end }}
+    "{{ $event }}": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            {{- if ne $event "PermissionRequest" }}
+            "async": true,
+            {{- end }}
+            "command": "~/.cargo/bin/vibewatch notify {{ kebabcase $event }} --agent claude-code"
+          }
+        ]
+      }
+    ]
+    {{- end }}
+  }{{ end }}
+}
