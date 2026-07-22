@@ -1399,16 +1399,41 @@ setup_biometric() {
     # generate it as system-auth minus pam_fprintd so the include below
     # resolves. A dangling include makes every pam_authenticate fail
     # instantly, and hyprlock crash-loops on that while holding the session
-    # lock (forced reboot to recover). The file is derived state: regenerate
-    # it on every run we own it (header present) so it tracks pambase updates
-    # to system-auth; a headerless file is user-authored — leave it alone.
-    local pam_gen_header="# Generated from system-auth by the dotfiles installer; do not edit (regenerated on installer runs)."
+    # lock (forced reboot to recover). The file is derived state, and
+    # system-auth changes at arbitrary times (pambase .pacnew merges, manual
+    # edits) long after this installer ran — so the regeneration lives in a
+    # systemd path unit watching system-auth, not here. The service only
+    # rewrites a file it generated (header-prefix check), so a hand-authored
+    # password-auth is never clobbered. No $ or backslash in the ExecStart
+    # shell: systemd would expand/escape them.
     if [ -f /etc/pam.d/system-auth ]; then
-        if [ ! -f /etc/pam.d/password-auth ] \
-            || [ "$(head -n1 /etc/pam.d/password-auth)" = "$pam_gen_header" ]; then
-            print_info "Generating /etc/pam.d/password-auth (system-auth without fprintd)"
-            sudo sh -c "{ echo '$pam_gen_header'; sed '/pam_fprintd\.so/d' /etc/pam.d/system-auth; } > /etc/pam.d/password-auth"
-        fi
+        print_info "Installing pam-password-auth systemd path unit"
+        sudo tee /etc/systemd/system/pam-password-auth.service >/dev/null <<'UNIT'
+[Unit]
+Description=Regenerate /etc/pam.d/password-auth from system-auth (minus fprintd)
+# Installed by the dotfiles installer (setup_biometric); hyprlock's PAM stack
+# includes password-auth for an instant, fprintd-free password fallback.
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'if [ ! -f /etc/pam.d/password-auth ] || head -n1 /etc/pam.d/password-auth | grep -q "^# Generated from system-auth"; then { echo "# Generated from system-auth — do not edit; regenerated automatically by pam-password-auth.service."; sed "/pam_fprintd[.]so/d" /etc/pam.d/system-auth; } > /etc/pam.d/.password-auth.tmp && mv /etc/pam.d/.password-auth.tmp /etc/pam.d/password-auth; fi'
+UNIT
+        sudo tee /etc/systemd/system/pam-password-auth.path >/dev/null <<'UNIT'
+[Unit]
+Description=Keep /etc/pam.d/password-auth in sync with system-auth
+
+[Path]
+PathChanged=/etc/pam.d/system-auth
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now pam-password-auth.path >/dev/null
+        # Initial generation (also refreshes a file stamped by earlier
+        # versions of this setup — their headers share the prefix).
+        sudo systemctl start pam-password-auth.service
+        print_success "password-auth generated and kept in sync with system-auth"
     fi
 
     local pam_file=/etc/pam.d/hyprlock ts
