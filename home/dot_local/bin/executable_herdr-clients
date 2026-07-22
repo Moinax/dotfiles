@@ -12,7 +12,7 @@
 #        herdr-clients open-all               open a client window for every persisted session
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
-#        herdr-clients revive-panes SESSION   rerun utility-pane commands in restored panes left as bare shells
+#        herdr-clients revive-panes SESSION   rerun utility/agent pane commands in restored panes left as bare shells
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -80,12 +80,14 @@ list_sessions() {
 }
 
 # Herdr restores workspaces/panes from session.json when a server boots, but
-# only agent panes get their command relaunched (the claude integration
-# reports/restores agent sessions). Panes whose command was typed via `pane
-# run` — hunk in "review" panes, lazygit/nvim in the utility tabs — come back
-# as bare shells. Rerun those commands (herdr-pane-cmd maps label → command).
-# Only panes whose foreground process is still a plain shell are touched, so
-# this is idempotent and safe on a session that never went down.
+# every pane comes back as a bare shell — commands started via `pane run` are
+# not relaunched, and (observed with herdr 0.7.4) neither are agents: the
+# claude integration re-registers a running agent CLI, it does not restart
+# one. Rerun the commands ourselves: herdr-pane-cmd maps the utility labels
+# (review/git/nvim), dev-agent-argv -q the provider labels (claude/codex/...)
+# — the latter starts a fresh agent conversation, not a resume. Only panes
+# whose foreground process is still a plain shell are touched, so this is
+# idempotent and safe on a session that never went down.
 revive_pane_cmd() {
   local session="$1" pane="$2" cmd="$3" i state
   # Right after a boot the pane's shell may still be initializing (no
@@ -108,27 +110,40 @@ revive_pane_cmd() {
 }
 
 revive_panes() {
-  local session="$1" panes tabs pane label cmd
+  local session="$1" panes tabs workspaces pane label ws_label cmd
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
     | jq -c '.result.tabs // []')" || return 0
-  # Panes are matched by label; herdr-pane-cmd owns the label→command map
-  # (labels without a fixed command make it exit 1, filtering agent/dev/logs
-  # panes out here). Workspaces created before dev-herdr labeled utility-tab
+  workspaces="$(herdr --session "$session" workspace list 2>/dev/null \
+    | jq -c '.result.workspaces // []')" || return 0
+  # Panes are matched by label: herdr-pane-cmd owns the utility label→command
+  # map; provider labels (agent panes, labeled by herdr-agent-layout) rebuild
+  # their launch command via dev-agent-argv -q, which exits 1 for anything
+  # else — dev/logs panes match neither and stay bare shells. The workspace
+  # label becomes the agent's display name, matching how dev-herdr launched
+  # it; extra agent tabs added by herdr-nav (named "ws (claude 2)") revive
+  # under the plain workspace label — cosmetic, and their conversation is a
+  # fresh one either way (a resume only herdr itself could do).
+  # Workspaces created before dev-herdr labeled utility-tab
   # root panes fall back to the tab label for single-pane tabs (a split tab
   # is user-customized — leave it alone). Panes revive concurrently: each
   # waits up to ~3s for its shell, so serial cost would grow with pane count.
-  while IFS=$'\t' read -r pane label; do
+  while IFS=$'\t' read -r pane label ws_label; do
     [[ -n "$pane" && -n "$label" ]] || continue
-    cmd="$(herdr-pane-cmd "$label")" || continue
+    cmd="$(herdr-pane-cmd "$label")" \
+      || cmd="$(dev-agent-argv -q "$label" "$ws_label" 2>/dev/null)" \
+      || continue
     revive_pane_cmd "$session" "$pane" "$cmd" &
-  done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" '
-    ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
-    | ($panes | map(select(.label) | [.pane_id, .label])),
+  done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" \
+               --argjson workspaces "$workspaces" '
+    ($workspaces | map({(.workspace_id): .label}) | add // {}) as $ws_label
+    | ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
+    | ($panes | map(select(.label)
+                    | [.pane_id, .label, ($ws_label[.workspace_id] // "")])),
       ($panes | group_by(.tab_id)
               | map(select(length == 1) | .[0] | select(.label == null)
-                    | [.pane_id, ($tab_label[.tab_id] // empty)]))
+                    | [.pane_id, ($tab_label[.tab_id] // "")]))
     | .[] | @tsv')
   # Reaps only the revive jobs: every long-lived spawn is disowned at its `&`
   # (launch_client's kitty, ensure_servers' server), so none can sit in the

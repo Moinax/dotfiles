@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Resolve an AI-agent provider to its launch argv — the single source of
-# truth for launching an agent CLI (used by dev-zellij-session and
-# herdr-agent-layout).
+# truth for launching an agent CLI (used by dev-zellij-session,
+# herdr-agent-layout, and herdr-clients revive-panes).
 #
 # Each provider has its own CLI shape:
 #   claude   -> claude -n NAME [prompt]   (-n = display name; prompt auto-submits)
@@ -11,11 +11,16 @@
 #   opencode -> opencode                  (TUI; positional is a PATH not a prompt,
 #                                           so no name and no auto-prompt)
 #
-# Usage:   dev-agent-argv PROVIDER NAME [PROMPT]
-# Output:  one argv token per line (first line = command, rest = args).
-#          Callers reassemble: zellij needs command + args split; kitty %q-quotes.
+# Usage:   dev-agent-argv [-q] PROVIDER NAME [PROMPT]
+# Output:  one argv token per line (first line = command, rest = args), for
+#          callers that need the tokens split (zellij). With -q, one
+#          %q-quoted line ready for a shell / herdr `pane run` — the join is
+#          owned here so the spawn (herdr-agent-layout) and the revive
+#          (herdr-clients) can never drift in how they quote a prompt.
 set -euo pipefail
 
+quoted=0
+[[ "${1:-}" == -q ]] && { quoted=1; shift; }
 provider="${1:-}"; name="${2:-}"; prompt="${3:-}"
 
 case "$provider" in
@@ -38,4 +43,8 @@ case "$provider" in
     ;;
 esac
 
-printf '%s\n' "$@"
+if (( quoted )); then
+  printf '%q ' "$@"
+else
+  printf '%s\n' "$@"
+fi

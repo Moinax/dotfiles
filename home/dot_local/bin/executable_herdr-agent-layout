@@ -42,12 +42,11 @@ p_review="$(h pane split "$p_agent" --direction right \
 h pane rename "$p_review" review >/dev/null
 h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
 
-# Agent argv comes from dev-agent-argv (single source of truth); %q-quote it
-# into the pane's shell so prompts with spaces/quotes survive. The installed
-# herdr integration hooks the agent CLI itself, so detection and session
-# restore work no matter how the agent is launched.
-mapfile -t agent_argv < <(dev-agent-argv "$provider" "$label" "$prompt")
-h pane run "$p_agent" "$(printf '%q ' "${agent_argv[@]}")" >/dev/null
+# Agent command comes from dev-agent-argv (single source of truth; -q emits
+# it %q-quoted so prompts with spaces/quotes survive the pane's shell). The
+# installed herdr integration hooks the agent CLI itself, so detection and
+# session restore work no matter how the agent is launched.
+h pane run "$p_agent" "$(dev-agent-argv -q "$provider" "$label" "$prompt")" >/dev/null
 
 # Bottom row: two plain terminals — "dev" (run your dev server by hand)
 # and "logs" (tail logs, one-off commands). No auto-typed dev command.

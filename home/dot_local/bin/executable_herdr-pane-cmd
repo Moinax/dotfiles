@@ -3,8 +3,9 @@
 # of truth shared by herdr-agent-layout / dev-herdr (pane creation) and
 # herdr-clients revive-panes (relaunch after a server restart), so the spawned
 # and the revived command can never drift. Mirrors dev-agent-argv, which owns
-# agent argv the same way. Exits 1 for labels with no fixed command (agent,
-# dev, logs panes).
+# agent commands the same way (provider labels resolve there, not here).
+# Exits 1 for other labels: dev/logs panes have no fixed command and stay
+# bare shells.
 #
 # Usage: herdr-pane-cmd LABEL
 case "${1:-}" in
