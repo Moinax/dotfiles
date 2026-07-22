@@ -45,6 +45,11 @@ close_tab = ["prefix+shift+x", "ctrl+alt+w"]
 next_tab = ["prefix+n", "ctrl+alt+n"]
 previous_tab = ["prefix+p", "ctrl+alt+p"]
 
+# Close the active space. ctrl+alt+d joins the ctrl+alt cluster above and
+# mirrors the "d" of the prefix+shift+d default (kept alongside); plain
+# ctrl+w is off-limits for the same reason as close_tab above.
+close_workspace = ["prefix+shift+d", "ctrl+alt+d"]
+
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
 # project's dev environment via dev-mux — the in-herdr rofi-dev.
 [[keys.command]]
@@ -67,16 +72,6 @@ command = "herdr-nav agent-picker"
 width = "40%"
 height = "35%"
 description = "New agent tab (pick provider)"
-
-# Stop the current session and close its client window — the in-herdr
-# equivalent of `hss <session>` (kills the agents; the saved layout
-# persists, so reopening the session restores it fresh). Mirrors the
-# desktop Mod+Alt+Q stop-all, scoped to this session.
-[[keys.command]]
-key = "ctrl+alt+q"
-type = "shell"
-command = "herdr-nav quit"
-description = "Stop session & close window (kills agents)"
 
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
