@@ -25,6 +25,7 @@ descriptions:
   neovim: Hyperextensible text editor
   tree-sitter-cli: Tree-sitter CLI — compiles parsers for nvim-treesitter's main branch (required since AstroNvim v6)
   cursor-bin: AI-powered code editor (AUR)
+  zed: High-performance collaborative code editor
   git: Distributed version control system
   github-cli: GitHub CLI
   lazygit: Terminal UI for git
@@ -91,7 +92,8 @@ packages:
     - neovim
     - tree-sitter-cli  # nvim-treesitter main-branch parser compiler (AstroNvim v6+)
     - cursor-bin  # AUR
-    
+    - zed
+
     # Git tools
     - git
     - github-cli
