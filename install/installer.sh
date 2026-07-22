@@ -1397,9 +1397,25 @@ setup_biometric() {
     # (no fprintd) for instant password fallback. Fingerprint at the lockscreen is
     # handled by hyprlock natively via D-Bus (auth.fingerprint in hyprlock.conf),
     # independently from this PAM stack.
+    # `password-auth` is a Fedora/RHEL PAM name that does not exist on Arch —
+    # generate it as system-auth minus pam_fprintd so the include below
+    # resolves. A dangling include makes every pam_authenticate fail
+    # instantly, and hyprlock crash-loops on that while holding the session
+    # lock (forced reboot to recover). The file is derived state: regenerate
+    # it on every run we own it (header present) so it tracks pambase updates
+    # to system-auth; a headerless file is user-authored — leave it alone.
+    local pam_gen_header="# Generated from system-auth by the dotfiles installer; do not edit (regenerated on installer runs)."
+    if [ -f /etc/pam.d/system-auth ]; then
+        if [ ! -f /etc/pam.d/password-auth ] \
+            || [ "$(head -n1 /etc/pam.d/password-auth)" = "$pam_gen_header" ]; then
+            print_info "Generating /etc/pam.d/password-auth (system-auth without fprintd)"
+            sudo sh -c "{ echo '$pam_gen_header'; sed '/pam_fprintd\.so/d' /etc/pam.d/system-auth; } > /etc/pam.d/password-auth"
+        fi
+    fi
+
     local pam_file=/etc/pam.d/hyprlock ts
     ts=$(date +%s)
-    if [ -f "$pam_file" ]; then
+    if [ -f "$pam_file" ] && [ -f /etc/pam.d/password-auth ]; then
         if grep -qE '^auth\s+include\s+password-auth\s*$' "$pam_file"; then
             print_info "$(basename "$pam_file") PAM already uses password-auth"
         elif ! grep -qE '^auth\s+include\s+login\s*$' "$pam_file"; then
