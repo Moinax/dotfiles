@@ -1417,6 +1417,15 @@ Description=Regenerate /etc/pam.d/password-auth from system-auth (minus fprintd)
 [Service]
 Type=oneshot
 ExecStart=/bin/sh -c 'if [ ! -f /etc/pam.d/password-auth ] || head -n1 /etc/pam.d/password-auth | grep -q "^# Generated from system-auth"; then { echo "# Generated from system-auth — do not edit; regenerated automatically by pam-password-auth.service."; sed "/pam_fprintd[.]so/d" /etc/pam.d/system-auth; } > /etc/pam.d/.password-auth.tmp && mv /etc/pam.d/.password-auth.tmp /etc/pam.d/password-auth; fi'
+
+# Enabled directly (besides the path-unit trigger) so every boot re-runs the
+# generation once: a password-auth that went missing self-heals instead of
+# leaving the hyprlock/plasmalogin includes dangling (instant auth failure).
+# Boot-time self-heal must NOT live in the path unit as PathExists= — that
+# condition stays true after the oneshot exits, so systemd re-triggers it in
+# a loop until the start limit kills the path unit.
+[Install]
+WantedBy=multi-user.target
 UNIT
         sudo tee /etc/systemd/system/pam-password-auth.path >/dev/null <<'UNIT'
 [Unit]
@@ -1430,9 +1439,10 @@ WantedBy=multi-user.target
 UNIT
         sudo systemctl daemon-reload
         sudo systemctl enable --now pam-password-auth.path >/dev/null
-        # Initial generation (also refreshes a file stamped by earlier
-        # versions of this setup — their headers share the prefix).
-        sudo systemctl start pam-password-auth.service
+        # enable: boot-time self-heal; --now: initial generation (also
+        # refreshes a file stamped by earlier versions of this setup — their
+        # headers share the prefix).
+        sudo systemctl enable --now pam-password-auth.service >/dev/null
         print_success "password-auth generated and kept in sync with system-auth"
     fi
 
@@ -1448,6 +1458,51 @@ UNIT
             sudo cp "$pam_file" "${pam_file}.bak.${ts}"
             sudo sed -i 's|^auth\s\+include\s\+login\s*$|auth        include      password-auth|' "$pam_file"
             print_success "$pam_file patched (backup: ${pam_file}.bak.${ts})"
+        fi
+    fi
+
+    # Same fprintd-timeout problem at the login screen: the Plasma Login
+    # Manager's vendor stack (/usr/lib/pam.d/plasmalogin) includes
+    # system-login → system-auth, where pam_fprintd sits before pam_unix — the
+    # password typed at the greeter waits out the fingerprint timeout (~25s)
+    # before pam_unix consumes it. PAM reads /etc/pam.d before /usr/lib/pam.d,
+    # so drop an override whose auth phase goes through password-auth
+    # (system-login's own auth preamble inlined); account/password/session
+    # mirror the vendor stack, keeping the kwallet/keyring hooks so the wallet
+    # still auto-unlocks from the typed password. Header check as above: a
+    # hand-authored override is never clobbered.
+    local plasma_pam=/etc/pam.d/plasmalogin
+    if [ -f /usr/lib/pam.d/plasmalogin ] && [ -f /etc/pam.d/password-auth ]; then
+        if [ -f "$plasma_pam" ] && ! head -n2 "$plasma_pam" | grep -q '^# Installed by the dotfiles installer'; then
+            print_info "$(basename "$plasma_pam") is a hand-authored override — leaving as is"
+        else
+            print_info "Overriding plasmalogin PAM to skip fprintd timeout on password"
+            sudo tee "$plasma_pam" >/dev/null <<'PAMEOF'
+#%PAM-1.0
+# Installed by the dotfiles installer — overrides /usr/lib/pam.d/plasmalogin.
+# auth runs through password-auth (system-auth minus pam_fprintd) so the
+# password typed at the greeter authenticates instantly instead of waiting
+# out the fingerprint timeout. The two lines above the include are a frozen
+# copy of system-login's auth preamble (nothing keeps them in sync — deliberate
+# for a login stack); the other phases include system-login and track it.
+
+auth        required    pam_shells.so
+auth        requisite   pam_nologin.so
+auth        include     password-auth
+-auth       optional    pam_gnome_keyring.so
+-auth       optional    pam_kwallet5.so
+
+account     include     system-login
+
+password    include     system-login
+-password   optional    pam_gnome_keyring.so    use_authtok
+
+session     optional    pam_keyinit.so          force revoke
+session     include     system-login
+-session    optional    pam_gnome_keyring.so    auto_start
+-session    optional    pam_kwallet5.so         auto_start
+PAMEOF
+            print_success "$pam_file installed"
         fi
     fi
 
