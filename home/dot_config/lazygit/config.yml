@@ -4,21 +4,23 @@ os:
   editPreset: "nvim-remote"
   open: 'if [ -n "$NVIM" ]; then nvim --server "$NVIM" --remote {{filename}}; else xdg-open {{filename}}; fi'
 customCommands:
-  # tuicr code review on Ctrl+V, context-aware: working tree in the files
+  # hunk code review on Alt+R, context-aware: working tree in the files
   # panel, branch..HEAD in the branches panel, selected commit(s) in the
   # commits panel (range selection reviews the whole range).
-  - key: <c-v>
+  # Alt+R is free everywhere: lazygit (Ctrl+R = recent repos / reset
+  # cherry-pick), Kitty (Ctrl+Alt+R = set_window_title), Hyprland.
+  - key: <a-r>
     context: files
-    command: tuicr -w
+    command: hunk diff
     output: terminal
-    description: Review working changes in tuicr
-  - key: <c-v>
+    description: Review working changes in hunk
+  - key: <a-r>
     context: localBranches
-    command: tuicr -r {{.SelectedLocalBranch.Name}}..HEAD
+    command: hunk diff {{.SelectedLocalBranch.Name}}..HEAD
     output: terminal
-    description: Review selected branch..HEAD in tuicr
-  - key: <c-v>
+    description: Review selected branch..HEAD in hunk
+  - key: <a-r>
     context: commits
-    command: tuicr -r {{.SelectedCommitRange.From}}^..{{.SelectedCommitRange.To}}
+    command: hunk diff {{.SelectedCommitRange.From}}^..{{.SelectedCommitRange.To}}
     output: terminal
-    description: Review selected commit(s) in tuicr
+    description: Review selected commit(s) in hunk
