@@ -130,6 +130,9 @@ revive_panes() {
               | map(select(length == 1) | .[0] | select(.label == null)
                     | [.pane_id, ($tab_label[.tab_id] // empty)]))
     | .[] | @tsv')
+  # Reaps only the revive jobs: every long-lived spawn is disowned at its `&`
+  # (launch_client's kitty, ensure_servers' server), so none can sit in the
+  # job table and turn this wait into a forever-block.
   wait
 }
 
@@ -152,6 +155,11 @@ ensure_servers() {
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
     setsid herdr --session "$session" server >/dev/null 2>&1 9>&- &
+    # Off the job table, like launch_client's kitty: revive_panes' `wait` must
+    # reap only its revive jobs — an un-disowned server (which never exits)
+    # blocks that wait forever while it holds the flock, and every later
+    # invocation (every `dev`) then times out against the lock.
+    disown
     pending+=("$session")
     booted+=("$session")
   done
