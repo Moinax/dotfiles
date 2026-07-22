@@ -13,6 +13,7 @@
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
 #        herdr-clients revive-panes SESSION   rerun utility/agent pane commands in restored panes left as bare shells
+#        herdr-clients migrate-layout [SESSION ...]  reconcile persisted workspaces with the current dev-herdr layout (default: every session)
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -195,7 +196,7 @@ revive_panes() {
   wait
 }
 
-# Bring the given sessions' servers up if down, and wait for them. The CLI
+# Boot the given sessions' servers if down, and wait for them. The CLI
 # never auto-starts a server (a bare client errors on the missing socket), so
 # a dead session must be booted explicitly; starting the headless server
 # restores its saved workspaces/panes from session.json. Exit codes are
@@ -204,18 +205,20 @@ revive_panes() {
 # All down servers are started first, then one shared poll watches the whole
 # set — K dead servers boot in parallel instead of 5s each in sequence, and
 # each tick costs one `session list` instead of one per session.
-# Freshly booted servers get their non-agent pane commands relaunched
-# (revive_panes) once up.
-# Prints the names that failed to come up; returns non-zero if any did.
-ensure_servers() {
-  local -a pending=() booted=()
+# Reports through globals (always returns 0, so callers under set -e choose
+# how to react): BOOTED_SESSIONS = sessions this call started,
+# FAILED_SESSIONS = sessions that never came up.
+boot_servers() {
+  local -a pending=()
   local session up i
+  BOOTED_SESSIONS=()
+  FAILED_SESSIONS=()
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
     spawn_detached herdr --session "$session" server
     pending+=("$session")
-    booted+=("$session")
+    BOOTED_SESSIONS+=("$session")
   done
   for ((i = 0; i < 20 && ${#pending[@]} > 0; i++)); do
     sleep 0.25
@@ -226,12 +229,145 @@ ensure_servers() {
     done
     pending=("${still[@]}")
   done
-  for session in "${booted[@]}"; do
-    [[ ${#pending[@]} -gt 0 ]] \
-      && grep -qxF "$session" < <(printf '%s\n' "${pending[@]}") && continue
+  FAILED_SESSIONS=("${pending[@]}")
+}
+
+# boot_servers + relaunch the freshly booted servers' pane commands
+# (revive_panes) once up. Prints the names that failed to come up; returns
+# non-zero if any did.
+ensure_servers() {
+  local session
+  boot_servers "$@"
+  for session in "${BOOTED_SESSIONS[@]}"; do
+    in_list "$session" "${FAILED_SESSIONS[@]}" && continue
     revive_panes "$session"
   done
-  [[ ${#pending[@]} -eq 0 ]] || { printf '%s\n' "${pending[@]}"; return 1; }
+  [[ ${#FAILED_SESSIONS[@]} -eq 0 ]] \
+    || { printf '%s\n' "${FAILED_SESSIONS[@]}"; return 1; }
+}
+
+# Array membership: in_list NEEDLE [ITEM ...]
+in_list() {
+  local needle="$1"
+  shift
+  [[ $# -gt 0 ]] && printf '%s\n' "$@" | grep -qxF "$needle"
+}
+
+# Resolve a workspace's project directory for a new utility tab: grouped
+# sessions map to <projects root>/<session>/<workspace label> (mirroring
+# dev-herdr's session derivation); otherwise fall back to a live pane's
+# foreground cwd — right after a headless boot the pane shells may still be
+# initializing, hence the retry. Fails when neither resolves.
+workspace_cwd() { # $1: session, $2: workspace_id, $3: workspace label
+  local root dir pane i
+  root="$(dev-projects root 2>/dev/null || echo "$HOME/Projects")"
+  dir="$root/$1/$3"
+  [[ -n "$3" && -d "$dir" ]] && { echo "$dir"; return 0; }
+  local -a ws_panes=()
+  mapfile -t ws_panes < <(herdr --session "$1" pane list 2>/dev/null \
+    | jq -r --arg w "$2" '.result.panes[]? | select(.workspace_id == $w) | .pane_id')
+  for ((i = 0; i < 10; i++)); do
+    for pane in "${ws_panes[@]}"; do
+      dir="$(herdr --session "$1" pane process-info --pane "$pane" 2>/dev/null \
+        | jq -r '.result.process_info.foreground_processes[0].cwd // empty')" || dir=""
+      [[ -n "$dir" ]] && { echo "$dir"; return 0; }
+    done
+    sleep 0.3
+  done
+  return 1
+}
+
+# Reconcile one session's persisted workspaces with the current dev-herdr
+# layout. dev-herdr reattaches to existing workspaces as-is, so a layout
+# change silently resurrects the previous iteration on the next server
+# restart — revive-panes relaunches whatever the stale labels say (observed:
+# an old "git"-labeled agent-tab split reviving lazygit where hunk belongs,
+# with no git tab at all). Rules, all idempotent and label-only (running
+# processes are left alone; commands follow at the next revive-panes):
+#   - a "git"-labeled pane in a tab NOT labeled git is the old in-tab lazygit
+#     split → relabel "review" (hunk). Historical rule: retire it once no
+#     persisted workspace predates the git tab.
+#   - the unlabeled root pane of a single-pane utility tab gets the tab's
+#     label (workspaces predating dev-herdr labeling utility root panes)
+#   - a workspace missing a utility tab gets it, with a labeled bare-shell
+#     root pane (dev-herdr util_tab's create→label sequence, minus the
+#     command — revive-panes launches that)
+migrate_layout() {
+  local session="$1" tabs panes pane label ws util cwd
+  local -a util_tabs=()
+  mapfile -t util_tabs < <(herdr-pane-cmd --util-tabs)
+  tabs="$(herdr --session "$session" tab list 2>/dev/null \
+    | jq -c '.result.tabs // []')" || return 0
+  panes="$(herdr --session "$session" pane list 2>/dev/null \
+    | jq -c '.result.panes // []')" || return 0
+
+  while read -r pane; do
+    herdr --session "$session" pane rename "$pane" review >/dev/null
+    echo "$session: relabeled pane $pane git -> review"
+  done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" '
+    ($tabs | map({(.tab_id): .label}) | add // {}) as $tl
+    | $panes[] | select(.label == "git" and $tl[.tab_id] != "git") | .pane_id')
+
+  while IFS=$'\t' read -r pane label; do
+    herdr --session "$session" pane rename "$pane" "$label" >/dev/null
+    echo "$session: labeled $label root pane $pane"
+  done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" \
+               --arg utils "${util_tabs[*]}" '
+    ($utils | split(" ")) as $u
+    | ($tabs | map({(.tab_id): .label}) | add // {}) as $tl
+    | $panes | group_by(.tab_id)[] | select(length == 1) | .[0]
+    | select(.label == null and ($tl[.tab_id] as $l | $u | index($l)))
+    | [.pane_id, $tl[.tab_id]] | @tsv')
+
+  while IFS=$'\t' read -r ws label; do
+    for util in "${util_tabs[@]}"; do
+      jq -en --argjson tabs "$tabs" --arg w "$ws" --arg u "$util" \
+        'any($tabs[]; .workspace_id == $w and .label == $u)' >/dev/null && continue
+      cwd="$(workspace_cwd "$session" "$ws" "$label")" || {
+        echo "$session: cannot resolve cwd for workspace '$label' ($ws) — add its $util tab manually" >&2
+        continue
+      }
+      pane="$(herdr --session "$session" tab create --workspace "$ws" \
+          --label "$util" --cwd "$cwd" --no-focus \
+        | jq -r '.result.root_pane.pane_id')"
+      herdr --session "$session" pane rename "$pane" "$util" >/dev/null
+      echo "$session: added $util tab to workspace '$label' (cwd $cwd)"
+    done
+  done < <(herdr --session "$session" workspace list 2>/dev/null \
+    | jq -r '.result.workspaces[]? | [.workspace_id, .label // ""] | @tsv')
+}
+
+# Migrate the given sessions (default: every persisted one). Down sessions
+# are booted WITHOUT revive-panes — migration only edits labels/tabs, so no
+# agents or pane commands should start — and stopped again afterwards, which
+# persists the corrected layout and preserves the machine's running set.
+migrate_layout_sessions() {
+  local -a sessions=() known=()
+  local session
+  mapfile -t known < <(herdr session list --json 2>/dev/null \
+    | jq -r '.sessions[]? | .name')
+  if [[ $# -gt 0 ]]; then
+    # Only persisted names: `herdr --session X server` would happily create
+    # a brand-new session out of a typo.
+    for session in "$@"; do
+      if in_list "$session" "${known[@]}"; then
+        sessions+=("$session")
+      else
+        echo "herdr-clients: unknown session '$session' — skipping" >&2
+      fi
+    done
+  else
+    sessions=("${known[@]}")
+  fi
+  [[ ${#sessions[@]} -eq 0 ]] && return 0
+  boot_servers "${sessions[@]}"
+  for session in "${sessions[@]}"; do
+    in_list "$session" "${FAILED_SESSIONS[@]}" \
+      && { echo "herdr-clients: server for '$session' did not start" >&2; continue; }
+    migrate_layout "$session"
+  done
+  [[ ${#BOOTED_SESSIONS[@]} -gt 0 ]] && stop_sessions "${BOOTED_SESSIONS[@]}"
+  [[ ${#FAILED_SESSIONS[@]} -eq 0 ]]
 }
 
 # Wait for a launched client's window to map (kitty is async).
@@ -387,7 +523,11 @@ case "${1:-}" in
   open-all)   open_all;   notify low "All sessions open" ;;
   detach-all) detach_all; notify low "All clients detached" ;;
   stop-all)   stop_all;   notify low "All servers stopped" ;;
+  migrate-layout)
+    shift
+    migrate_layout_sessions "$@"
+    ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes)"
+    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes | migrate-layout)"
     ;;
 esac

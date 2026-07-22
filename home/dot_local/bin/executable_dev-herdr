@@ -101,8 +101,7 @@ util_tab() {
   h pane rename "$pane" "$1" >/dev/null
   h pane run "$pane" "$(herdr-pane-cmd "$1")" >/dev/null
 }
-util_tab git
-util_tab nvim
+while read -r tab; do util_tab "$tab"; done < <(herdr-pane-cmd --util-tabs)
 
 h workspace focus "$ws" >/dev/null
 show_client

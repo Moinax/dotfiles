@@ -6,9 +6,13 @@
 # agent commands the same way (provider labels resolve there, not here).
 # Exits 1 for other labels: dev/logs panes have no fixed command and stay
 # bare shells.
+# --util-tabs lists the full-window utility tabs every workspace gets (one
+# per line) — owned here, next to their commands, so dev-herdr (tab creation)
+# and herdr-clients migrate-layout (backfill) share one list.
 #
-# Usage: herdr-pane-cmd LABEL
+# Usage: herdr-pane-cmd LABEL | --util-tabs
 case "${1:-}" in
+  --util-tabs) printf '%s\n' git nvim ;;
   # watch = true in ~/.config/hunk/config.toml makes plain `hunk diff` watch.
   review) echo "hunk diff" ;;
   git)    echo "lazygit" ;;
