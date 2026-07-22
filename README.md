@@ -179,7 +179,7 @@ After running the installer:
 1. **Log out and back in** for shell changes to take effect
 2. **Add SSH key** to GitHub/GitLab (displayed during setup)
 3. **Hyprland users**: Press `Super+?` to see keybindings
-4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte
+4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte (the prompt and Claude Code status line switch with it)
 5. **Plymouth**: Reboot to see the boot splash (if configured during install)
 
 ## Included Configurations
@@ -192,7 +192,7 @@ After running the installer:
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout
 - **AI**: hyprvoice dictation with local Whisper speech recognition
-- **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (Catppuccin Powerline theme), WorkTrunk worktree plugin
+- **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (flat Catppuccin-matched theme, dark/light switched), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
 
 ## Credits

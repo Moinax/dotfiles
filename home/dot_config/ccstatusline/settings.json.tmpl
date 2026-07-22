@@ -1,0 +1,36 @@
+{{- /* Catppuccin-matched pastel palette, same hex values as the starship dark/light palettes */ -}}
+{{- $c := dict "bar" "262434" "dim" "8D92A7" "cream" "F6E2B7" "peach" "F2B590" "pink" "E990A9" "teal" "9FD6CF" "green" "ABDFA7" "blue" "8FB3EF" }}
+{{- if eq .dark_mode "light" }}
+{{-   $c = dict "bar" "E4E1ED" "dim" "767C93" "cream" "97742A" "peach" "B4642A" "pink" "BC4A6F" "teal" "2E8078" "green" "4E8F49" "blue" "3D6ACA" }}
+{{- end }}
+{
+  "version": 3,
+  "lines": [
+    [
+      { "id": "m1", "type": "model", "rawValue": true, "color": "hex:{{ $c.cream }}" },
+      { "id": "m2", "type": "custom-text", "customText": " " },
+      { "id": "m3", "type": "thinking-effort", "rawValue": true, "color": "hex:{{ $c.cream }}" },
+      { "id": "s1", "type": "separator", "character": " · ", "color": "hex:{{ $c.dim }}" },
+      { "id": "c1", "type": "custom-text", "customText": "Context ", "color": "hex:{{ $c.peach }}" },
+      { "id": "c2", "type": "context-percentage", "rawValue": true, "color": "hex:{{ $c.peach }}" },
+      { "id": "c3", "type": "custom-text", "customText": " used", "color": "hex:{{ $c.peach }}" },
+      { "id": "s2", "type": "separator", "character": " · ", "color": "hex:{{ $c.dim }}" },
+      { "id": "t1", "type": "custom-text", "customText": "session ", "color": "hex:{{ $c.teal }}" },
+      { "id": "t2", "type": "reset-timer", "rawValue": true, "color": "hex:{{ $c.teal }}", "metadata": { "compact": "true" } },
+      { "id": "t3", "type": "custom-text", "customText": " left", "color": "hex:{{ $c.teal }}" },
+      { "id": "s3", "type": "separator", "character": " · ", "color": "hex:{{ $c.dim }}" },
+      { "id": "w1", "type": "custom-text", "customText": "weekly ", "color": "hex:{{ $c.pink }}" },
+      { "id": "w2", "type": "weekly-usage", "rawValue": true, "color": "hex:{{ $c.pink }}", "metadata": { "invert": "true" } },
+      { "id": "w3", "type": "custom-text", "customText": " left (", "color": "hex:{{ $c.pink }}" },
+      { "id": "w4", "type": "weekly-reset-timer", "rawValue": true, "color": "hex:{{ $c.pink }}", "metadata": { "compact": "true" } },
+      { "id": "w5", "type": "custom-text", "customText": ")", "color": "hex:{{ $c.pink }}" },
+      { "id": "s4", "type": "separator", "character": " · ", "color": "hex:{{ $c.dim }}" },
+      { "id": "g1", "type": "git-root-dir", "color": "hex:{{ $c.green }}" },
+      { "id": "s5", "type": "separator", "character": " · ", "color": "hex:{{ $c.dim }}" },
+      { "id": "g2", "type": "git-branch", "rawValue": true, "color": "hex:{{ $c.blue }}" }
+    ]
+  ],
+  "flexMode": "full",
+  "colorLevel": 3,
+  "overrideBackgroundColor": "hex:{{ $c.bar }}"
+}

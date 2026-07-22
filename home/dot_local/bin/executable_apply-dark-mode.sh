@@ -199,6 +199,7 @@ done
 if command -v chezmoi &>/dev/null; then
     chezmoi apply \
         ~/.gitconfig \
+        ~/.config/ccstatusline/settings.json \
         ~/.config/gh-dash/config.yml \
         ~/.config/hunk/config.toml \
         ~/.config/starship.toml \

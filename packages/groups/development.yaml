@@ -45,7 +45,7 @@ descriptions:
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
   claude-code-proxy: Anthropic-compatible proxy — Claude Code on a ChatGPT subscription (claudex)
-  ccstatusline: Claude Code status line with Catppuccin Powerline theme
+  ccstatusline: Claude Code status line with flat Catppuccin-matched theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
 
