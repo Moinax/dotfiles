@@ -96,8 +96,8 @@ case "${1:-}" in
     # one numbered family per provider. One pass over the tab labels finds
     # the next free suffix and the insertion point. Insert immediately after
     # the last agent tab so the agent block stays contiguous and lands before
-    # the "git" and "nvim" tabs. If no agent tab exists, insert before the
-    # first shared utility tab, or at the end if neither exists.
+    # the shared utility tabs (git, nvim); with no agent tab, insert at the
+    # front — no tab-name list needed beyond the agent family itself.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
       | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
           [.result.tabs[].label] as $ls
@@ -105,11 +105,7 @@ case "${1:-}" in
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
           | ([range(0; $ls | length) | select($ls[.] | test($fam))]
               | max // -1) as $last_agent
-          | ([$ls | index("git"), index("nvim")] | map(select(. != null))
-              | min // ($ls | length)) as $first_utility
-          | (if $last_agent >= 0 then $last_agent + 1
-             else $first_utility end) as $insert
-          | "\($num) \($insert)"')
+          | "\($num) \($last_agent + 1)"')
     label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
 
     tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
