@@ -19,6 +19,22 @@ die() { echo "herdr-clients: $*" >&2; exit 1; }
 command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)"
 command -v jq    >/dev/null 2>&1 || die "jq is required"
 
+# Transient desktop feedback for the keybind-driven *-all commands, whose
+# spawns have no terminal to show success or failure. int:transient:1 keeps
+# the popups out of the notification center (same pattern as
+# toggle-monitors.sh).
+notify() { # $1: urgency, rest: body
+  notify-send -u "$1" -h int:transient:1 -t 3000 "Herdr" "${*:2}" 2>/dev/null || true
+}
+
+# Ack before taking the lock, so a press queued behind a slow invocation
+# still gives immediate feedback instead of silence until the lock frees.
+case "${1:-}" in
+  open-all)   notify low "Opening all sessions…" ;;
+  detach-all) notify low "Detaching all clients…" ;;
+  stop-all)   notify low "Stopping all servers…" ;;
+esac
+
 # Serialize invocations. stop-all takes a few seconds (one serial `session
 # stop` per server); an open-all racing it sees half-stopped sessions —
 # clients attach to a dying server (empty kitty that closes itself) or open
@@ -30,7 +46,10 @@ command -v jq    >/dev/null 2>&1 || die "jq is required"
 # invocation hangs forever. The bounded wait turns any residual deadlock into
 # an error instead of a silent pile-up of queued keypresses.
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/herdr-clients.lock"
-flock -w 30 9 || die "timed out waiting for another herdr-clients invocation"
+flock -w 30 9 || {
+  notify critical "Busy: another herdr-clients invocation is holding the lock"
+  die "timed out waiting for another herdr-clients invocation"
+}
 
 # "default" is herdr's reserved alias for the unnamed session; its client
 # window keeps the bare "herdr" class (matches dev-herdr).
@@ -365,9 +384,9 @@ case "${1:-}" in
     session="${2:?usage: herdr-clients revive-panes SESSION}"
     revive_panes "$session"
     ;;
-  open-all)   open_all ;;
-  detach-all) detach_all ;;
-  stop-all)   stop_all ;;
+  open-all)   open_all;   notify low "All sessions open" ;;
+  detach-all) detach_all; notify low "All clients detached" ;;
+  stop-all)   stop_all;   notify low "All servers stopped" ;;
   *)
     die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes)"
     ;;
