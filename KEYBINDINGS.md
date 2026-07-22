@@ -11,7 +11,8 @@
 | Action | Keys | Notes |
 |---|---|---|
 | Open terminal (kitty) | `Mod+Return` | |
-| Dev terminal (Zellij session) | `Mod+Alt+Return` | Rofi directory picker, then a persistent Zellij dev session (agent + nvim tabs) |
+| Dev workspace (main project) | `Mod+Alt+Return` | Rofi project picker (worktrees filtered out), then a persistent dev session (agent + lazygit + nvim); `Ctrl+Enter` on a project jumps to its worktree picker |
+| Dev workspace (worktree) | `Mod+Ctrl+Return` | Rofi project picker, then worktree picker (`wts`): select to reopen, type a branch name to create; new branches auto-run `/start`, `Ctrl+Enter` inverts that, `Shift+Enter` forces the typed text over a highlighted match |
 | App launcher (rofi) | `Mod+Space` | |
 | Open default browser | `Mod+B` | Launches the system default web browser |
 | Pick browser (rofi) | `Mod+Alt+B` | Rofi menu of all installed browsers |

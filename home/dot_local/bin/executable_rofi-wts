@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# rofi-wts — rofi worktree launcher: pick a main project, then create or
+# reopen a worktree for it and launch its dev environment. The rofi analog of
+# the wts/wtstart shell function; the launch half (title, copy-ignored,
+# detached dev-mux) is the shared wtstart-launch. Bound to Mod+Ctrl+Return;
+# also reachable from rofi-dev via Ctrl+Enter with the project preselected
+# as $1. Runs without a terminal, so `wt switch` gets --no-cd (nothing to cd)
+# and errors surface as notifications instead of stderr.
+#
+# Worktree menu: existing worktrees first, then local branches without one
+# (newest commits first); typed text creates a new branch. Enter applies the
+# default /start behavior (-s for a brand-new branch, none otherwise),
+# Ctrl+Enter inverts it, Shift+Enter submits the typed text even when the
+# list highlights a match (rofi's accept-custom, moved off its default
+# Ctrl+Enter binding to free it for the /start toggle).
+set -euo pipefail
+
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a rofi-wts "$@" || true; }
+fail() { notify -u critical "rofi-wts" "$1"; exit 1; }
+
+for cmd in rofi wt git dev-projects wtstart-launch; do
+  command -v "$cmd" >/dev/null 2>&1 || fail "$cmd not found"
+done
+
+entry="${1:-}"
+if [[ -z "$entry" ]]; then
+  entry=$(dev-projects list --main-only 2>/dev/null |
+    rofi -dmenu -i -p "Worktree" -kb-accept-custom "") || exit 0
+fi
+[[ -z "$entry" ]] && exit 0
+
+dir="$(dev-projects resolve "$entry")"
+[[ -d "$dir/.git" ]] || fail "$entry is not a git repository"
+cd "$dir"
+
+# Worktree branches (skipping the main worktree itself — reopening it is just
+# `dev`), remembering all of them so the branch list below excludes them.
+declare -A has_wt=()
+wt_branches=()
+cur_path=""
+while IFS= read -r line; do
+  case "$line" in
+    "worktree "*) cur_path="${line#worktree }" ;;
+    "branch "*)
+      b="${line#branch refs/heads/}"
+      has_wt[$b]=1
+      if [[ "$cur_path" != "$dir" ]]; then wt_branches+=("$b"); fi
+      ;;
+  esac
+done < <(git worktree list --porcelain)
+
+other_branches=()
+while IFS= read -r b; do
+  if [[ -z "${has_wt[$b]:-}" ]]; then other_branches+=("$b"); fi
+done < <(git for-each-ref refs/heads --sort=-committerdate --format='%(refname:short)')
+
+ret=0
+branch=$(printf '%s\n' "${wt_branches[@]}" "${other_branches[@]}" | sed '/^$/d' |
+  rofi -dmenu -i -p "Worktree: ${dir##*/}" \
+    -mesg "Enter: open · Ctrl+Enter: invert /start · Shift+Enter: force typed text" \
+    -kb-accept-alt "" -kb-accept-custom "Shift+Return" -kb-custom-1 "Control+Return") || ret=$?
+
+branch="${branch//[[:space:]]/}"
+[[ -z "$branch" ]] && exit 0
+case "$ret" in 0 | 10) ;; *) exit 0 ;; esac
+
+create=false
+git show-ref --verify --quiet "refs/heads/$branch" || create=true
+
+# Creation (worktree, copy-ignored, pre/post-start hooks) takes a few
+# seconds; without a notification the keypress feels swallowed.
+if [[ -z "${has_wt[$branch]:-}" ]]; then
+  notify -h int:transient:1 "rofi-wts" "Creating worktree for $branch…"
+fi
+
+switch_args=()
+if $create; then switch_args+=(--create); fi
+out=$(wt switch "${switch_args[@]}" "$branch" --no-cd 2>&1) ||
+  fail "wt switch ${switch_args[*]} $branch failed: $out"
+
+wt_path=$(git worktree list --porcelain | awk -v want="refs/heads/$branch" '
+  $1 == "worktree" { path = substr($0, 10) }
+  $1 == "branch" && $2 == want { print path; exit }')
+[[ -n "$wt_path" && -d "$wt_path" ]] || fail "could not locate the worktree for $branch"
+
+# /start defaults to on for a brand-new branch only; Ctrl+Enter (10) inverts.
+if [[ "$ret" -eq 10 ]]; then
+  if $create; then send_start=false; else send_start=true; fi
+else
+  send_start=$create
+fi
+
+launch_args=(-d "$wt_path" -b "$branch")
+if $create; then launch_args+=(--new); fi
+if $send_start; then launch_args+=(-s); fi
+wtstart-launch "${launch_args[@]}"

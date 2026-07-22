@@ -4,9 +4,12 @@
 # (dev-pick, rofi-dev) list it; dev-herdr derives its session groups from it.
 # Override the root with DEV_PROJECTS_ROOT.
 #
-# Usage: dev-projects root           print the projects root directory
-#        dev-projects list           print candidate project entries
-#        dev-projects resolve ENTRY  print the absolute path for a list entry
+# Usage: dev-projects root                 print the projects root directory
+#        dev-projects list [--main-only]   print candidate project entries;
+#                                          --main-only hides linked worktrees
+#                                          (detected structurally: a worktree
+#                                          has a .git *file*, a repo a .git dir)
+#        dev-projects resolve ENTRY        print the absolute path for an entry
 set -euo pipefail
 
 root="${DEV_PROJECTS_ROOT:-$HOME/Projects}"
@@ -25,8 +28,16 @@ case "${1:-}" in
     ;;
   list)
     command -v fd >/dev/null 2>&1 || { echo "dev-projects: fd not found" >&2; exit 1; }
-    printf '%s\n' "${extras_order[@]}"
-    fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix
+    if [[ "${2:-}" == "--main-only" ]]; then
+      { printf '%s\n' "${extras_order[@]}"
+        fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix; } |
+        while IFS= read -r entry; do
+          if [[ ! -f "${extras[$entry]:-$root/$entry}/.git" ]]; then printf '%s\n' "$entry"; fi
+        done
+    else
+      printf '%s\n' "${extras_order[@]}"
+      fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix
+    fi
     ;;
   resolve)
     entry="${2:-}"

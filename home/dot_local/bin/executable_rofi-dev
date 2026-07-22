@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# rofi-dev — fuzzy directory picker that launches the dev layout.
-# Candidates come from dev-projects (shared with dev-pick); `dev` owns the
-# detached launch, so rofi can close immediately after selection.
+# rofi-dev — fuzzy project picker that launches the dev layout.
+# Candidates come from dev-projects (shared with dev-pick), filtered to main
+# projects — worktrees are handled by rofi-wts, reached with Ctrl+Enter here
+# (project preselected) or Mod+Ctrl+Return directly. `dev` owns the detached
+# launch, so rofi can close immediately after selection.
 
-selection=$(dev-projects list 2>/dev/null | rofi -dmenu -i -p "Dev")
+selection=$(dev-projects list --main-only 2>/dev/null | rofi -dmenu -i -p "Dev" \
+    -mesg "Enter: open · Ctrl+Enter: worktrees…" \
+    -kb-accept-custom "" -kb-custom-1 "Control+Return")
+ret=$?
 
-if [ -n "$selection" ]; then
-    dev "$(dev-projects resolve "$selection")"
-fi
+[ -n "$selection" ] || exit 0
+case "$ret" in
+    0)  dev "$(dev-projects resolve "$selection")" ;;
+    10) exec rofi-wts "$selection" ;;
+esac
