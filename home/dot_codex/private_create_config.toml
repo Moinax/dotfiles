@@ -17,8 +17,5 @@ status_line = [
 ]
 status_line_use_colors = true
 
-[tui.model_availability_nux]
-"gpt-5.6-sol" = 2
-
 [projects."/home/moinax/dotfiles"]
 trust_level = "trusted"
