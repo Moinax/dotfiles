@@ -43,6 +43,25 @@ window_exists() {
     | jq -e --arg c "$1" 'any(.[]; .class == $c)' >/dev/null
 }
 
+# Run a command with the caller's context markers scrubbed — for long-lived
+# herdr processes (servers, clients) whose environment outlives and leaks
+# into every pane shell. HERDR_* (set inside a herdr pane) makes a client
+# refuse to start ("nested herdr is disabled") and pins the CLI to the
+# spawning session; CLAUDECODE/CLAUDE_* (set in Claude Code's shells) marks
+# the tree as a claude child session, so agents launched in the panes of a
+# server that was booted from such a shell silently stop saving transcripts.
+# Add new context-marker families here as agent CLIs grow them (codex,
+# opencode) — a missed one fails silently, the way CLAUDE_* did.
+scrub_env() {
+  # env -u on an unset name is a no-op, so the exact name needs no guard.
+  local -a scrub=(-u CLAUDECODE)
+  local v
+  for v in "${!HERDR_@}" "${!CLAUDE_@}"; do
+    scrub+=(-u "$v")
+  done
+  env "${scrub[@]}" "$@"
+}
+
 launch_client() {
   local session="$1"
   # kitty -T permanently fixes the OS window title (herdr's own OSC title —
@@ -50,13 +69,7 @@ launch_client() {
   # session/group it is.
   local class title="herdr — $session"
   class="$(class_for "$session")"
-  # Scrub inherited HERDR_* vars (set when launched from inside a herdr
-  # pane): the client sees them and refuses to start ("nested herdr is
-  # disabled").
-  local -a scrub=()
-  local v
-  for v in "${!HERDR_@}"; do scrub+=(-u "$v"); done
-  env "${scrub[@]}" kitty --class "$class" --title "$title" \
+  scrub_env kitty --class "$class" --title "$title" \
     -e herdr --session "$session" >/dev/null 2>&1 9>&- &
   disown
 }
@@ -169,7 +182,7 @@ ensure_servers() {
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
-    setsid herdr --session "$session" server >/dev/null 2>&1 9>&- &
+    scrub_env setsid herdr --session "$session" server >/dev/null 2>&1 9>&- &
     # Off the job table, like launch_client's kitty: revive_panes' `wait` must
     # reap only its revive jobs — an un-disowned server (which never exits)
     # blocks that wait forever while it holds the flock, and every later
