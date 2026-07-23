@@ -13,7 +13,4 @@ local home = assert(os.getenv("HOME"), "HOME not set")
 hl.on("hyprland.start", function()
     -- Restore dark/light mode
     hl.exec_cmd(home .. "/.local/bin/apply-dark-mode.sh")
-
-    -- Load Hyprland plugins
-    hl.exec_cmd("hyprpm reload -n")
 end)
