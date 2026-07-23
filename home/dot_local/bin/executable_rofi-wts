@@ -10,9 +10,9 @@
 # Worktree menu: existing worktrees first, then local branches without one
 # (newest commits first); typed text creates a new branch. Enter applies the
 # default /start behavior (-s for a brand-new branch, none otherwise),
-# Ctrl+Enter inverts it, Shift+Enter submits the typed text even when the
-# list highlights a match (rofi's accept-custom, moved off its default
-# Ctrl+Enter binding to free it for the /start toggle).
+# Ctrl+Enter always sends /start, Shift+Enter submits the typed text even
+# when the list highlights a match (rofi's accept-custom, moved off its
+# default Ctrl+Enter binding to free it for the /start toggle).
 set -euo pipefail
 
 notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a rofi-wts "$@" || true; }
@@ -57,7 +57,7 @@ done < <(git for-each-ref refs/heads --sort=-committerdate --format='%(refname:s
 ret=0
 branch=$(printf '%s\n' "${wt_branches[@]}" "${other_branches[@]}" | sed '/^$/d' |
   rofi -dmenu -i -p "Worktree: ${dir##*/}" \
-    -mesg "Enter: open · Ctrl+Enter: invert /start · Shift+Enter: force typed text" \
+    -mesg "Enter: open (/start if new branch) · Ctrl+Enter: open + /start · Shift+Enter: force typed text" \
     -kb-accept-alt "" -kb-accept-custom "Shift+Return" -kb-custom-1 "Control+Return") || ret=$?
 
 branch="${branch//[[:space:]]/}"
@@ -83,12 +83,9 @@ wt_path=$(git worktree list --porcelain | awk -v want="refs/heads/$branch" '
   $1 == "branch" && $2 == want { print path; exit }')
 [[ -n "$wt_path" && -d "$wt_path" ]] || fail "could not locate the worktree for $branch"
 
-# /start defaults to on for a brand-new branch only; Ctrl+Enter (10) inverts.
-if [[ "$ret" -eq 10 ]]; then
-  if $create; then send_start=false; else send_start=true; fi
-else
-  send_start=$create
-fi
+# /start defaults to on for a brand-new branch only; Ctrl+Enter (10) forces
+# it on regardless.
+if [[ "$ret" -eq 10 ]]; then send_start=true; else send_start=$create; fi
 
 launch_args=(-d "$wt_path" -b "$branch")
 if $create; then launch_args+=(--new); fi
