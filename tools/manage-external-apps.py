@@ -311,10 +311,19 @@ def refresh_desktop_db():
 
 
 def install_file(src, dest, mode):
+    # Copy to a sibling temp file and rename over dest: opening a running
+    # AppImage for writing fails with ETXTBSY, while rename swaps the inode
+    # and lets the running instance keep executing the old one.
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest)
-    dest.chmod(mode)
+    tmp = dest.with_name(dest.name + ".tmp")
+    try:
+        shutil.copyfile(src, tmp)
+        tmp.chmod(mode)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def default_picker_root():
