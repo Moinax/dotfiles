@@ -42,7 +42,7 @@ esac
 # fine and then get killed by the still-running stop loop. The lock makes the
 # second keypress wait for the first to finish instead.
 # Long-lived spawns (servers, kitty clients) MUST close fd 9 (`9>&-`, owned
-# by spawn_detached): flock belongs to the open file description, so an
+# by the spawn_* helpers): flock belongs to the open file description, so an
 # inherited fd keeps the lock held after this script exits and every later
 # invocation hangs forever. The bounded wait turns any residual deadlock into
 # an error instead of a silent pile-up of queued keypresses.
@@ -93,6 +93,14 @@ scrub_env() {
 # parent returns immediately, so callers need no `&`/disown.
 spawn_detached() {
   scrub_env setsid -f "$@" >/dev/null 2>&1 </dev/null 9>&-
+}
+
+# Background an in-process shell function: drop stdio and close the flock fd
+# (same fd-9 discipline as spawn_detached) so the job never holds the lock
+# past this invocation. Unlike spawn_detached it stays a child of this shell,
+# so it runs with the script's functions and current state.
+spawn_bg() {
+  ( exec 9>&-; "$@" ) >/dev/null 2>&1 &
 }
 
 launch_client() {
@@ -208,18 +216,26 @@ revive_panes() {
 # Reports through globals (always returns 0, so callers under set -e choose
 # how to react): BOOTED_SESSIONS = sessions this call started,
 # FAILED_SESSIONS = sessions that never came up.
-boot_servers() {
-  local -a pending=()
-  local session up i
+# Split into spawn/await phases so callers can act on the booted set (e.g.
+# ensure_servers' notify) before committing to the poll wait.
+
+# Spawn phase: start every not-yet-running server, setting BOOTED_SESSIONS.
+spawn_servers() {
+  local session up
   BOOTED_SESSIONS=()
-  FAILED_SESSIONS=()
   up="$(running_sessions)"
   for session in "$@"; do
     grep -qxF "$session" <<<"$up" && continue
     spawn_detached herdr --session "$session" server
-    pending+=("$session")
     BOOTED_SESSIONS+=("$session")
   done
+}
+
+# Await phase: poll until every BOOTED_SESSIONS member is up or the wait
+# times out, setting FAILED_SESSIONS.
+await_servers() {
+  local -a pending=("${BOOTED_SESSIONS[@]}")
+  local session up i
   for ((i = 0; i < 20 && ${#pending[@]} > 0; i++)); do
     sleep 0.25
     up="$(running_sessions)"
@@ -232,15 +248,31 @@ boot_servers() {
   FAILED_SESSIONS=("${pending[@]}")
 }
 
+boot_servers() {
+  spawn_servers "$@"
+  await_servers
+}
+
 # boot_servers + relaunch the freshly booted servers' pane commands
 # (revive_panes) once up. Prints the names that failed to come up; returns
 # non-zero if any did.
+#
+# A cold boot restores every persisted workspace/pane (a grown session spawns
+# dozens of shells) — seconds during which a keybind-driven launch shows
+# nothing on screen. Two mitigations: announce the boot up front, and run
+# revive_panes in the background (spawn_bg) so callers can open the client
+# window as soon as the server is up — the panes visibly fill in instead of
+# blocking the launch. The backgrounded revive takes its pane-list snapshot
+# immediately, before a caller like dev-herdr can create new panes, so it
+# only touches panes restored by the boot.
 ensure_servers() {
   local session
-  boot_servers "$@"
+  spawn_servers "$@"
+  [[ ${#BOOTED_SESSIONS[@]} -gt 0 ]] && notify low "Starting: ${BOOTED_SESSIONS[*]}…"
+  await_servers
   for session in "${BOOTED_SESSIONS[@]}"; do
     in_list "$session" "${FAILED_SESSIONS[@]}" && continue
-    revive_panes "$session"
+    spawn_bg revive_panes "$session"
   done
   [[ ${#FAILED_SESSIONS[@]} -eq 0 ]] \
     || { printf '%s\n' "${FAILED_SESSIONS[@]}"; return 1; }
