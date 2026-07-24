@@ -134,14 +134,17 @@ list_sessions() {
 }
 
 # Herdr restores workspaces/panes from session.json when a server boots, but
-# every pane comes back as a bare shell — commands started via `pane run` are
-# not relaunched, and (observed with herdr 0.7.4) neither are agents: the
-# claude integration re-registers a running agent CLI, it does not restart
-# one. Rerun the commands ourselves: herdr-pane-cmd maps the utility labels
-# (review/nvim), dev-agent-argv -q the provider labels (claude/codex/...)
-# — the latter starts a fresh agent conversation, not a resume. Only panes
-# whose foreground process is still a plain shell are touched, so this is
-# idempotent and safe on a session that never went down.
+# panes come back as bare shells — commands started via `pane run` are not
+# relaunched. Agents are the exception since 0.7.5: a pane with a recorded
+# agent_session gets its `claude --resume <id>` replayed by herdr itself (the
+# claude shim rescues ids whose transcript was never persisted), so those
+# panes MUST be left alone — racing herdr's replay lands our command as typed
+# text inside the resumed agent's chat (observed: "claude -n dotfiles" posted
+# as a message). Rerun the rest ourselves: herdr-pane-cmd maps the utility
+# labels (review/nvim), dev-agent-argv -q the provider labels for agent panes
+# herdr has no recorded session for — a fresh conversation, not a resume.
+# Only panes whose foreground process is still a plain shell are touched, so
+# this is idempotent and safe on a session that never went down.
 # Classify a pane's foreground state: "starting" (no foreground process yet),
 # "shell" (a single plain shell — or one of the extra |-separated names in
 # $3), "busy" (anything else). Fails when the pane can't be inspected.
@@ -182,11 +185,13 @@ revive_panes() {
   # Panes are matched by label: herdr-pane-cmd owns the utility label→command
   # map; provider labels (agent panes, labeled by herdr-agent-layout) rebuild
   # their launch command via dev-agent-argv -q, which exits 1 for anything
-  # else — dev/logs panes match neither and stay bare shells. The workspace
-  # label becomes the agent's display name, matching how dev-herdr launched
-  # it; extra agent tabs added by herdr-nav (named "ws (claude 2)") revive
-  # under the plain workspace label — cosmetic, and their conversation is a
-  # fresh one either way (a resume only herdr itself could do).
+  # else — dev/logs panes match neither and stay bare shells. Agent panes
+  # with a recorded agent_session are excluded up front: herdr resumes those
+  # itself (see the note above), so only agents herdr never registered get
+  # the fresh-conversation fallback. The workspace label becomes the agent's
+  # display name, matching how dev-herdr launched it; extra agent tabs added
+  # by herdr-nav (named "ws (claude 2)") revive under the plain workspace
+  # label — cosmetic, and their conversation is fresh either way.
   # Workspaces created before dev-herdr labeled utility-tab
   # root panes fall back to the tab label for single-pane tabs (a split tab
   # is user-customized — leave it alone). Panes revive concurrently: each
@@ -201,7 +206,7 @@ revive_panes() {
                --argjson workspaces "$workspaces" '
     ($workspaces | map({(.workspace_id): .label}) | add // {}) as $ws_label
     | ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
-    | ($panes | map(select(.label)
+    | ($panes | map(select(.label) | select(.agent_session == null)
                     | [.pane_id, .label, ($ws_label[.workspace_id] // "")])),
       ($panes | group_by(.tab_id)
               | map(select(length == 1) | .[0] | select(.label == null)
