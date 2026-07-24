@@ -1,9 +1,13 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "npx -y ccstatusline@latest",
+    {{- /* Direct binary, never `npx -y ccstatusline@latest`: npx re-resolves
+           @latest and boots a second node process on every refresh (0.44s CPU
+           vs 0.15s), which multiplies by the number of live sessions. The fnm
+           `default` alias is a stable symlink across node upgrades. */}}
+    "command": "~/.local/share/fnm/aliases/default/bin/ccstatusline",
     "padding": 0,
-    "refreshInterval": 5
+    "refreshInterval": 10
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,

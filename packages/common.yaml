@@ -47,6 +47,16 @@ tools:
     description: Fast, disk-efficient package manager
     npm: pnpm
 
+  # Installed globally rather than run as `npx -y ccstatusline@latest`: the
+  # statusline re-runs on every refresh in every live session, and npx re-resolves
+  # @latest plus boots an extra node process each time (0.44s CPU vs 0.15s). With
+  # a dozen-plus sessions open that alone was ~1.4 cores of pure overhead.
+  # ~/.claude/settings.json points at the fnm `default` alias bin path.
+  - name: ccstatusline
+    description: Configurable statusline for Claude Code
+    binary: ccstatusline
+    npm: ccstatusline
+
   - name: eza
     description: Modern replacement for ls
     binary: eza
