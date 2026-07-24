@@ -73,6 +73,16 @@ width = "40%"
 height = "35%"
 description = "New agent tab (pick provider)"
 
+# Stop the current session and close its client window — the in-herdr
+# equivalent of `hss <session>` (kills the agents; the saved layout
+# persists, so reopening the session restores it fresh). Mirrors the
+# desktop Mod+Alt+Q stop-all, scoped to this session.
+[[keys.command]]
+key = "ctrl+alt+q"
+type = "shell"
+command = "herdr-nav quit"
+description = "Stop session & close window (kills agents)"
+
 # Active code review: tuicr full-screen over the focused pane's working
 # tree. The passive live diff stays in the hunk review pane; tuicr is the
 # typed-comments tool (export with y/:clip, or read back via
