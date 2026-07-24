@@ -73,6 +73,21 @@ width = "40%"
 height = "35%"
 description = "New agent tab (pick provider)"
 
+# Active code review: tuicr full-screen over the focused pane's working
+# tree. The passive live diff stays in the hunk review pane; tuicr is the
+# typed-comments tool (export with y/:clip, or read back via
+# `tuicr review comments`). ctrl+alt+r matches lazygit's Alt+R review bind;
+# kitty used to eat it for set_window_title — that custom map was dropped
+# (rename stays on kitty's default ctrl+shift+alt+t). Quit tuicr (q) to
+# close the popup.
+[[keys.command]]
+key = "ctrl+alt+r"
+type = "popup"
+command = "herdr-nav review"
+width = "100%"
+height = "100%"
+description = "Review working tree (tuicr)"
+
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]

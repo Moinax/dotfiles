@@ -10,6 +10,8 @@
 #        herdr-nav agent-tab [PROV] add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
 #                                   provider (e.g. claudex for a GPT tab)
+#        herdr-nav review           tuicr on the focused pane's working tree
+#                                   (run from the ctrl+alt+r popup)
 #        herdr-nav quit             stop the current session and close its
 #                                   client window (the in-herdr `hss`)
 set -euo pipefail
@@ -125,6 +127,20 @@ case "${1:-}" in
     # tab create does not switch the workspace's active tab — land on the
     # new agent explicitly.
     herdr tab focus "$t_new" >/dev/null
+    ;;
+  review)
+    # Active code review: tuicr on the working tree of the focused pane's
+    # checkout, meant for the full-screen ctrl+alt+r popup. Popups run
+    # detached from any pane, so the project dir comes from the focused
+    # flags like everything else here. The passive live diff stays in the
+    # hunk review pane; tuicr comments are exported with y/:clip or read
+    # back with `tuicr review comments`.
+    ws="$(focused_workspace)"
+    dir="$(herdr pane list --workspace "$ws" \
+      | jq -re '.result.panes[] | select(.focused) | .cwd')" \
+      || die "review: no focused pane"
+    cd "$dir" || die "review: cannot cd to $dir"
+    exec tuicr -w
     ;;
   quit)
     # Stop the current session — detach its client window, then stop its
