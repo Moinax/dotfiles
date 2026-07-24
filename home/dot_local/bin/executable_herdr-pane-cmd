@@ -12,10 +12,11 @@
 #
 # Usage: herdr-pane-cmd LABEL | --util-tabs
 case "${1:-}" in
-  --util-tabs) printf '%s\n' git nvim ;;
+  # No "git" tab: lazygit is the ctrl+alt+g popup (rationale in herdr-nav's
+  # git verb); herdr-clients migrate-layout removes the old per-workspace ones.
+  --util-tabs) printf '%s\n' nvim ;;
   # watch = true in ~/.config/hunk/config.toml makes plain `hunk diff` watch.
   review) echo "hunk diff" ;;
-  git)    echo "lazygit" ;;
   nvim)   echo "nvim" ;;
   *)      exit 1 ;;
 esac

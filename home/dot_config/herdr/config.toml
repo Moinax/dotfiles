@@ -88,6 +88,17 @@ width = "100%"
 height = "100%"
 description = "Review working tree (tuicr)"
 
+# Git ops: lazygit full-screen over the focused pane's checkout, mirroring
+# the ctrl+alt+r review popup. Replaced the per-workspace git tab (rationale
+# in herdr-nav's git verb). Quit lazygit (q) to close the popup.
+[[keys.command]]
+key = "ctrl+alt+g"
+type = "popup"
+command = "herdr-nav git"
+width = "100%"
+height = "100%"
+description = "Git (lazygit)"
+
 # Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]

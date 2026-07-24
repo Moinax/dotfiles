@@ -10,8 +10,12 @@
 #        herdr-nav agent-tab [PROV] add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
 #                                   provider (e.g. claudex for a GPT tab)
-#        herdr-nav review           tuicr on the focused pane's working tree
-#                                   (run from the ctrl+alt+r popup)
+#        herdr-nav review           tuicr on the focused pane's working tree,
+#                                   or its commit selector when the tree is
+#                                   clean (run from the ctrl+alt+r popup)
+#        herdr-nav git              lazygit on the focused pane's checkout
+#                                   (run from the ctrl+alt+g popup, which
+#                                   replaced the per-workspace git tab)
 #        herdr-nav quit             stop the current session and close its
 #                                   client window (the in-herdr `hss`)
 set -euo pipefail
@@ -37,6 +41,17 @@ focused_workspace() {
   herdr workspace list \
     | jq -re '.result.workspaces[] | select(.focused) | .workspace_id' \
     || die "no focused workspace"
+}
+
+# cd into the focused pane's cwd — the project dir for popup-launched tools
+# (popups run detached from any pane, so pane env is unavailable).
+cd_focused_pane() {
+  local ws dir
+  ws="$(focused_workspace)"
+  dir="$(herdr pane list --workspace "$ws" \
+    | jq -re '.result.panes[] | select(.focused) | .cwd')" \
+    || die "no focused pane"
+  cd "$dir" || die "cannot cd to $dir"
 }
 
 # Known agent providers — one list serves the agent-picker menu, agent-tab's
@@ -98,7 +113,7 @@ case "${1:-}" in
     # one numbered family per provider. One pass over the tab labels finds
     # the next free suffix and the insertion point. Insert immediately after
     # the last agent tab so the agent block stays contiguous and lands before
-    # the shared utility tabs (git, nvim); with no agent tab, insert at the
+    # the shared utility tabs (nvim); with no agent tab, insert at the
     # front — no tab-name list needed beyond the agent family itself.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
       | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
@@ -130,17 +145,30 @@ case "${1:-}" in
     ;;
   review)
     # Active code review: tuicr on the working tree of the focused pane's
-    # checkout, meant for the full-screen ctrl+alt+r popup. Popups run
-    # detached from any pane, so the project dir comes from the focused
-    # flags like everything else here. The passive live diff stays in the
-    # hunk review pane; tuicr comments are exported with y/:clip or read
-    # back with `tuicr review comments`.
-    ws="$(focused_workspace)"
-    dir="$(herdr pane list --workspace "$ws" \
-      | jq -re '.result.panes[] | select(.focused) | .cwd')" \
-      || die "review: no focused pane"
-    cd "$dir" || die "review: cannot cd to $dir"
-    exec tuicr -w
+    # checkout, meant for the full-screen ctrl+alt+r popup. The passive
+    # live diff stays in the hunk review pane; tuicr comments are exported
+    # with y/:clip or read back with `tuicr review comments`.
+    cd_focused_pane
+    # -w alone skips the commit selector, so on a clean tree tuicr has
+    # nothing to show and exits — the popup flashes and closes. Fall back
+    # to the selector (plain tuicr) when nothing is dirty. The probes
+    # mirror tuicr's own "anything to show" test (git backend only — a
+    # tuicr upgrade may obsolete this) and stop at the first hit, where a
+    # `git status --porcelain` would scan the whole tree ahead of tuicr
+    # scanning it again.
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null \
+        || [[ -n "$(git ls-files --others --exclude-standard 2>/dev/null | head -c1)" ]]; then
+      exec tuicr -w
+    fi
+    exec tuicr
+    ;;
+  git)
+    # lazygit on the focused pane's checkout, meant for the full-screen
+    # ctrl+alt+g popup. This replaced the per-workspace git tab: lazygit
+    # here is quick pulls/rebases/history checks, so the popup lifecycle
+    # fits; long-running git work gets a manual tab ad hoc.
+    cd_focused_pane
+    exec lazygit
     ;;
   quit)
     # Stop the current session — detach its client window, then stop its
@@ -160,6 +188,6 @@ case "${1:-}" in
     setsid -f herdr-clients stop "$session" >/dev/null 2>&1 </dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | quit)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | review | git | quit)"
     ;;
 esac

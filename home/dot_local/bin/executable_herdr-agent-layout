@@ -4,7 +4,7 @@
 # terminals (both plain shells). Single source of truth shared by dev-herdr
 # (workspace create) and herdr-nav agent-tab — layout tweaks happen here only.
 # hunk here is review-only; real git ops (stage/commit/push) live in the
-# workspace's dedicated "git" tab (lazygit), created once by dev-herdr.
+# ctrl+alt+g lazygit popup (herdr-nav git).
 #
 # Usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]
 #        Without -s the CLI resolves the session itself (default session, or
@@ -35,7 +35,7 @@ p_bottom="$(h pane split "$p_agent" --direction down --ratio 0.72 \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 
 # hunk fills the top-right slot with a live, auto-reloading review of whatever
-# the agent writes. Real git operations remain in the workspace's "git" tab.
+# the agent writes. Real git operations live in the ctrl+alt+g lazygit popup.
 # The command comes from herdr-pane-cmd (shared with revive-panes).
 p_review="$(h pane split "$p_agent" --direction right \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"

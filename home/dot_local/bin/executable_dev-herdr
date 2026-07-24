@@ -3,8 +3,8 @@
 #   agent tab (labeled by provider: "claude", "claudex", ...):
 #                  agent (top-left) + hunk review (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
-#   tab "git":     full-window lazygit (git operations)
 #   tab "nvim":    full-window nvim
+# Git ops have no tab: lazygit is the ctrl+alt+g popup (herdr-nav git).
 #
 # Workspaces are grouped into one Herdr session per ~/Projects subdirectory
 # (labs, mbrella, o27, ...): each group gets its own server + client window
@@ -89,9 +89,9 @@ h tab rename "$t_agent" "$provider" >/dev/null
 # herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
 herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" "$name" "$prompt"
 
-# Full-window utility tabs: "git" (lazygit, for real git operations —
-# stage/commit/push; diff review is handled live by hunk in each agent tab)
-# and "nvim". One of each is shared by all agent tabs in this workspace.
+# Full-window utility tabs (currently just "nvim"; lazygit moved to the
+# ctrl+alt+g popup). One of each is shared by all agent tabs in this
+# workspace.
 # The root pane gets the tab's label so herdr-clients revive-panes can match
 # it after a server restart; herdr-pane-cmd owns the label→command map.
 util_tab() {
