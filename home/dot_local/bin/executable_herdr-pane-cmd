@@ -11,12 +11,49 @@
 # and herdr-clients migrate-layout (backfill) share one list.
 #
 # Usage: herdr-pane-cmd LABEL | --util-tabs
+
+# The `hunk` on PATH is a node wrapper that spawn-waits on a native ELF binary,
+# so every review pane pays for an idle node process (~51MB RSS) that exists
+# only to exec() — 16 of them across a full set of workspaces, ~1GB for
+# nothing. The native binary is standalone (libc only) and loads
+# ~/.config/hunk/config.toml identically (verified: same `Failed to parse toml`
+# on a broken config, same rendered theme on a good one), so run it directly.
+# Resolution is dynamic, not a hardcoded path: npm may hoist the platform
+# package on upgrade, and `hunk` stays the fallback so a layout change can
+# never leave the review pane empty. HUNK_BIN_PATH is hunk's own override,
+# honored here for the same reason the wrapper honors it.
+# `hunk` itself stays on PATH — herdr-hunk-session needs `hunk session list`,
+# and only the wrapper implements `hunk skill path`.
+hunk_bin() {
+  if [ -n "${HUNK_BIN_PATH:-}" ] && [ -x "${HUNK_BIN_PATH}" ]; then
+    printf '%s\n' "$HUNK_BIN_PATH"
+    return
+  fi
+  local arch
+  case "$(uname -m)" in
+    x86_64) arch=x64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) printf 'hunk\n'; return ;;
+  esac
+  # The fnm `default` alias is a stable symlink across node upgrades, unlike
+  # the per-shell multishell path `hunk` would otherwise resolve through.
+  local root="$HOME/.local/share/fnm/aliases/default/lib/node_modules" c
+  for c in "$root/hunkdiff/node_modules/hunkdiff-linux-$arch/bin/hunk" \
+           "$root/hunkdiff-linux-$arch/bin/hunk"; do
+    if [ -x "$c" ]; then
+      printf '%s\n' "$c"
+      return
+    fi
+  done
+  printf 'hunk\n'
+}
+
 case "${1:-}" in
   # No "git" tab: lazygit is the ctrl+alt+g popup (rationale in herdr-nav's
   # git verb); herdr-clients migrate-layout removes the old per-workspace ones.
   --util-tabs) printf '%s\n' nvim ;;
-  # watch = true in ~/.config/hunk/config.toml makes plain `hunk diff` watch.
-  review) echo "hunk diff" ;;
+  # watch = true in ~/.config/hunk/config.toml makes a plain `diff` watch.
+  review) echo "$(hunk_bin) diff" ;;
   nvim)   echo "nvim" ;;
   *)      exit 1 ;;
 esac
