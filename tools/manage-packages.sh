@@ -15,16 +15,7 @@ source "$DOTFILES_DIR/install/lib/services.sh"
 
 install_interrupt_trap
 
-# Detect distro and source distro-specific functions
-DISTRO=$(detect_distro)
-DISTRO_FAMILY=$(get_distro_family "$DISTRO")
-
-if [ -f "$DOTFILES_DIR/install/distros/$DISTRO_FAMILY.sh" ]; then
-    source "$DOTFILES_DIR/install/distros/$DISTRO_FAMILY.sh"
-else
-    print_error "Unsupported distribution family: $DISTRO_FAMILY"
-    exit 1
-fi
+load_distro_lib || exit 1
 
 # ── YAML helpers ─────────────────────────────────────────────────────────────
 
@@ -46,18 +37,6 @@ get_group_icon() {
     else
         grep -m1 '^icon:' "$file" | sed 's/^icon:[[:space:]]*//'
     fi
-}
-
-# Get group ID from filename (e.g., development.yaml -> development)
-get_group_id() {
-    local file="$1"
-    basename "$file" .yaml
-}
-
-# Get chezmoi flag name for a group (e.g., development -> install_development)
-get_chezmoi_flag() {
-    local group_id="$1"
-    echo "install_${group_id}"
 }
 
 # Update a chezmoi flag value and confirm it to the user
@@ -139,16 +118,6 @@ is_custom_install_pkg() {
     local names
     names=$(parse_custom_install_names "$file" 2>/dev/null)
     echo "$names" | grep -qxF "$pkg"
-}
-
-is_custom_install_installed() {
-    local file="$1" pkg="$2"
-    local check_cmd
-    check_cmd=$(parse_custom_install_check "$file" "$pkg")
-    # Only the exit code matters. Detach stdin and silence all output so a
-    # misbehaving check (e.g. one that launches an app or reads stdin) can't
-    # hang the scan or bleed text into a captured stdout stream.
-    [ -n "$check_cmd" ] && eval "$check_cmd" </dev/null >/dev/null 2>&1
 }
 
 is_group_package_installed() {
@@ -717,10 +686,9 @@ scan_missing_packages() {
     done < <(base_desired_packages)
 
     # Groups whose chezmoi flag is enabled
-    local file flag
+    local file
     for file in "$GROUPS_DIR"/*.yaml; do
-        flag=$(get_chezmoi_flag "$(get_group_id "$file")")
-        [ "$(chezmoi_data_get "$flag")" = "true" ] || continue
+        group_enabled "$file" || continue
 
         # Custom-install names for this group (one yq call, not one per package).
         local -A custom_set=()

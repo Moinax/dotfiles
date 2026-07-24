@@ -10,6 +10,7 @@ Interactive UI uses gum when available, with plain-stdin fallbacks.
 """
 
 import fnmatch
+import functools
 import json
 import os
 import platform
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -66,7 +68,8 @@ Commands:
 
   check-updates [--porcelain]
       Compare each app's installed version against its latest GitHub release.
-      --porcelain prints outdated apps as "name|installed|latest" lines.
+      --porcelain prints outdated apps as "name|installed|latest" lines, apps whose
+      check failed as "FAIL|name|repo", and an exhausted API quota as "#ratelimit|<epoch>".
 
   update [--name APP | --all]
       Re-download the latest release asset and reinstall. AppImages are re-imported
@@ -75,6 +78,11 @@ Commands:
 
   list
       List all managed apps (AppImages and Distrobox apps).
+
+  latest-release <owner/repo> [owner/repo ...]
+      Print "repo<TAB>latest-tag" for each repo, fetched concurrently through one
+      shared cache. Used by './manage.sh update' to resolve upstream versions of
+      tools that aren't apps; an unresolvable repo yields an empty tag.
 
 Run without arguments for an interactive wizard:
   - Install app (local file): fuzzy-find a file (.AppImage, .deb, .rpm) and auto-detect the install method
@@ -987,10 +995,63 @@ _HTTP_HEADERS = {
 }
 
 # Session cache of /releases/latest JSON per repo: a check followed by an
-# update in the same run reuses the response instead of re-hitting the API
-# (the unauthenticated rate limit is 60 requests/hour).
+# update in the same run reuses the response instead of re-hitting the API.
 _release_cache = {}
 _release_cache_lock = threading.Lock()
+
+# Epoch second the rate limit resets, set when the API refuses a request for
+# quota. Recorded rather than raised: a scan should still report the repos it
+# did resolve, and the caller decides how to explain the gaps.
+_rate_limit_reset = None
+_rate_limit_lock = threading.Lock()
+
+
+@functools.lru_cache(maxsize=1)
+def gh_token():
+    """The gh CLI's token, or None. Looked up once per session.
+
+    Unauthenticated api.github.com allows 60 requests/hour, which one update
+    scan plus an app check can plausibly exhaust; an authenticated call gets
+    5000. gh is how this repo already talks to GitHub, so its existing login is
+    reused rather than asking for a separate token.
+    """
+    if not command_exists("gh"):
+        return None
+    try:
+        out = subprocess.run(["gh", "auth", "token"], capture_output=True,
+                             text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def note_rate_limit(headers):
+    """Record a quota refusal, distinguishing it from other 403s."""
+    global _rate_limit_reset
+    # HTTPError.headers is an email.message.Message — already case-insensitive.
+    if headers.get("x-ratelimit-remaining") != "0":
+        return
+    with _rate_limit_lock:
+        try:
+            _rate_limit_reset = int(headers.get("x-ratelimit-reset") or 0)
+        except ValueError:
+            _rate_limit_reset = 0
+
+
+def rate_limit_reset():
+    with _rate_limit_lock:
+        return _rate_limit_reset
+
+
+def rate_limit_note():
+    """Local clock time the quota resets, for a human-facing message."""
+    reset = rate_limit_reset()
+    if not reset:
+        return "an unknown time"
+    try:
+        return time.strftime("%H:%M", time.localtime(reset))
+    except (ValueError, OSError):
+        return "an unknown time"
 
 
 def gh_release_json(repo):
@@ -998,11 +1059,27 @@ def gh_release_json(repo):
     with _release_cache_lock:
         if repo in _release_cache:
             return _release_cache[repo]
+    # Once the quota is gone every further request is a guaranteed 403, so stop
+    # paying for the round trips — the rest of the batch reports as unresolved.
+    if rate_limit_reset() is not None:
+        return None
+
+    headers = dict(_HTTP_HEADERS)
+    token = gh_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=_HTTP_HEADERS),
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers),
                                     timeout=30) as resp:
             data = json.load(resp)
+    except urllib.error.HTTPError as e:
+        # A 403/429 with no quota left is a rate limit, not a missing repo —
+        # worth telling the user apart from "this repo has no releases".
+        if e.code in (403, 429) and e.headers:
+            note_rate_limit(e.headers)
+        return None
     except (urllib.error.URLError, json.JSONDecodeError, OSError):
         # Failures are not cached, so a later call in the same run retries
         # (matches the shell version, which only cached successful fetches).
@@ -1017,7 +1094,12 @@ def prefetch_release_json(repos):
     repos = sorted(set(repos))
     if not repos:
         return
-    with ThreadPoolExecutor(max_workers=min(8, len(repos))) as pool:
+    # Resolve the token before fanning out, so the workers don't queue behind
+    # one thread's `gh auth token` subprocess.
+    gh_token()
+    # Wide enough for a whole update scan (a dozen-odd repos) in one wave: these
+    # are independent one-shot GETs, so a narrower pool just adds a round trip.
+    with ThreadPoolExecutor(max_workers=min(16, len(repos))) as pool:
         list(pool.map(gh_release_json, repos))
 
 
@@ -1415,10 +1497,19 @@ def cmd_check_updates(argv):
     if porcelain:
         for name, installed, latest in outdated:
             print(f"{name}|{installed}|{latest}")
+        # Failures must be emitted too: without them a consumer cannot tell an
+        # app that is current from one whose check never completed, and would
+        # report "up to date" for both.
+        for name, repo in failed:
+            print(f"FAIL|{name}|{repo}")
+        if rate_limit_reset() is not None:
+            print(f"#ratelimit|{rate_limit_reset()}")
         return 0
 
     for name, repo in failed:
         print_warning(f"{name}: could not fetch the latest release of {repo}")
+    if rate_limit_reset() is not None:
+        print_warning(f"GitHub API rate limit reached — resets at {rate_limit_note()}")
     for name, version in up_to_date:
         print_success(f"{name} is up to date ({version})")
     for name, installed, latest in outdated:
@@ -1521,6 +1612,29 @@ def list_unmanaged_distrobox_desktops(managed_ids):
         if any(mid and (mid in basename or mid == basename) for mid in managed_ids):
             continue
         yield df, desktop_entry_name(df), desktop_entry_container(df)
+
+
+def cmd_latest_release(argv):
+    """Resolve the latest release tag of each repo. Used by manage-updates.sh.
+
+    Repos are fetched concurrently through the same session cache the app
+    updater uses, so one call resolves a whole update scan within the
+    unauthenticated rate limit. Unresolvable repos print an empty tag rather
+    than failing the batch — the caller reports them as "unknown".
+    """
+    repos = [a for a in argv if not a.startswith("-")]
+    if not repos:
+        print_error("Usage: latest-release <owner/repo> [owner/repo ...]")
+        return 1
+
+    prefetch_release_json(repos)
+    for repo in repos:
+        print(f"{repo}\t{github_latest_tag(repo)}")
+    # Marker line (never a valid repo name) so the caller can explain empty tags
+    # as an exhausted quota rather than as missing releases.
+    if rate_limit_reset() is not None:
+        print(f"#ratelimit\t{rate_limit_reset()}")
+    return 0
 
 
 def cmd_list(_argv=None):
@@ -1866,6 +1980,7 @@ COMMANDS = {
     "check-updates": cmd_check_updates,
     "update": cmd_update_app,
     "list": cmd_list,
+    "latest-release": cmd_latest_release,
 }
 
 

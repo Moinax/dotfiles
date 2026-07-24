@@ -29,6 +29,10 @@ custom_install:
     # gtk4-layer-shell, sound=alsa via rodio).
     requires_packages:
       arch: [rust, pkgconf, gtk4, libadwaita, gtk4-layer-shell, alsa-lib]
+    binary: vibewatch
+    source: Moinax/vibewatch
+    # `vibewatch --version` prints "0.3.0 (<git sha>)" — the updater keeps the
+    # leading version and ignores the build suffix.
 
 packages:
   arch:

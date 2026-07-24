@@ -30,6 +30,9 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 ./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
 ./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
 ./manage.sh packages sync       # install packages newly added to base.yaml / enabled groups
+./manage.sh update              # check, then pick which non-pacman updates to apply
+./manage.sh update check        # report only, change nothing
+./manage.sh update all          # apply every available update without prompting
 ./manage.sh backup create       # encrypted backup of ~/Projects secrets + repo manifest → private GitHub repo
 ./manage.sh backup restore      # re-clone all repos and restore secret files on a fresh machine
 ./manage.sh backup list         # inspect backup contents
@@ -46,6 +49,21 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 # ./manage.sh apps opens a wizard-driven helper backed by tools/manage-external-apps.py
 # (Python, stdlib-only; state files in ~/.local/state/dotfiles/external-apps/ are
 # bash-quoted KEY=VALUE .env files kept compatible with the former shell version)
+
+# ./manage.sh update (tools/manage-updates.sh) deliberately does NOT update the
+# system: pacman + AUR belong to cachy-update (a symlink to arch-update, which
+# picks up paru on its own). It covers only what cachy-update can't see — curl
+# binaries, global npm packages, the fnm-managed Node, cargo installs, and
+# tracked external apps. Anything whose binary turns out to be owned by a
+# pacman/AUR package is reported as managed and skipped, never refreshed:
+# several entries also exist as distro packages, and re-running their curl
+# installer would shadow the packaged copy (/usr/local/bin over /usr/bin).
+#
+# GitHub release lookups go through manage-external-apps.py (shared concurrent
+# cache) and use `gh auth token` when available — unauthenticated api.github.com
+# allows only 60 requests/hour, which one scan plus an app check can exhaust,
+# vs 5000 authenticated. An exhausted quota is reported as such: rows show
+# 'unknown' rather than silently reading as up to date.
 
 # Direct chezmoi usage
 chezmoi diff                    # see what would change
@@ -82,6 +100,7 @@ Hypr, Waybar, Rofi, SwayNC, Wlogout (Wayland desktop), Kitty (terminal), Neovim 
 
 - Shell scripts use `set -e` and consistent color-coded output helpers (`print_info`, `print_success`, `print_error`, `print_warning`)
 - Base package YAML supports `core`, `desktop`, `aur`, and `desktop_aur` sections
+- **New non-packaged tool**: When adding a tool to `packages/common.yaml` (`tools:`) or a group's `custom_install:`, declare its update metadata too — `binary:` (the executable name, which often differs from the entry name: television ships `tv`), plus `source:` (owner/repo) or `npm:` so `./manage.sh update` can resolve an upstream version. Never let the updater infer the binary from the entry name. `update:` is only ever a command; who owns updates is the separate closed-set `updated_by:` — `self` (the tool updates itself), `app` (tracked by the external-apps tool), `none` (deliberately not updatable), default `dotfiles`. Forgetting the metadata entirely is reported as a gap rather than silently skipped, so `updated_by: none` is how you opt an entry out on purpose
 - **Keybinding changes**: When modifying keybindings in Hyprland (`home/dot_config/hypr/conf/binds.lua.tmpl`), always update `KEYBINDINGS.md` at the repo root to keep the reference in sync
 - **Herdr layout changes**: When modifying the workspace layout — pane/tab structure or labels in `herdr-agent-layout`, `dev-herdr`, or `herdr-pane-cmd` — run `herdr-clients migrate-layout` after `chezmoi apply`. Existing workspaces persist their old layout (dev-herdr reattaches as-is, never migrates), so without this the previous iteration silently comes back at the next server restart
 - **Herdr config.toml changes**: When modifying `home/dot_config/herdr/config.toml` (keybindings, popups, UI), run `herdr-clients reload-config` after `chezmoi apply`. Servers read config.toml only at boot, so without this every running session but the current one keeps the old config. Not a job for `migrate-layout` — that reconciles persisted session.json structure, never the config

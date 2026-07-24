@@ -93,6 +93,9 @@ custom_install:
     install: |
       "$DOTFILES_DIR/tools/manage-external-apps.py" install-github imputnet/helium-linux \
         --name helium --type appimage --non-interactive
+    # Tracked as an external app (recorded release source), so './manage.sh
+    # update' reports it from the apps updater instead of re-running install.
+    updated_by: app
 
   # Dropbox's in-app auto-updater downloads dist binaries to ~/.dropbox-dist/
   # and SIGKILLs the running daemon to swap them in. Any distro-packaged
@@ -108,3 +111,8 @@ custom_install:
         && curl -fsSL "https://www.dropbox.com/download?plat=lnx.x86_64" -o "$tmp" \
         && tar -C "$HOME" -xzf "$tmp" \
         && rm -f "$tmp"
+    # The in-app auto-updater owns ~/.dropbox-dist/ — re-extracting the tarball
+    # underneath a running daemon is exactly the fight we avoid elsewhere.
+    updated_by: self
+    # No CLI to ask; the dist directory records what the auto-updater installed.
+    version: cat "$HOME/.dropbox-dist/VERSION"

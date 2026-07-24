@@ -74,6 +74,22 @@ require_tools() {
     fi
 }
 
+# Source the distro-family helpers for this machine, or fail with a message.
+# Requires $DOTFILES_DIR set and lib/detect.sh already sourced; leaves DISTRO
+# and DISTRO_FAMILY set for callers that branch on them. Every tool entry point
+# needs exactly this, so the detect-then-source dance lives here, not in each one.
+load_distro_lib() {
+    DISTRO=$(detect_distro)
+    DISTRO_FAMILY=$(get_distro_family "$DISTRO")
+
+    local lib="$DOTFILES_DIR/install/distros/$DISTRO_FAMILY.sh"
+    if [ ! -f "$lib" ]; then
+        print_error "Unsupported distribution family: $DISTRO_FAMILY"
+        return 1
+    fi
+    source "$lib"
+}
+
 # Escape a string for embedding in a JSON string literal.
 _json_escape() {
     local s="$1"
@@ -334,26 +350,30 @@ group_hardware_available() {
     esac
 }
 
-# Parse custom_install entries and output their names.
-# Usage: parse_custom_install_names "file.yaml"
-parse_custom_install_names() {
-    local file="$1"
+# ── Entry sections ───────────────────────────────────────────────────────────
+# `custom_install:` (group files) and `tools:` (common.yaml) are the same shape
+# — a list of maps keyed by `name` under a top-level key — so one parser family
+# serves both, taking the section as an argument. Each entry's fields are
+# documented where the yaml declares them (packages/common.yaml).
+
+# Names of every entry in a section, one per line.
+# Usage: parse_entry_names "file.yaml" "custom_install"
+parse_entry_names() {
+    local file="$1" section="$2"
 
     if command_exists yq; then
-        yq -r '(.custom_install // [])[].name' "$file" 2>/dev/null | grep -v "^$" || true
+        yq -r "(.${section} // [])[].name" "$file" 2>/dev/null | grep -v "^$" || true
     else
         # Fallback: simple parsing
-        local in_section=false
+        local in_section=false line
         while IFS= read -r line; do
-            if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
+            if [[ "$line" =~ ^${section}:[[:space:]]*$ ]]; then
                 in_section=true
                 continue
             fi
             if $in_section; then
                 # Exit when hitting another top-level key
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
+                [[ "$line" =~ ^[a-z] ]] && break
                 if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*(.+)$ ]]; then
                     echo "${BASH_REMATCH[1]}"
                 fi
@@ -362,46 +382,162 @@ parse_custom_install_names() {
     fi
 }
 
-# Get a field from a custom_install entry by name.
-# Usage: _parse_custom_install_field "file.yaml" "claude-code" "install"
-_parse_custom_install_field() {
-    local file="$1"
-    local pkg_name="$2"
-    local field="$3"
+# One field of one entry, empty when unset.
+# Usage: parse_entry_field "file.yaml" "custom_install" "claude-code" "install"
+parse_entry_field() {
+    local file="$1" section="$2" name="$3" field="$4"
 
     if command_exists yq; then
-        yq -r "(.custom_install // [])[] | select(.name == \"$pkg_name\") | .$field // \"\"" "$file" 2>/dev/null
+        yq -r "(.${section} // [])[] | select(.name == \"$name\") | .${field} // \"\"" "$file" 2>/dev/null
     else
-        local in_section=false
-        local found=false
+        local in_section=false found=false line
         while IFS= read -r line; do
-            if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
+            if [[ "$line" =~ ^${section}:[[:space:]]*$ ]]; then
                 in_section=true
                 continue
             fi
             if $in_section; then
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*${pkg_name}[[:space:]]*$ ]]; then
+                [[ "$line" =~ ^[a-z] ]] && break
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*${name}[[:space:]]*$ ]]; then
                     found=true
                     continue
                 fi
-                if $found && [[ "$line" =~ ^[[:space:]]*${field}:[[:space:]]*(.+)$ ]]; then
-                    echo "${BASH_REMATCH[1]}"
-                    return 0
-                fi
                 if $found && [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name: ]]; then
                     break
+                fi
+                if $found && [[ "$line" =~ ^[[:space:]]*${field}:[[:space:]]*(.+)$ ]]; then
+                    _unquote_yaml_scalar "${BASH_REMATCH[1]}"
+                    return 0
                 fi
             fi
         done < "$file"
     fi
 }
 
-parse_custom_install_cmd() { _parse_custom_install_field "$1" "$2" "install"; }
-parse_custom_install_check() { _parse_custom_install_field "$1" "$2" "check"; }
-parse_custom_install_requires() { _parse_custom_install_field "$1" "$2" "requires"; }
+# Strip the quotes off a YAML scalar, so the fallback parser returns what yq
+# would. Without this a quoted value comes back with its quotes attached and
+# eval'ing it looks for a command literally named `'[ -x "$HOME/..." ]'`.
+_unquote_yaml_scalar() {
+    local value="$1"
+    if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
+        value="${BASH_REMATCH[1]}"
+    fi
+    printf '%s\n' "$value"
+}
+
+# Several fields of one entry in a single yq call — reading them one at a time
+# costs a yq process per field, which dominates a whole-repo scan.
+#
+# Values are joined with $YAML_FIELD_SEP (Unit Separator) rather than newlines
+# because the command-bearing fields hold multi-line shell snippets. A trailing
+# empty field absorbs yq's final newline, so no real value picks it up; split it
+# off with `mapfile -d "$YAML_FIELD_SEP" -t` and ignore the last element.
+# Usage: mapfile -d "$YAML_FIELD_SEP" -t f \
+#            < <(parse_entry_fields common.yaml tools eza binary source)
+YAML_FIELD_SEP=$'\x1f'
+parse_entry_fields() {
+    local file="$1" section="$2" name="$3"
+    shift 3
+    local field
+
+    if command_exists yq; then
+        local list=""
+        for field in "$@"; do
+            list+="(.${field} // \"\" | tostring),"
+        done
+        yq -r "(.${section} // [])[] | select(.name == \"$name\") | [${list}\"\"] | join(\"$YAML_FIELD_SEP\")" \
+            "$file" 2>/dev/null
+    else
+        for field in "$@"; do
+            printf '%s%s' "$(parse_entry_field "$file" "$section" "$name" "$field")" "$YAML_FIELD_SEP"
+        done
+        echo ""
+    fi
+}
+
+# Every value of one field across a section, one per line, skipping entries that
+# don't declare it. A query rather than a name loop: reading the field per entry
+# costs a yq process each, and callers want the whole column.
+# Usage: parse_entry_field_values "common.yaml" "tools" "npm"
+parse_entry_field_values() {
+    local file="$1" section="$2" field="$3"
+
+    if command_exists yq; then
+        yq -r "(.${section} // [])[] | select(.${field}) | .${field}" "$file" 2>/dev/null \
+            | grep -v "^$" || true
+    else
+        local name value
+        while IFS= read -r name; do
+            value=$(parse_entry_field "$file" "$section" "$name" "$field")
+            if [ -n "$value" ]; then printf '%s\n' "$value"; fi
+        done < <(parse_entry_names "$file" "$section")
+    fi
+}
+
+parse_custom_install_names() { parse_entry_names "$1" "custom_install"; }
+parse_custom_install_cmd() { parse_entry_field "$1" "custom_install" "$2" "install"; }
+parse_custom_install_check() { parse_entry_field "$1" "custom_install" "$2" "check"; }
+parse_custom_install_requires() { parse_entry_field "$1" "custom_install" "$2" "requires"; }
+
+# Run an entry's `check` command. Only the exit code matters: stdin is detached
+# and all output silenced so a misbehaving check (one that launches an app or
+# reads stdin) can't hang a scan or bleed text into a captured stdout stream.
+# An entry with no check counts as not installed.
+run_entry_check() {
+    local check_cmd="$1"
+    [ -n "$check_cmd" ] && eval "$check_cmd" </dev/null >/dev/null 2>&1
+}
+
+is_custom_install_installed() {
+    run_entry_check "$(parse_custom_install_check "$1" "$2")"
+}
+
+# ── Node toolchain ───────────────────────────────────────────────────────────
+
+# Where fnm's installer (--skip-shell) drops the binary. Not on a script's PATH,
+# and the shell hook that would add it only runs for interactive shells.
+FNM_BIN_DIR="$HOME/.local/share/fnm"
+
+# Put the fnm-managed Node on PATH for the current shell. Installs nothing: a
+# missing fnm just leaves node/npm absent, which callers report as unavailable.
+# Idempotent — safe to call from several places in one run.
+activate_fnm_node() {
+    case ":$PATH:" in
+        *":$FNM_BIN_DIR:"*) ;;
+        *) [ -d "$FNM_BIN_DIR" ] && export PATH="$FNM_BIN_DIR:$PATH" ;;
+    esac
+
+    if command_exists fnm; then
+        eval "$(fnm env --use-on-cd --shell bash 2>/dev/null)" || true
+        hash -r 2>/dev/null || true
+    fi
+    return 0
+}
+
+# Install the latest Node LTS, make it fnm's default and put it on PATH. Shared
+# with './manage.sh update', which refreshes Node exactly the way the installer
+# first provisions it, so the two can't drift.
+install_node_lts() {
+    fnm install --lts && fnm default lts-latest && activate_fnm_node
+}
+
+# ── Groups ───────────────────────────────────────────────────────────────────
+
+# Group ID from its filename (packages/groups/development.yaml -> development)
+get_group_id() {
+    basename "$1" .yaml
+}
+
+# The chezmoi flag recording whether a group was selected (development ->
+# install_development). The naming convention lives here and nowhere else.
+get_chezmoi_flag() {
+    echo "install_$1"
+}
+
+# True when the group defined by a yaml file is enabled in chezmoi's data.
+group_enabled() {
+    [ "$(chezmoi_data_get "$(get_chezmoi_flag "$(get_group_id "$1")")")" = "true" ]
+}
 
 # Fallback parser for requires_packages (used when yq is unavailable).
 # Emits one package per line for the given distro family. Supports inline

@@ -1,19 +1,56 @@
-# Common packages - Cross-distro tools installed via curl/git
-# These are installed the same way on all distributions
+# Common packages - tools installed via curl/git rather than by pacman
+#
+# `install:` is the single source of truth for how a tool is fetched, but not
+# every entry is installed from here at setup time. install_common_tools() runs
+# zoxide, fnm and the `npm:` entries; the rest (eza, lazydocker, television,
+# zellij, hyprvoice) normally arrive as pacman/AUR packages via base.yaml or a
+# group, and their `install:` is the fallback './manage.sh update' re-runs to
+# refresh a copy that no distro package owns. Wiring those into the installer
+# too would curl-install tools whose group the user deliberately deselected.
+#
+# Update metadata (read by tools/manage-updates.sh — './manage.sh update'):
+#   binary      executable name. Declared, never inferred: it often differs from
+#               the entry name (television ships `tv`). The updater resolves it
+#               to a real path and asks pacman who owns it — anything owned by
+#               pacman/AUR is left to cachy-update instead of refreshed here.
+#   version     command printing the installed version (default: `<binary> --version`)
+#   source      owner/repo whose latest GitHub release is the upstream version
+#   requires    command that must exist before an update can be applied
+#   update      command to refresh. Defaults to re-running `install`, which these
+#               installers are written to be idempotent for.
+#   updated_by  who owns updates for this entry — a closed set, never a command:
+#                 dotfiles  (default) this updater runs `update`/`install`
+#                 self      the tool updates itself; report it, never touch it
+#                 app       tracked by tools/manage-external-apps.py
+#                 none      deliberately not updatable here
+#               An entry with no update metadata at all is reported as a gap, so
+#               forgetting the fields is visible rather than silent.
+#   npm         npm package name, for tools installed as global npm packages
 
 tools:
   - name: zoxide
     description: Smarter cd command
+    binary: zoxide
+    source: ajeetdsouza/zoxide
     install: curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
 
-  # Node LTS + global npm packages (yarn, pnpm) are handled by
-  # install_common_tools() in install/installer.sh — this entry is informational.
+  # Node LTS itself is checked by the updater directly (fnm current vs
+  # `fnm ls-remote --lts`), not as an entry here.
   - name: fnm
     description: Fast Node.js version manager
+    binary: fnm
+    source: Schniz/fnm
     install: curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+
+  # Global npm packages, installed by install_common_tools() from these entries.
+  - name: pnpm
+    description: Fast, disk-efficient package manager
+    npm: pnpm
 
   - name: eza
     description: Modern replacement for ls
+    binary: eza
+    source: eza-community/eza
     install: |
       arch=$(uname -m); case $arch in aarch64) arch=aarch64;; armv7l) arch=armv7;; esac
       curl -fsSL "https://github.com/eza-community/eza/releases/latest/download/eza_${arch}-unknown-linux-gnu.tar.gz" \
@@ -22,14 +59,20 @@ tools:
 
   - name: lazydocker
     description: Terminal UI for Docker
+    binary: lazydocker
+    source: jesseduffield/lazydocker
     install: curl -fsSL https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
 
   - name: television
     description: Terminal fuzzy finder (file picker, history search)
+    binary: tv
+    source: alexpasmantier/television
     install: curl -fsSL https://alexpasmantier.github.io/television/install.sh | bash
 
   - name: zellij
     description: Terminal workspace / multiplexer (packaged on Arch; binary fallback)
+    binary: zellij
+    source: zellij-org/zellij
     install: |
       arch=$(uname -m)
       curl -fsSL "https://github.com/zellij-org/zellij/releases/latest/download/zellij-${arch}-unknown-linux-musl.tar.gz" \
@@ -38,11 +81,19 @@ tools:
 
   - name: hyprvoice
     description: Voice-powered typing for Wayland desktops
+    binary: hyprvoice
+    source: LeonardoTrapani/hyprvoice
     install: |
       curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice
       chmod +x ~/.local/bin/hyprvoice
 
+  # `updated_by: none` rather than simply omitting the metadata, so the updater
+  # can tell a deliberate opt-out from a forgotten declaration: there is no
+  # version to compare, and the only "update" is a re-clone that copies over
+  # ~/.local/share/rofi/themes — which would clobber anything added there by
+  # hand. Re-run the installer explicitly if you want fresh themes.
   - name: rofi-themes-collection
+    updated_by: none
     description: Collection of Rofi themes
     type: git
     url: https://github.com/lr-tech/rofi-themes-collection

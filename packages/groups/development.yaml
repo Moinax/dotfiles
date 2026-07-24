@@ -59,16 +59,24 @@ desktop_only:
 #         install (shell command to run), requires (dependency command to check),
 #         requires_packages (map of distro family -> system packages to
 #         install before running `install`)
+# Update fields (binary, version, source, update, updated_by) are documented in
+# packages/common.yaml and read by './manage.sh update'.
 custom_install:
   - name: claude-code
     check: command -v claude
     install: curl -fsSL https://claude.ai/install.sh | bash
-  # OpenAI Codex CLI — installed via npm like a global JS tool (self-updates
-  # with `npm update -g @openai/codex`). Needs node/npm, which fnm provides.
+    binary: claude
+    updated_by: self
+  # OpenAI Codex CLI — bootstrapped via npm, but the package then manages its
+  # own standalone builds under ~/.codex/packages/ (a `current` symlink per
+  # release), so it is no longer an npm global and updates itself.
   - name: codex
     check: command -v codex
     install: npm install -g @openai/codex
     requires: npm
+    binary: codex
+    source: openai/codex
+    updated_by: self
   # hunk — review-first diff viewer used as the herdr `dev` review pane.
   # Not in distro repos; installed via npm like codex. Needs node/npm, which
   # fnm provides.
@@ -76,15 +84,26 @@ custom_install:
     check: command -v hunk
     install: npm install -g hunkdiff
     requires: npm
+    binary: hunk
+    npm: hunkdiff
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
     requires: gh
+    # A gh extension, not a binary on PATH: version comes from `gh extension
+    # list` and the upgrade goes through gh rather than a re-install. The list is
+    # tab-separated and its first field holds a space ("gh dash"), so the repo
+    # and version only land in fixed columns with -F'\t'.
+    version: gh extension list 2>/dev/null | awk -F'\t' '$2 == "dlvhdr/gh-dash" { print $3 }'
+    source: dlvhdr/gh-dash
+    update: gh extension upgrade dash
   # Backs the `claudex` wrapper / dev -p claudex (Claude Code on the ChatGPT
   # subscription). One-time auth after install: claude-code-proxy codex auth login
   - name: claude-code-proxy
     check: command -v claude-code-proxy
     install: mkdir -p ~/.local/bin && curl -fsSL "https://github.com/raine/claude-code-proxy/releases/latest/download/claude-code-proxy-linux-amd64.tar.gz" | tar xz -C ~/.local/bin claude-code-proxy
+    binary: claude-code-proxy
+    source: raine/claude-code-proxy
 
 packages:
   arch:

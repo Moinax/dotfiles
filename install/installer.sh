@@ -562,9 +562,24 @@ install_base_packages() {
     print_success "Base packages installed"
 }
 
+# Install a packages/common.yaml `tools:` entry using the command the yaml
+# declares, so the installer and './manage.sh update' (which re-runs the same
+# command to refresh the tool) can't drift apart. A missing declaration warns
+# rather than failing: every caller gates on the tool's own availability check.
+install_common_tool() {
+    local name="$1"
+    local install_cmd
+    install_cmd=$(parse_entry_field "$DOTFILES_DIR/packages/common.yaml" tools "$name" install)
+    if [ -z "$install_cmd" ]; then
+        track_warning "No install command declared for $name in packages/common.yaml"
+        return 0
+    fi
+    install_curl_tool "$name" "$install_cmd"
+}
+
 # Install fnm and a Node.js LTS if missing. Idempotent, safe to call more than
 # once. fnm's LTS is our npm provider — Arch's nodejs package ships without
-# npm/npx — so npm-dependent custom installs (codex, global yarn/pnpm) need
+# npm/npx — so npm-dependent custom installs (codex, hunk, global pnpm) need
 # this to have run first.
 ensure_node_toolchain() {
     # Called twice per run — from main() before group packages (so npm-based
@@ -574,11 +589,8 @@ ensure_node_toolchain() {
     [ "${NODE_TOOLCHAIN_READY:-false}" = true ] && return 0
 
     if ! command_exists fnm; then
-        install_curl_tool "fnm" "curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell"
-        # The fnm installer (--skip-shell) drops the binary in ~/.local/share/fnm,
-        # which is not on the installer's PATH.
-        export PATH="$HOME/.local/share/fnm:$PATH"
-        hash -r 2>/dev/null || true
+        install_common_tool fnm
+        activate_fnm_node
     else
         print_info "fnm is already installed"
     fi
@@ -586,12 +598,10 @@ ensure_node_toolchain() {
     # Ensure a Node.js version is actually installed — fnm can exist with no
     # versions (e.g. from a run that died before this step).
     if command_exists fnm; then
-        eval "$(fnm env --use-on-cd --shell bash)" || true
+        activate_fnm_node
         if ! fnm ls | grep -q 'lts\|v[0-9]'; then
             print_info "Installing Node.js LTS via fnm..."
-            if fnm install --lts && fnm default lts-latest; then
-                eval "$(fnm env --use-on-cd --shell bash)" || true
-                hash -r 2>/dev/null || true
+            if install_node_lts; then
                 print_success "Node.js LTS installed via fnm"
             else
                 track_warning "Failed to install Node.js LTS via fnm"
@@ -783,24 +793,30 @@ install_common_tools() {
     
     # Install zoxide
     if ! command_exists zoxide; then
-        install_curl_tool "zoxide" \
-            "curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh"
+        install_common_tool zoxide
     else
         print_info "zoxide is already installed"
     fi
-    
+
     # Install fnm + a Node.js LTS (idempotent). Also called earlier, before
     # group packages, so npm-based custom installs (e.g. codex) can run.
     ensure_node_toolchain
 
     # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
-    if command_exists npm; then
-        print_info "Installing global npm packages..."
-        npm install -g yarn@1 pnpm || track_warning "Failed to install global npm packages"
+    # The list and each package's install spec come from common.yaml's `tools:`
+    # entries, so they stay in step with what './manage.sh update' checks.
+    local npm_pkgs=()
+    mapfile -t npm_pkgs < <(parse_entry_field_values "$common_file" tools npm)
+
+    if [ ${#npm_pkgs[@]} -eq 0 ]; then
+        print_info "No global npm packages declared in packages/common.yaml"
+    elif command_exists npm; then
+        print_info "Installing global npm packages (${npm_pkgs[*]})..."
+        npm install -g "${npm_pkgs[@]}" || track_warning "Failed to install global npm packages"
     else
-        track_warning "npm unavailable — skipped global npm packages (yarn, pnpm)"
+        track_warning "npm unavailable — skipped global npm packages (${npm_pkgs[*]})"
     fi
-    
+
     # Install rofi themes when the Hyprland group is selected
     if group_selected hyprland; then
         print_info "Installing Rofi themes collection..."

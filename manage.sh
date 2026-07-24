@@ -18,6 +18,7 @@ Usage: ./manage.sh [command]
 
 Commands:
   packages    Manage packages (add/remove from groups, sync missing)
+  update      Update what pacman doesn't own (curl/npm/cargo tools, apps)
   apps        Manage standalone apps (AppImage / Distrobox)
   reconfig    Reconfigure chezmoi data flags
   whisper     Update whisper model for hyprvoice dictation
@@ -223,6 +224,13 @@ do_packages() {
     "$SCRIPT_DIR/tools/manage-packages.sh" "$@"
 }
 
+# Complements cachy-update rather than duplicating it: only the tools the
+# system package manager doesn't own (curl binaries, npm globals, Node, cargo
+# installs, tracked external apps).
+do_update() {
+    "$SCRIPT_DIR/tools/manage-updates.sh" "$@"
+}
+
 # Everything package-shaped under one submenu: the unified add/remove manager,
 # the "install what the dotfiles gained" sync, and standalone apps.
 do_packages_menu() {
@@ -230,6 +238,7 @@ do_packages_menu() {
         local options=()
         options+=("Add / remove packages")
         options+=("Sync missing packages")
+        options+=("Update tools and apps")
         if install_purpose_is desktop; then
             options+=("Standalone apps (AppImage / Distrobox)")
         fi
@@ -241,6 +250,7 @@ do_packages_menu() {
         case "$choice" in
             "Add / remove packages")   do_packages || true ;;
             "Sync missing packages")   do_packages sync || true; pause_for_user ;;
+            "Update tools and apps")   do_update || true; pause_for_user ;;
             "Standalone apps (AppImage / Distrobox)") do_apps || true ;;
             "Back")                    break ;;
         esac
@@ -344,6 +354,7 @@ case "${1:-}" in
     whisper)    do_whisper ;;
     reconfig)   do_reconfig ;;
     packages)   shift; do_packages "$@" ;;
+    update)     shift; do_update "$@" ;;
     apps)       shift; do_apps "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
     backup)     shift; do_backup "$@" ;;

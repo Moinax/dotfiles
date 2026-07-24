@@ -177,6 +177,23 @@ is_package_installed() {
     pacman -Qi "$package" &>/dev/null
 }
 
+# Which installed package owns each given file path. Emits
+# "path<TAB>package<TAB>version" for the owned paths and nothing for the rest
+# (pacman reports those on stderr and carries on, so one call covers a mixed
+# batch). Batched deliberately: -Qo is a full database query and callers ask
+# about every binary in a scan at once.
+package_owners() {
+    [ $# -gt 0 ] || return 0
+    LC_ALL=C pacman -Qo "$@" 2>/dev/null | awk '
+        {
+            i = index($0, " is owned by ")
+            if (i == 0) next
+            path = substr($0, 1, i - 1)
+            if (split(substr($0, i + 13), a, " ") < 2) next
+            printf "%s\t%s\t%s\n", path, a[1], a[2]
+        }' || true
+}
+
 # List every installed package name, one per line. Used to build an in-memory
 # index so callers can test many packages without forking pacman per package.
 #
