@@ -14,6 +14,7 @@
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
 #        herdr-clients revive-panes SESSION   rerun utility/agent pane commands in restored panes left as bare shells
 #        herdr-clients migrate-layout [SESSION ...]  reconcile persisted workspaces with the current dev-herdr layout (default: every session)
+#        herdr-clients reload-config [SESSION ...]   reload config.toml in running servers (default: every running one)
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
@@ -402,6 +403,43 @@ migrate_layout_sessions() {
   [[ ${#FAILED_SESSIONS[@]} -eq 0 ]]
 }
 
+# Reload config.toml in the given sessions' running servers (default: every
+# running one). A server reads config.toml only at boot and at reload-config,
+# so a config change (e.g. a new keybinding) silently skips every session but
+# the one it was reloaded in; down sessions need nothing — they pick it up at
+# the next boot. Non-running names passed explicitly are reported, not booted.
+reload_config_sessions() {
+  local -a sessions=() up=()
+  local session out rc=0
+  mapfile -t up < <(running_sessions)
+  if [[ $# -gt 0 ]]; then
+    for session in "$@"; do
+      if in_list "$session" "${up[@]}"; then
+        sessions+=("$session")
+      else
+        echo "herdr-clients: session '$session' is not running — it reads config.toml at its next boot" >&2
+      fi
+    done
+  else
+    sessions=("${up[@]}")
+  fi
+  [[ ${#sessions[@]} -eq 0 ]] && { echo "herdr-clients: no running sessions to reload"; return 0; }
+  for session in "${sessions[@]}"; do
+    if out="$(herdr --session "$session" server reload-config 2>&1)"; then
+      # Surface the server's diagnostics (e.g. an unparseable binding) — a
+      # reload that "applied" with diagnostics is how a typo hides.
+      jq -r --arg s "$session" \
+        '"\($s): config \(.result.status // "applied")",
+         (.result.diagnostics[]? | "\($s): \(.)")' <<<"$out" 2>/dev/null \
+        || echo "$session: config reloaded"
+    else
+      echo "herdr-clients: reload failed for '$session': $out" >&2
+      rc=1
+    fi
+  done
+  return "$rc"
+}
+
 # Wait for a launched client's window to map (kitty is async).
 wait_for_window() {
   local class="$1"
@@ -559,7 +597,11 @@ case "${1:-}" in
     shift
     migrate_layout_sessions "$@"
     ;;
+  reload-config)
+    shift
+    reload_config_sessions "$@"
+    ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes | migrate-layout)"
+    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes | migrate-layout | reload-config)"
     ;;
 esac
