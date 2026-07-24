@@ -1149,7 +1149,6 @@ apply_dark_mode_defaults() {
         "$HOME/.config/swaync/style.css"
         "$HOME/.local/share/rofi/themes/moinax.rasi"
         "$HOME/.config/wlogout/style.css"
-        "$HOME/.config/waybar/style.css"
     )
 
     # Re-run if state file is missing or any active theme file is missing
@@ -1169,7 +1168,7 @@ apply_dark_mode_defaults() {
         local mode
         mode=$(cat "$state_file" 2>/dev/null || echo "dark")
         print_info "Applying $mode mode theme..."
-        APPLY_DARK_MODE_NO_RESTART=1 "$script" "$mode" > /dev/null
+        "$script" "$mode" > /dev/null
         print_success "Theme applied ($mode mode)"
     else
         print_info "Dark/light mode already configured, skipping"

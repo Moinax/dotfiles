@@ -169,11 +169,9 @@ if [ -f "$WLOGOUT_SRC" ]; then
     cp "$WLOGOUT_SRC" "$HOME/.config/wlogout/style.css"
 fi
 
-# ---------- Waybar CSS ----------
-WAYBAR_CSS_SRC="$HOME/.config/waybar/style-${MODE}.css"
-if [ -f "$WAYBAR_CSS_SRC" ]; then
-    cp "$WAYBAR_CSS_SRC" "$HOME/.config/waybar/style.css"
-fi
+# Waybar needs nothing here: it discovers the appearance via the portal
+# color-scheme (set through gsettings above) and loads style-dark.css /
+# style-light.css itself, live-switching when the scheme flips.
 
 # ---------- Compositor borders ----------
 # Hyprland 0.55+ on Lua config rejects `hyprctl keyword` ("non-legacy parsers").
@@ -207,11 +205,4 @@ if command -v chezmoi &>/dev/null; then
         ~/.config/yazi/theme.toml \
         ~/.local/share/rofi/themes/wallpaper.rasi \
         2>/dev/null || true
-fi
-
-# ---------- Waybar restart ----------
-if [ "$APPLY_DARK_MODE_NO_RESTART" != "1" ]; then
-    if [ -x "$HOME/.config/hypr/scripts/reload-waybar.sh" ]; then
-        "$HOME/.config/hypr/scripts/reload-waybar.sh"
-    fi
 fi
