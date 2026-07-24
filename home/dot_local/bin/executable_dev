@@ -33,10 +33,11 @@ dir="$(cd "$dir" && pwd)"
 name="$(basename "$dir")"
 [[ -n "$name_override" ]] && name="$name - $name_override"
 
-# dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
-# DEV_MUX) and owns window spawning per backend. setsid detaches it fully so
-# it survives the caller exiting immediately — a herdr popup tears down its
-# pty the instant the picker exits, killing a plain `& disown` child in the
-# same process group before it can create the workspace; a new session (no
-# controlling tty) survives that.
-setsid -f dev-mux -n "$name" -d "$dir" -p "$provider" >/dev/null 2>&1 </dev/null
+# dev-herdr creates the workspace and focuses the shared client window itself
+# (it owns its own window spawning; the retired dev-mux only existed to pick
+# between herdr and zellij). setsid detaches it fully so it survives the
+# caller exiting immediately — a herdr popup tears down its pty the instant
+# the picker exits, killing a plain `& disown` child in the same process
+# group before it can create the workspace; a new session (no controlling
+# tty) survives that.
+setsid -f dev-herdr -n "$name" -d "$dir" -p "$provider" >/dev/null 2>&1 </dev/null

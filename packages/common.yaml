@@ -3,7 +3,7 @@
 # `install:` is the single source of truth for how a tool is fetched, but not
 # every entry is installed from here at setup time. install_common_tools() runs
 # zoxide, fnm and the `npm:` entries; the rest (eza, lazydocker, television,
-# zellij, hyprvoice) normally arrive as pacman/AUR packages via base.yaml or a
+# hyprvoice) normally arrive as pacman/AUR packages via base.yaml or a
 # group, and their `install:` is the fallback './manage.sh update' re-runs to
 # refresh a copy that no distro package owns. Wiring those into the installer
 # too would curl-install tools whose group the user deliberately deselected.
@@ -78,16 +78,6 @@ tools:
     binary: tv
     source: alexpasmantier/television
     install: curl -fsSL https://alexpasmantier.github.io/television/install.sh | bash
-
-  - name: zellij
-    description: Terminal workspace / multiplexer (packaged on Arch; binary fallback)
-    binary: zellij
-    source: zellij-org/zellij
-    install: |
-      arch=$(uname -m)
-      curl -fsSL "https://github.com/zellij-org/zellij/releases/latest/download/zellij-${arch}-unknown-linux-musl.tar.gz" \
-        | sudo tar xz -C /usr/local/bin
-      sudo chmod +x /usr/local/bin/zellij
 
   - name: hyprvoice
     description: Voice-powered typing for Wayland desktops

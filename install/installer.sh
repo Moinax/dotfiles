@@ -933,7 +933,6 @@ setup_dotfiles() {
         "dot_gitconfig"
         "dot_config/starship.toml"
         "dot_config/yazi"
-        "dot_config/zellij"
         "completion-for-pnpm.bash"
     )
 
@@ -998,13 +997,11 @@ setup_dotfiles() {
         has_hyprlock_fingerprint="true"
     fi
 
-    # Settings the setup flow never asks about (use_herdr is toggled via
-    # reconfig, dark_mode via the theme toggle) must survive re-runs: carry
-    # over existing values, defaulting only when absent.
-    local use_herdr="true" dark_mode="dark" existing_val
+    # Settings the setup flow never asks about (dark_mode via the theme
+    # toggle) must survive re-runs: carry over existing values, defaulting
+    # only when absent.
+    local dark_mode="dark" existing_val
     if [ -f "$chezmoi_config" ]; then
-        existing_val=$(grep -m1 -oP '^\s*use_herdr\s*=\s*\K(true|false)' "$chezmoi_config" || true)
-        [ -n "$existing_val" ] && use_herdr="$existing_val"
         existing_val=$(grep -m1 -oP '^\s*dark_mode\s*=\s*"\K[^"]+' "$chezmoi_config" || true)
         [ -n "$existing_val" ] && dark_mode="$existing_val"
     fi
@@ -1022,7 +1019,6 @@ sourceDir = "$source_dir"
     install_productivity = $install_productivity
     install_ai = $install_ai
     install_vibewatch = $install_vibewatch
-    use_herdr = $use_herdr
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"

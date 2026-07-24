@@ -18,8 +18,8 @@ focus_pane_down = ["prefix+j", "alt+j", "alt+down"]
 focus_pane_up = ["prefix+k", "alt+k", "alt+up"]
 focus_pane_right = ["prefix+l", "alt+l", "alt+right"]
 
-# Fullscreen (zoom) the focused pane. alt+f mirrors the zellij scratch
-# toggle; the prefix+z default is kept.
+# Fullscreen (zoom) the focused pane. alt+f is the muscle-memory binding;
+# the prefix+z default is kept.
 zoom = ["prefix+z", "alt+f"]
 
 # Cycle spaces (workspaces) directly with ctrl+alt+up/down, matching the
@@ -27,7 +27,7 @@ zoom = ["prefix+z", "alt+f"]
 previous_workspace = "ctrl+alt+up"
 next_workspace = "ctrl+alt+down"
 
-# Direct tab jump like zellij's Alt+1..9 (prefix+1..9 still works).
+# Direct tab jump on alt+1..9 (prefix+1..9 still works).
 # AZERTY: kitty translates alt+& é " ' ( into alt+1..5 at the terminal
 # layer (see kitty.conf) — herdr 0.7.4 parses "alt+é" but silently drops
 # it at runtime, misaligning every later [[keys.command]] binding.
@@ -51,7 +51,7 @@ previous_tab = ["prefix+p", "ctrl+alt+p"]
 close_workspace = ["prefix+shift+d", "ctrl+alt+d"]
 
 # Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
-# project's dev environment via dev-mux — the in-herdr rofi-dev.
+# project's dev environment via `dev` — the in-herdr rofi-dev.
 [[keys.command]]
 key = ["prefix+o", "ctrl+alt+o"]
 type = "popup"
@@ -109,7 +109,7 @@ width = "100%"
 height = "100%"
 description = "Git (lazygit)"
 
-# Direct pane resize (alt+shift+hjkl), zellij-style; the native resize
+# Direct pane resize (alt+shift+hjkl) without a mode; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
 [[keys.command]]
 key = "alt+shift+h"

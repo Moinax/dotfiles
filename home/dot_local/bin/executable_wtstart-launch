@@ -65,7 +65,7 @@ if $send_start; then
   fi
 fi
 
-# dev-mux dispatches to the configured multiplexer (chezmoi use_herdr /
-# DEV_MUX) and owns window spawning per backend; setsid fully detaches it
-# from this short-lived script.
-setsid -f dev-mux -n "$name" -d "$dir" -p "$provider" -- "$prompt" >/dev/null 2>&1 </dev/null
+# dev-herdr creates the workspace and owns its own window spawning (the
+# retired dev-mux only existed to pick between herdr and zellij); setsid
+# fully detaches it from this short-lived script.
+setsid -f dev-herdr -n "$name" -d "$dir" -p "$provider" -- "$prompt" >/dev/null 2>&1 </dev/null

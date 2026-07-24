@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Resolve an AI-agent provider to its launch argv — the single source of
-# truth for launching an agent CLI (used by dev-zellij-session,
-# herdr-agent-layout, and herdr-clients revive-panes).
+# truth for launching an agent CLI (used by herdr-agent-layout and
+# herdr-clients revive-panes).
 #
 # Each provider has its own CLI shape:
 #   claude   -> claude -n NAME [prompt]   (-n = display name; prompt auto-submits)
@@ -13,7 +13,7 @@
 #
 # Usage:   dev-agent-argv [-q] PROVIDER NAME [PROMPT]
 # Output:  one argv token per line (first line = command, rest = args), for
-#          callers that need the tokens split (zellij). With -q, one
+#          callers that need the tokens split. With -q, one
 #          %q-quoted line ready for a shell / herdr `pane run` — the join is
 #          owned here so the spawn (herdr-agent-layout) and the revive
 #          (herdr-clients) can never drift in how they quote a prompt.

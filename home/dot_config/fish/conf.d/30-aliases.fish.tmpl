@@ -18,18 +18,6 @@ alias gcm "git checkout main"
 alias gfp "git push --force-with-lease"
 alias gcl "git cleanup"
 
-# Zellij — the multiplexer behind `dev`/`wts` agent sessions.
-# za/zk/zd/_zj_pick are autoloaded functions in ../functions/.
-if command -q zellij
-    alias z zellij # raw session list is `z ls`
-    alias zka "zellij kill-all-sessions" # stop every running session
-    alias zda "zellij delete-all-sessions" # clear all exited/resurrectable sessions
-
-    # zls / zj — fuzzy-pick a session and attach. Alias kept for muscle memory.
-    alias zj za
-    alias zls za
-end
-
 # Herdr — per-session control (omit the name for a gum picker)
 if command -q herdr
     alias hso "herdr-session open" # focus/open a session's client window

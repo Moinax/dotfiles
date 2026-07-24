@@ -34,3 +34,17 @@
 
 # `dev` became a standalone script in ~/.local/bin
 .config/fish/functions/dev.fish
+
+# Zellij backend retired — herdr is the only multiplexer. The zellij package
+# stays installed (base.yaml) but nothing here configures or drives it, and
+# `dev` calls dev-herdr directly instead of dispatching through dev-mux.
+.config/zellij
+.config/zellij/**
+.local/bin/dev-mux
+.local/bin/dev-zellij
+.local/bin/dev-zellij-session
+.local/bin/dev-server-cmd
+.config/fish/functions/za.fish
+.config/fish/functions/zd.fish
+.config/fish/functions/zk.fish
+.config/fish/functions/_zj_pick.fish

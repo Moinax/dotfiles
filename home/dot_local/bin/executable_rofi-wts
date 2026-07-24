@@ -2,7 +2,7 @@
 # rofi-wts — rofi worktree launcher: pick a main project, then create or
 # reopen a worktree for it and launch its dev environment. The rofi analog of
 # the wts/wtstart shell function; the launch half (title, copy-ignored,
-# detached dev-mux) is the shared wtstart-launch. Bound to Mod+Ctrl+Return;
+# detached dev-herdr) is the shared wtstart-launch. Bound to Mod+Ctrl+Return;
 # also reachable from rofi-dev via Ctrl+Enter with the project preselected
 # as $1. Runs without a terminal, so `wt switch` gets --no-cd (nothing to cd)
 # and errors surface as notifications instead of stderr.

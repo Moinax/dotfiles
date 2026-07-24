@@ -18,55 +18,6 @@ alias gcm="git checkout main"
 alias gfp="git push --force-with-lease"
 alias gcl="git cleanup"
 
-# Zellij — the multiplexer behind `dev`/`wts` agent sessions
-if command -v zellij &> /dev/null; then
-  # Drop any stale aliases from a prior load so re-sourcing this file doesn't
-  # trip zsh's parse-time alias expansion on the za()/zk()/zd() definitions.
-  unalias za zk zd zj zls 2> /dev/null
-
-  alias z="zellij"                        # raw session list is `z ls`
-  alias zka="zellij kill-all-sessions"    # stop every running session
-  alias zda="zellij delete-all-sessions"  # clear all exited/resurrectable sessions
-
-  # _zj_pick HEADER — fuzzy-pick a session via television, print its name to stdout.
-  # Returns non-zero (printing nothing) when there's no list or no tv available.
-  _zj_pick() {
-    if ! command -v tv &> /dev/null; then
-      zellij ls >&2; return 1
-    fi
-    local list sel
-    list=$(zellij ls -n 2>/dev/null)
-    if [[ -z "$list" || "$list" == *"No active"* ]]; then
-      echo "No Zellij sessions." >&2; return 1
-    fi
-    # television reads keys from stdin, so feed the list via --source-command
-    # (not a pipe) and hand it the tty; the chosen line prints to stdout.
-    sel=$(tv --source-command 'zellij ls -n' --inline --no-status-bar --input-header "$1" < /dev/tty) || return 1
-    [[ -n "$sel" ]] && echo "${sel%% *}"
-  }
-
-  # za / zk / zd — pass a name to act directly, or omit it to fuzzy-pick via television.
-  za() {  # reattach to an agent session (resurrects exited ones)
-    if [[ -n "$ZELLIJ" ]]; then
-      echo "Already inside a Zellij session — use Ctrl+o w to switch." >&2; return 1
-    fi
-    local name="${1:-$(_zj_pick attach)}"
-    [[ -n "$name" ]] && zellij attach "$name"
-  }
-  zk() {  # stop a running session
-    local name="${1:-$(_zj_pick kill)}"
-    [[ -n "$name" ]] && zellij kill-session "$name"
-  }
-  zd() {  # drop an exited session (force a clean rebuild)
-    local name="${1:-$(_zj_pick delete)}"
-    [[ -n "$name" ]] && zellij delete-session "$name"
-  }
-
-  # zls / zj — fuzzy-pick a session and attach. Alias kept for muscle memory.
-  alias zj=za
-  alias zls=za
-fi
-
 # Herdr — per-session control (omit the name for a gum picker)
 if command -v herdr &> /dev/null; then
   alias hso="herdr-session open"    # focus/open a session's client window

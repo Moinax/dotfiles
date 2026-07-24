@@ -66,7 +66,7 @@ case "${1:-}" in
     tab="$(herdr tab list --workspace "$ws" \
       | jq -re --argjson n "$n" \
           '.result.tabs[] | select(.number == $n) | .tab_id')" \
-      || exit 0  # no Nth tab — ignore, like zellij's GoToTab
+      || exit 0  # no Nth tab — ignore rather than error
     herdr tab focus "$tab" >/dev/null
     ;;
   resize)
