@@ -1387,17 +1387,17 @@ setup_biometric() {
     fi
 
     # PAM fingerprint covers login, sudo, AND polkit — Bitwarden's biometric unlock goes via polkit.
-    if gum confirm "Enable fingerprint for system auth (login, sudo, polkit, Bitwarden)?"; then
-        local pam_file=/etc/pam.d/system-local-login
-        [ -f /etc/pam.d/system-auth ] && pam_file=/etc/pam.d/system-auth
-        if sudo grep -q 'pam_fprintd.so' "$pam_file" 2>/dev/null; then
-            print_info "pam_fprintd already configured in $pam_file"
-        else
-            print_info "Adding pam_fprintd.so to $pam_file"
-            sudo cp "$pam_file" "${pam_file}.bak.$(date +%s)"
-            sudo sed -i '0,/^auth/s//auth      sufficient   pam_fprintd.so\n&/' "$pam_file"
-            print_success "PAM fingerprint enabled (backup: ${pam_file}.bak.*)"
-        fi
+    # Detect before prompting, like the enrollment step above: the answer is already
+    # on disk on a re-run, so asking again is noise the user can only answer wrong.
+    local sysauth_file=/etc/pam.d/system-local-login
+    [ -f /etc/pam.d/system-auth ] && sysauth_file=/etc/pam.d/system-auth
+    if grep -q 'pam_fprintd.so' "$sysauth_file" 2>/dev/null; then
+        print_info "pam_fprintd already configured in $sysauth_file"
+    elif gum confirm "Enable fingerprint for system auth (login, sudo, polkit, Bitwarden)?"; then
+        print_info "Adding pam_fprintd.so to $sysauth_file"
+        sudo cp "$sysauth_file" "${sysauth_file}.bak.$(date +%s)"
+        sudo sed -i '0,/^auth/s//auth      sufficient   pam_fprintd.so\n&/' "$sysauth_file"
+        print_success "PAM fingerprint enabled (backup: ${sysauth_file}.bak.*)"
     fi
 
     # The hyprlock PAM stack defaults to `auth include login`, which pulls in
@@ -1513,7 +1513,7 @@ session     include     system-login
 -session    optional    pam_gnome_keyring.so    auto_start
 -session    optional    pam_kwallet5.so         auto_start
 PAMEOF
-            print_success "$pam_file installed"
+            print_success "$plasma_pam installed"
         fi
     fi
 
