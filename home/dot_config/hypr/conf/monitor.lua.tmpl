@@ -8,9 +8,11 @@ hl.monitor({ output = "DP-3", mode = "3440x1440@174.96", position = "0x0",      
 -- Right Monitor (DP-1) - Vertical
 hl.monitor({ output = "DP-1", mode = "2560x1440",        position = "3440x-500",  scale = 1, transform = 1 })
 {{- else if eq .chezmoi.hostname "moinax-laptop" }}
--- Built-in 4K panel (Sharp 3840x2400 @ 60Hz, ~16"). Fractional scale 1.6
--- gives a 2400x1500 logical workspace (3840/1.6 = 2400, clean pixels).
-hl.monitor({ output = "eDP-1", mode = "3840x2400@59.99", position = "auto", scale = 1.6 })
+-- Built-in 4K panel (Sharp 3840x2400 @ 60Hz, ~16"). Integer scale 2 gives a
+-- 1920x1200 logical workspace — bigger text than 1.6 (2400x1500) and, being
+-- integer, no XWayland blur. 1.92 (2000x1250) is the only clean step between
+-- the two; anything else leaves a non-integer logical size.
+hl.monitor({ output = "eDP-1", mode = "3840x2400@59.99", position = "auto", scale = 2 })
 {{- else }}
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 {{- end }}
