@@ -57,14 +57,22 @@ Commands:
       preserved automatically; pass --args to change them (--args "" clears them).
 
   install-github <owner/repo | github URL> [--name NAME] [--asset GLOB] [--type appimage|package]
-                 [--container NAME] [--app DESKTOP_ID] [--args "FLAGS"] [--non-interactive]
+                 [--container NAME] [--app DESKTOP_ID] [--args "FLAGS"] [--prerelease]
+                 [--non-interactive]
       Download the latest GitHub release asset and install it (AppImage → launcher
       import, deb/rpm/pkg.tar → Distrobox install). The source is remembered so the
       app can be kept current with 'check-updates' / 'update'.
+      --prerelease follows the newest release including nightlies/betas instead of
+      the latest stable one.
 
-  set-source --name APP --repo <owner/repo | github URL> [--asset GLOB] [--version TAG]
+  set-source --name APP [--repo <owner/repo | github URL>] [--asset GLOB] [--version TAG]
+             [--prerelease | --stable]
       Attach a GitHub release source to an already-installed app. Without --version
       the app reports as updatable until the first 'update' runs.
+      Every option but --name is inherited from the saved source when omitted, so
+      switching an already-tracked app between channels is just:
+        set-source --name APP --prerelease     # follow nightlies/betas
+        set-source --name APP --stable         # back to stable releases
 
   check-updates [--porcelain]
       Compare each app's installed version against its latest GitHub release.
@@ -77,7 +85,8 @@ Commands:
       args preserved.
 
   list
-      List all managed apps (AppImages and Distrobox apps).
+      List all managed apps (AppImages and Distrobox apps). Apps following the
+      pre-release channel are marked 'channel=pre-release'.
 
   latest-release <owner/repo> [owner/repo ...]
       Print "repo<TAB>latest-tag" for each repo, fetched concurrently through one
@@ -87,7 +96,7 @@ Commands:
 Run without arguments for an interactive wizard:
   - Install app (local file): fuzzy-find a file (.AppImage, .deb, .rpm) and auto-detect the install method
   - Install from GitHub release: paste a repo/URL, pick the asset, install + track updates
-  - Manage installed apps: update (from GitHub or a local file) or uninstall any managed app
+  - Manage installed apps: update (from GitHub or a local file), switch release channel, or uninstall
   - Check for updates: check all tracked apps and pick which to update
 """
 
@@ -441,7 +450,7 @@ def load_distrobox_metadata(app_name):
     return read_env(f)
 
 
-def save_source_metadata(app_name, app_type, repo, pattern, version):
+def save_source_metadata(app_name, app_type, repo, pattern, version, prerelease=False):
     ensure_dirs()
     write_env(source_file_for_name(app_name), {
         "APP_NAME": app_name,
@@ -449,7 +458,14 @@ def save_source_metadata(app_name, app_type, repo, pattern, version):
         "SOURCE_REPO": repo,
         "ASSET_PATTERN": pattern,
         "VERSION": version,
+        "PRERELEASE": "1" if prerelease else "0",
     })
+
+
+def source_prerelease(src):
+    """Channel flag from a source .env. Absent (pre-existing state files, and
+    the shell version's format) reads as stable."""
+    return src.get("PRERELEASE", "0") == "1"
 
 
 def load_source_metadata(app_name):
@@ -994,8 +1010,10 @@ _HTTP_HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-# Session cache of /releases/latest JSON per repo: a check followed by an
+# Session cache of release JSON per (repo, prerelease): a check followed by an
 # update in the same run reuses the response instead of re-hitting the API.
+# The channel is part of the key — the same repo resolves to different releases
+# on the stable and prerelease channels.
 _release_cache = {}
 _release_cache_lock = threading.Lock()
 
@@ -1054,26 +1072,20 @@ def rate_limit_note():
         return "an unknown time"
 
 
-def gh_release_json(repo):
-    """Latest-release JSON dict for a repo, fetched once per session; None on failure."""
-    with _release_cache_lock:
-        if repo in _release_cache:
-            return _release_cache[repo]
-    # Once the quota is gone every further request is a guaranteed 403, so stop
-    # paying for the round trips — the rest of the batch reports as unresolved.
-    if rate_limit_reset() is not None:
-        return None
+def channel_label(prerelease):
+    return "pre-release" if prerelease else "stable"
 
+
+def _gh_get_json(url):
+    """GET a GitHub API URL and parse it; None on any failure (rate limit noted)."""
     headers = dict(_HTTP_HEADERS)
     token = gh_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
-
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers),
                                     timeout=30) as resp:
-            data = json.load(resp)
+            return json.load(resp)
     except urllib.error.HTTPError as e:
         # A 403/429 with no quota left is a rate limit, not a missing repo —
         # worth telling the user apart from "this repo has no releases".
@@ -1084,41 +1096,78 @@ def gh_release_json(repo):
         # Failures are not cached, so a later call in the same run retries
         # (matches the shell version, which only cached successful fetches).
         return None
+
+
+def gh_release_json(repo, prerelease=False):
+    """Newest release JSON dict for a repo on the requested channel, fetched
+    once per session; None on failure.
+
+    Stable uses /releases/latest, which GitHub defines as excluding drafts and
+    pre-releases. The pre-release channel has no such endpoint, so it reads the
+    first page of /releases (newest first) and takes the newest non-draft entry
+    — that is the nightly/beta tag when one is ahead of the last stable, and the
+    stable tag otherwise.
+    """
+    key = (repo, bool(prerelease))
     with _release_cache_lock:
-        _release_cache[repo] = data
+        if key in _release_cache:
+            return _release_cache[key]
+    # Once the quota is gone every further request is a guaranteed 403, so stop
+    # paying for the round trips — the rest of the batch reports as unresolved.
+    if rate_limit_reset() is not None:
+        return None
+
+    if prerelease:
+        # 30 is GitHub's default page size and plenty: a repo publishing more
+        # than 30 releases between two checks is not a channel worth tracking.
+        listing = _gh_get_json(f"https://api.github.com/repos/{repo}/releases?per_page=30")
+        if not isinstance(listing, list):
+            return None
+        data = next((r for r in listing if isinstance(r, dict) and not r.get("draft")), None)
+        if data is None:
+            return None
+    else:
+        data = _gh_get_json(f"https://api.github.com/repos/{repo}/releases/latest")
+        if data is None:
+            return None
+
+    with _release_cache_lock:
+        _release_cache[key] = data
     return data
 
 
-def prefetch_release_json(repos):
-    """Warm the release cache for all repos concurrently."""
-    repos = sorted(set(repos))
-    if not repos:
+def prefetch_release_json(targets):
+    """Warm the release cache concurrently. Accepts repo strings or
+    (repo, prerelease) pairs — a repo tracked on both channels is two fetches."""
+    pairs = sorted({(t, False) if isinstance(t, str) else (t[0], bool(t[1])) for t in targets})
+    if not pairs:
         return
     # Resolve the token before fanning out, so the workers don't queue behind
     # one thread's `gh auth token` subprocess.
     gh_token()
     # Wide enough for a whole update scan (a dozen-odd repos) in one wave: these
     # are independent one-shot GETs, so a narrower pool just adds a round trip.
-    with ThreadPoolExecutor(max_workers=min(16, len(repos))) as pool:
-        list(pool.map(gh_release_json, repos))
+    with ThreadPoolExecutor(max_workers=min(16, len(pairs))) as pool:
+        list(pool.map(lambda p: gh_release_json(*p), pairs))
 
 
-def github_latest_tag(repo):
-    return (gh_release_json(repo) or {}).get("tag_name") or ""
+def github_latest_tag(repo, prerelease=False):
+    return (gh_release_json(repo, prerelease) or {}).get("tag_name") or ""
 
 
-def github_fetch_latest_release(repo):
-    """Latest release tag + asset URLs; raises AppError with details."""
-    with Spinner(f"Fetching latest release of {repo}..."):
-        data = gh_release_json(repo)
+def github_fetch_latest_release(repo, prerelease=False):
+    """Newest release tag + asset URLs on a channel; raises AppError with details."""
+    what = "newest pre-release" if prerelease else "latest release"
+    with Spinner(f"Fetching {what} of {repo}..."):
+        data = gh_release_json(repo, prerelease)
     tag = (data or {}).get("tag_name") or ""
     assets = [a.get("browser_download_url", "") for a in (data or {}).get("assets", [])]
     assets = [u for u in assets if u]
 
     if not tag:
-        raise AppError(f"Could not fetch the latest release of {repo}")
+        raise AppError(f"Could not fetch the {what} of {repo}")
     if not assets:
-        raise AppError(f"The latest release of {repo} ({tag}) has no downloadable assets")
+        raise AppError(f"The {what} of {repo} ({tag}) has no downloadable assets")
     return tag, assets
 
 
@@ -1338,7 +1387,7 @@ def cmd_update_distrobox(argv):
 def cmd_install_github(argv):
     parsed = parse_flags(argv,
                          value_flags=("--name", "--asset", "--type", "--container", "--app", "--args"),
-                         bool_flags=("--non-interactive",), max_positional=1)
+                         bool_flags=("--non-interactive", "--prerelease"), max_positional=1)
     if parsed is None:
         print(USAGE)
         return 0
@@ -1353,13 +1402,14 @@ def cmd_install_github(argv):
         raise AppError(f"Invalid --type: {type_filter} (expected appimage or package)")
 
     interactive = "--non-interactive" not in flags
+    prerelease = "--prerelease" in flags
     app_name = flags.get("--name", "")
     container = flags.get("--container", "")
     asset_pattern = flags.get("--asset", "")
 
     repo = github_normalize_repo(positionals[0])
-    tag, asset_urls = github_fetch_latest_release(repo)
-    print_info(f"Latest release of {repo}: {tag}")
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
+    print_info(f"Latest {channel_label(prerelease)} of {repo}: {tag}")
 
     # --container implies a distro package install
     if not type_filter and container:
@@ -1400,15 +1450,16 @@ def cmd_install_github(argv):
     finally:
         shutil.rmtree(asset_path.parent, ignore_errors=True)
 
-    save_source_metadata(app_name, app_type, repo, asset_pattern, tag)
+    save_source_metadata(app_name, app_type, repo, asset_pattern, tag, prerelease)
     print_success(f"Pinned update source for {app_name}")
     print(f"  Repo: {repo}")
+    print(f"  Channel: {channel_label(prerelease)}")
     print(f"  Version: {tag}")
     print(f"  Asset pattern: {asset_pattern}")
     return 0
 
 
-def execute_set_source(app_name, repo_input, asset_pattern, version):
+def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=False):
     ensure_dirs()
     slug = slugify(app_name)
 
@@ -1422,36 +1473,68 @@ def execute_set_source(app_name, repo_input, asset_pattern, version):
         raise AppError("")
 
     repo = github_normalize_repo(repo_input)
-    tag, asset_urls = github_fetch_latest_release(repo)
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
 
-    # Make sure the pattern (or the type default) matches something downloadable
+    # Make sure the pattern (or the type default) matches something downloadable.
+    # This is what catches a channel switch whose saved pattern only matched the
+    # old channel's filenames — better a hard error here than at update time.
     type_filter = "appimage" if app_type == "appimage" else "package"
     asset_url = pick_release_asset(asset_urls, asset_pattern, type_filter, False)
     if not asset_pattern:
         asset_pattern = derive_asset_pattern(asset_url.rsplit("/", 1)[-1], tag)
 
-    save_source_metadata(app_name, app_type, repo, asset_pattern, version)
+    save_source_metadata(app_name, app_type, repo, asset_pattern, version, prerelease)
     print_success(f"Saved update source for {app_name}")
     print(f"  Repo: {repo}")
+    print(f"  Channel: {channel_label(prerelease)} (latest: {tag})")
     print(f"  Asset pattern: {asset_pattern}")
     if version:
         print(f"  Installed version: {version}")
     else:
         print("  Installed version: unknown — it will show as updatable until the first 'update' runs")
+    if version and version != tag:
+        print_info(f"Run './manage.sh apps update --name \"{app_name}\"' to move onto {tag}")
 
 
 def cmd_set_source(argv):
-    parsed = parse_flags(argv, value_flags=("--name", "--repo", "--asset", "--version"))
+    parsed = parse_flags(argv, value_flags=("--name", "--repo", "--asset", "--version"),
+                         bool_flags=("--prerelease", "--stable"))
     if parsed is None:
         print(USAGE)
         return 0
     flags, _, _ = parsed
-    if not flags.get("--name") or not flags.get("--repo"):
-        print_error("set-source requires --name and --repo")
+    if not flags.get("--name"):
+        print_error("set-source requires --name")
         print(USAGE)
         return 1
-    execute_set_source(flags["--name"], flags["--repo"],
-                       flags.get("--asset", ""), flags.get("--version", ""))
+    if "--prerelease" in flags and "--stable" in flags:
+        raise AppError("--prerelease and --stable are mutually exclusive")
+
+    app_name = flags["--name"]
+    # Everything but --name may be inherited from the saved source, so switching
+    # channel on a tracked app is just: set-source --name APP --stable
+    saved = {}
+    src_file = source_file_for_name(app_name)
+    if src_file.is_file():
+        saved = read_env(src_file)
+
+    repo = flags.get("--repo") or saved.get("SOURCE_REPO", "")
+    if not repo:
+        print_error(f"set-source requires --repo (no source is saved for '{app_name}' yet)")
+        print(USAGE)
+        return 1
+
+    if "--prerelease" in flags:
+        prerelease = True
+    elif "--stable" in flags:
+        prerelease = False
+    else:
+        prerelease = source_prerelease(saved)
+
+    execute_set_source(app_name, repo,
+                       flags.get("--asset", "") or saved.get("ASSET_PATTERN", ""),
+                       flags.get("--version", "") or saved.get("VERSION", ""),
+                       prerelease)
     return 0
 
 
@@ -1460,12 +1543,13 @@ def collect_update_report(files, quiet):
     (up_to_date, outdated, failed) where outdated is [(name, installed, latest)]."""
     sources = [read_env(f) for f in files]
     with Spinner(f"Checking {len(files)} app(s) for updates...") if not quiet else _null_ctx():
-        prefetch_release_json(s.get("SOURCE_REPO", "") for s in sources if s.get("SOURCE_REPO"))
+        prefetch_release_json((s.get("SOURCE_REPO", ""), source_prerelease(s))
+                              for s in sources if s.get("SOURCE_REPO"))
 
     up_to_date, outdated, failed = [], [], []
     for src in sources:
         name = src.get("APP_NAME", "")
-        latest = github_latest_tag(src.get("SOURCE_REPO", ""))
+        latest = github_latest_tag(src.get("SOURCE_REPO", ""), source_prerelease(src))
         if not latest:
             failed.append((name, src.get("SOURCE_REPO", "")))
         elif src.get("VERSION", "") == latest:
@@ -1526,8 +1610,9 @@ def execute_update_from_source(lookup_name):
     src = load_source_metadata(lookup_name)
     name, app_type = src["APP_NAME"], src["APP_TYPE"]
     repo, pattern, installed = src["SOURCE_REPO"], src["ASSET_PATTERN"], src.get("VERSION", "")
+    prerelease = source_prerelease(src)
 
-    tag, asset_urls = github_fetch_latest_release(repo)
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
 
     if tag == installed:
         print_info(f"{name} is already up to date ({installed})")
@@ -1548,7 +1633,7 @@ def execute_update_from_source(lookup_name):
     finally:
         shutil.rmtree(asset_path.parent, ignore_errors=True)
 
-    save_source_metadata(name, app_type, repo, pattern, tag)
+    save_source_metadata(name, app_type, repo, pattern, tag, prerelease)
     print_success(f"{name} updated to {tag}")
 
 
@@ -1648,7 +1733,9 @@ def cmd_list(_argv=None):
         src_file = SOURCES_STATE_DIR / f"{slug}.env"
         if src_file.is_file():
             src = read_env(src_file)
-            src_field = f" | source={src.get('SOURCE_REPO', '')} | version={src.get('VERSION') or 'unknown'}"
+            channel = " | channel=pre-release" if source_prerelease(src) else ""
+            src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
+                         f" | version={src.get('VERSION') or 'unknown'}")
         print(f"{slug} | type=appimage | path={path}{src_field}")
 
     listed_ids = []
@@ -1661,7 +1748,9 @@ def cmd_list(_argv=None):
         src_file = source_file_for_name(meta.get("APP_NAME", ""))
         if src_file.is_file():
             src = read_env(src_file)
-            src_field = f" | source={src.get('SOURCE_REPO', '')} | version={src.get('VERSION') or 'unknown'}"
+            channel = " | channel=pre-release" if source_prerelease(src) else ""
+            src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
+                         f" | version={src.get('VERSION') or 'unknown'}")
         print(f"{meta.get('APP_NAME', '')} | type=distrobox | container={meta.get('CONTAINER', '')}"
               f" | app={meta.get('APP_ID', '')} | pkg={meta.get('PACKAGE_TYPE', '')}{args_field}{src_field}")
 
@@ -1739,20 +1828,38 @@ def interactive_install_app():
         raise AppError(f"Unsupported file type: {file_path.name}")
 
 
+def interactive_pick_channel(header="Which release channel should updates follow?"):
+    """True for the pre-release channel. Cancelling reads as stable."""
+    picked = gum_choose(["Stable releases only", "Include pre-releases (nightly/beta)"],
+                        header=header)
+    return bool(picked and picked.startswith("Include"))
+
+
 def interactive_install_github():
     repo_input = prompt_with_default("GitHub repo or releases URL", "",
                                      "owner/repo or https://github.com/owner/repo")
-    if repo_input:
-        cmd_install_github([repo_input])
+    if not repo_input:
+        return
+    argv = [repo_input]
+    if interactive_pick_channel():
+        argv.append("--prerelease")
+    cmd_install_github(argv)
 
 
 def interactive_set_source(app_name):
-    repo_input = prompt_with_default("GitHub repo or releases URL", "", "owner/repo")
+    saved = {}
+    src_file = source_file_for_name(app_name)
+    if src_file.is_file():
+        saved = read_env(src_file)
+
+    repo_input = prompt_with_default("GitHub repo or releases URL", saved.get("SOURCE_REPO", ""),
+                                     "owner/repo")
     if not repo_input:
         return
-    version = prompt_with_default("Currently installed version tag (optional, e.g. v4.6.2)", "",
-                                  "Leave empty if unknown", False)
-    execute_set_source(app_name, repo_input, "", version)
+    version = prompt_with_default("Currently installed version tag (optional, e.g. v4.6.2)",
+                                  saved.get("VERSION", ""), "Leave empty if unknown", False)
+    prerelease = interactive_pick_channel()
+    execute_set_source(app_name, repo_input, saved.get("ASSET_PATTERN", ""), version, prerelease)
 
 
 def interactive_check_updates():
@@ -1837,7 +1944,8 @@ def interactive_manage_apps():
     if app_type == "distrobox-unmanaged":
         actions = ["Update (adopt)", "Uninstall", "Cancel"]
     elif has_source:
-        actions = ["Update from GitHub", "Update from local file", "Uninstall", "Cancel"]
+        actions = ["Update from GitHub", "Update from local file", "Switch release channel",
+                   "Uninstall", "Cancel"]
     else:
         actions = ["Update from local file", "Set GitHub update source", "Uninstall", "Cancel"]
 
@@ -1870,6 +1978,14 @@ def interactive_manage_apps():
     elif action == "Update from GitHub":
         src_name = read_env(source_file).get("APP_NAME", "")
         execute_update_from_source(src_name or source_file.name.removesuffix(".env"))
+
+    elif action == "Switch release channel":
+        src = read_env(source_file)
+        current = channel_label(source_prerelease(src))
+        prerelease = interactive_pick_channel(
+            f"Release channel for {src.get('APP_NAME', '')} (currently: {current})")
+        execute_set_source(src.get("APP_NAME", ""), src.get("SOURCE_REPO", ""),
+                           src.get("ASSET_PATTERN", ""), src.get("VERSION", ""), prerelease)
 
     elif action == "Set GitHub update source":
         if app_type == "appimage":

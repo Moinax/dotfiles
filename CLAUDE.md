@@ -22,7 +22,9 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 ./manage.sh reconfig            # toggle chezmoi data flags
 ./manage.sh apps import-appimage ~/Downloads/App.AppImage
 ./manage.sh apps install-github owner/repo --name App          # install latest GitHub release (AppImage or deb/rpm) + track updates
+./manage.sh apps install-github owner/repo --name App --prerelease   # ... following nightlies/betas instead of stable
 ./manage.sh apps set-source --name App --repo owner/repo       # attach a release source to an already-installed app
+./manage.sh apps set-source --name App --prerelease            # switch a tracked app to the pre-release channel (--stable to revert)
 ./manage.sh apps check-updates                                 # compare installed versions vs latest GitHub releases
 ./manage.sh apps update --all                                  # update all tracked apps (or --name App)
 ./manage.sh apps remove-appimage --name App

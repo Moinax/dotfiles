@@ -25,6 +25,24 @@ A wizard-driven helper (Python, stdlib-only). State files in
 `~/.local/state/dotfiles/external-apps/` are bash-quoted `KEY=VALUE` .env files kept
 compatible with the former shell version.
 
+Each tracked app follows one release channel, stored as `PRERELEASE=0|1` in its
+`sources/*.env`. A missing key reads as stable, so state written before the flag existed
+still loads. Stable resolves through `/releases/latest` (GitHub excludes drafts and
+pre-releases there); the pre-release channel has no equivalent endpoint, so it reads the
+first page of `/releases` and takes the newest non-draft entry — which is the last stable
+tag when no newer pre-release exists. The session release cache is therefore keyed by
+`(repo, prerelease)`, not by repo alone.
+
+Switching channels is a plain `set-source --prerelease` / `--stable`: every option but
+`--name` is inherited from the saved source. Going back to stable leaves a newer
+pre-release tag recorded as installed, so the app reports the stable tag as an available
+"update" and the next `update` reinstalls it — the downgrade is the intended path back,
+not a bug. `set-source` re-validates the saved asset pattern against the target channel
+and fails loudly if it matches nothing there.
+
+`latest-release` (used by `manage-updates.sh` for non-app tools) is stable-only by
+design — those are curl/npm/cargo binaries, not opt-in nightly channels.
+
 ## `./manage.sh update` — `tools/manage-updates.sh`
 
 Deliberately does NOT update the system: pacman + AUR belong to cachy-update (a symlink
