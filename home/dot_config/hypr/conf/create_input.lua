@@ -15,6 +15,12 @@ hl.config({
 
         touchpad = {
             natural_scroll = true,
+
+            -- Tap to click, and let the finger count pick the button (2 = right,
+            -- 3 = middle) for taps and for physical clicks alike.
+            tap_to_click         = true,
+            tap_and_drag         = true,
+            clickfinger_behavior = true,
         },
 
         sensitivity = 0, -- -1.0 - 1.0, 0 means no modification.
