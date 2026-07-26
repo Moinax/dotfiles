@@ -1400,17 +1400,48 @@ setup_biometric() {
         print_success "PAM fingerprint enabled (backup: ${sysauth_file}.bak.*)"
     fi
 
-    # The hyprlock PAM stack defaults to `auth include login`, which pulls in
-    # system-auth where pam_fprintd sits before pam_unix — so typing a password waits
-    # for the fprintd timeout (~10s) before falling through. Switch to password-auth
-    # (no fprintd) for instant password fallback. Fingerprint at the lockscreen is
-    # handled by hyprlock natively via D-Bus (auth.fingerprint in hyprlock.conf),
-    # independently from this PAM stack.
+    # hyprlock restarts fingerprint verification the instant logind emits
+    # PrepareForSleep(false) on resume. The stock fprintd action is
+    # allow_active=yes / allow_inactive=no, and the session is not yet marked
+    # active that early in the resume — so polkit denies VerifyStart with
+    # "Not Authorized: net.reactivated.fprint.device.verify", hyprlock logs a
+    # warning and never retries, leaving fingerprint dead for the rest of that
+    # lock (password fallback only). It only misfires when hyprlock still held
+    # the sensor at suspend time and so skips the Claim round-trip on resume —
+    # without that extra latency it beats logind to the punch. Hence the
+    # intermittency. Granting verify to the local user regardless of
+    # session-active state removes the race. Scoped to verify: enroll and
+    # setusername keep their auth prompts.
+    local fprint_rule=/etc/polkit-1/rules.d/49-fprintd-verify.rules
+    if [ -f "$fprint_rule" ] && ! head -n1 "$fprint_rule" | grep -q '^// Installed by the dotfiles installer'; then
+        print_info "$(basename "$fprint_rule") is hand-authored — leaving as is"
+    else
+        print_info "Installing polkit rule for fingerprint verify on resume"
+        sudo mkdir -p /etc/polkit-1/rules.d
+        sudo tee "$fprint_rule" >/dev/null <<RULEEOF
+// Installed by the dotfiles installer (setup_biometric).
+// Without this, fingerprint silently stops working at the hyprlock screen
+// after a suspend/resume cycle — see the comment in install/installer.sh.
+polkit.addRule(function(action, subject) {
+    if (action.id == "net.reactivated.fprint.device.verify" &&
+        subject.local && subject.user == "$USER") {
+        return polkit.Result.YES;
+    }
+});
+RULEEOF
+        sudo chmod 644 "$fprint_rule"
+        print_success "$fprint_rule installed"
+    fi
+
+    # The plasmalogin override below runs its auth phase through password-auth
+    # instead of system-auth, where pam_fprintd sits before pam_unix — so a
+    # password typed at the greeter would otherwise wait out the fprintd
+    # timeout before falling through. (hyprlock had the same problem; it now
+    # gets its own self-contained stack further down, for a second reason.)
     # `password-auth` is a Fedora/RHEL PAM name that does not exist on Arch —
     # generate it as system-auth minus pam_fprintd so the include below
     # resolves. A dangling include makes every pam_authenticate fail
-    # instantly, and hyprlock crash-loops on that while holding the session
-    # lock (forced reboot to recover). The file is derived state, and
+    # instantly, locking you out of the greeter. The file is derived state, and
     # system-auth changes at arbitrary times (pambase .pacnew merges, manual
     # edits) long after this installer ran — so the regeneration lives in a
     # systemd path unit watching system-auth, not here. The service only
@@ -1457,20 +1488,54 @@ UNIT
         print_success "password-auth generated and kept in sync with system-auth"
     fi
 
+    # hyprlock gets a self-contained auth stack rather than an include, because
+    # it must contain neither pam_fprintd nor pam_faillock:
+    #
+    #   pam_fprintd — a typed password would wait out the fingerprint timeout
+    #   (~10s) before pam_unix ever sees it. Fingerprint at the lockscreen is
+    #   handled by hyprlock natively over D-Bus (auth.fingerprint in
+    #   hyprlock.conf), independently of this stack.
+    #
+    #   pam_faillock — hyprlock races the PAM password conversation against
+    #   that D-Bus fingerprint check and aborts the conversation when the
+    #   fingerprint wins. pam_unix then returns "conversation failed", which
+    #   faillock's authfail branch records as a failed login — so every
+    #   SUCCESSFUL fingerprint unlock increments the tally. At the stock
+    #   deny=3 fail_interval=900, three unlocks inside 15 minutes lock the
+    #   account for unlock_time (600s), taking sudo, TTY login and this
+    #   screen's own password fallback down with it. A screen locker is a
+    #   local-presence unlock; faillock buys nothing here and self-DoSes
+    #   instead, so it stays in the greeter and login stacks only.
+    #
+    # Deriving this from system-auth with a sed was the obvious alternative and
+    # is a trap: deleting the three pam_faillock lines shifts the [success=N]
+    # jump counts on pam_systemd_home and pam_unix, and a miscounted jump in an
+    # auth stack fails open. Hand-authored and auditable beats generated here.
+    # Only `account` includes system-auth, which pambase always ships — so that
+    # include cannot dangle.
     local pam_file=/etc/pam.d/hyprlock ts
     ts=$(date +%s)
-    if [ -f "$pam_file" ] && [ -f /etc/pam.d/password-auth ]; then
-        if grep -qE '^auth\s+include\s+password-auth\s*$' "$pam_file"; then
-            print_info "$(basename "$pam_file") PAM already uses password-auth"
-        elif ! grep -qE '^auth\s+include\s+login\s*$' "$pam_file"; then
-            print_info "$(basename "$pam_file") PAM uses a non-default stack — leaving as is"
-        else
-            print_info "Patching $pam_file to skip fprintd timeout on password"
-            sudo cp "$pam_file" "${pam_file}.bak.${ts}"
-            sudo sed -i 's|^auth\s\+include\s\+login\s*$|auth        include      password-auth|' "$pam_file"
-            print_success "$pam_file patched (backup: ${pam_file}.bak.${ts})"
-        fi
+    if [ -f "$pam_file" ] && ! head -n2 "$pam_file" | grep -q '^# Installed by the dotfiles installer'; then
+        sudo cp "$pam_file" "${pam_file}.bak.${ts}"
+        print_info "Backed up $pam_file to ${pam_file}.bak.${ts}"
     fi
+    print_info "Installing hyprlock PAM stack (no fprintd, no faillock)"
+    sudo tee "$pam_file" >/dev/null <<'PAMEOF'
+#%PAM-1.0
+# Installed by the dotfiles installer — hyprlock's own auth stack.
+# Deliberately not an include of login/system-auth/password-auth: it must carry
+# neither pam_fprintd (a typed password would wait out the fingerprint timeout)
+# nor pam_faillock (hyprlock records a PAM failure on every SUCCESSFUL
+# fingerprint unlock, which locks the account after three of them). See
+# setup_biometric in install/installer.sh for the full reasoning.
+
+-auth      [success=1 default=ignore]  pam_systemd_home.so
+auth       required                    pam_unix.so          try_first_pass nullok
+auth       required                    pam_env.so
+
+account    include                     system-auth
+PAMEOF
+    print_success "$pam_file installed"
 
     # Same fprintd-timeout problem at the login screen: the Plasma Login
     # Manager's vendor stack (/usr/lib/pam.d/plasmalogin) includes
