@@ -75,8 +75,15 @@ fi
 
 switch_args=()
 if $create; then switch_args+=(--create); fi
-out=$(wt switch "${switch_args[@]}" "$branch" --no-cd 2>&1) ||
-  fail "wt switch ${switch_args[*]} $branch failed: $out"
+# Project hooks from .config/wt.toml need a one-time approval per repo, and
+# there is no terminal here to answer the prompt in — point at the fix rather
+# than surfacing wt's "cannot prompt in non-interactive environment".
+out=$(wt switch "${switch_args[@]}" "$branch" --no-cd 2>&1) || {
+  case "$out" in
+    *approval*) fail "$entry has unapproved hooks. Run: wt config approvals add -C $dir" ;;
+    *) fail "wt switch ${switch_args[*]} $branch failed: $out" ;;
+  esac
+}
 
 wt_path=$(git worktree list --porcelain | awk -v want="refs/heads/$branch" '
   $1 == "worktree" { path = substr($0, 10) }
