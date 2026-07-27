@@ -1,0 +1,12 @@
+# Local zsh overrides — deliberately not overwritten by chezmoi.
+#
+# Sourced last by ~/.zsh/rc.d/99-local.zsh, after every tracked fragment, so
+# anything set here wins. The source file carries chezmoi's `create_` attribute:
+# it is created on a fresh machine and then left alone forever, so local edits
+# and installer appends survive `chezmoi apply`.
+#
+# Point installers that insist on editing a shell rc (pnpm, uv, bun, ...) at
+# this file rather than ~/.zshrc, which chezmoi owns and will clobber. Anything
+# that turns out to be permanent belongs back in the repo instead: ~/.zshenv for
+# PATH and env vars needed by every shell, or a ~/.zsh/rc.d/ fragment for
+# interactive-only setup.

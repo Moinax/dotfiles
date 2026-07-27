@@ -44,6 +44,10 @@ pnpm-lock.yaml
 .env
 .env.local
 *.local
+# ...except chezmoi sources for ~/*.local targets. These are `create_` files:
+# chezmoi writes them once on a fresh machine, then never again. Without this
+# negation they stay untracked and silently never reach a new install.
+!home/create_dot_*.local
 
 # Backup files from editors
 *~
