@@ -11,7 +11,9 @@ paths:
 ## `./manage.sh backup` — `tools/backup-projects.sh`
 
 Repos are NOT archived (only a manifest of remote+branch), just gitignored env/config
-files plus `~/.npmrc`, `~/.ssh`, `~/.config/gh` — age-encrypted with a passphrase. User
+files plus `~/.npmrc`, `~/.ssh`, `~/.config/gh`, `~/.config/tea/config.yml` — age-encrypted
+with a passphrase. Anything holding a bearer token belongs here rather than in the public
+chezmoi tree (that's why the tea logins are backed up instead of templated). User
 config in `~/.config/projects-backup/`: `extra-includes` (repo-relative path regexes),
 `extra-home-includes` (paths relative to `~`), `extra-exclude-dirs` (dir-name regexes).
 

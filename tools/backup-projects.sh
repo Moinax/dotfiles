@@ -49,6 +49,9 @@ HOME_INCLUDES=(
     .ssh
     .config/gh
     .config/projects-backup
+    # tea (Gitea CLI) logins: API tokens, so they can't live in the public
+    # dotfiles repo. config.yml only — never the sibling config.yml.lock.
+    .config/tea/config.yml
 )
 
 usage() {
