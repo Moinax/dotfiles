@@ -434,13 +434,23 @@ def source_file_for_name(app_name):
 
 
 def save_distrobox_metadata(app_name, container, package_type, app_id, app_args=""):
-    write_env(metadata_file_for_name(app_name), {
+    """Sole writer of distrobox/<slug>.env; returns the mapping it wrote.
+
+    PACKAGE_NAME is resolved here rather than passed in or carried over: every
+    save follows an install, update or adopt, any of which can change the
+    package behind the desktop id, and all of them have entered the container
+    already."""
+    meta = {
         "APP_NAME": app_name,
         "CONTAINER": container,
         "PACKAGE_TYPE": package_type,
         "APP_ID": app_id,
         "APP_ARGS": app_args,
-    })
+        "PACKAGE_NAME": query_distrobox_package_name(container, package_type, app_id,
+                                                     allow_start=True),
+    }
+    write_env(metadata_file_for_name(app_name), meta)
+    return meta
 
 
 def load_distrobox_metadata(app_name):
@@ -726,24 +736,60 @@ fi
 """,
 }
 
+# Where an exported desktop entry can live inside a container. Shared so a
+# desktop id discovered by list_desktop_ids_in_container is always resolvable
+# back to a file by RESOLVE_DESKTOP_PATH_SNIPPET.
+DESKTOP_DIRS_SH = '/usr/share/applications "$HOME/.local/share/applications"'
 
-def list_distrobox_containers():
+# Resolve an exported desktop id to its file inside the container, so the
+# package manager can be asked which package owns it.
+RESOLVE_DESKTOP_PATH_SNIPPET = f"""\
+app_path=""
+for d in {DESKTOP_DIRS_SH}; do
+    if [ -f "$d/$1" ]; then app_path="$d/$1"; break; fi
+done
+"""
+
+# Desktop id -> owning package name.
+QUERY_OWNER_SNIPPETS = {
+    "deb": 'dpkg -S "${app_path:-$1}" 2>/dev/null | head -1 | cut -d: -f1',
+    "rpm": '[ -n "$app_path" ] && rpm -qf --qf \'%{NAME}\' "$app_path" 2>/dev/null',
+    "arch": '[ -n "$app_path" ] && pacman -Qoq "$app_path" 2>/dev/null',
+}
+
+# Package name -> version currently installed in the container.
+QUERY_VERSION_SNIPPETS = {
+    "deb": 'dpkg-query -W -f \'${Version}\' "$1" 2>/dev/null',
+    "rpm": 'rpm -q --qf \'%{VERSION}\' "$1" 2>/dev/null',
+    "arch": 'pacman -Q "$1" 2>/dev/null | awk \'{print $2}\'',
+}
+
+
+@functools.lru_cache(maxsize=1)
+def list_distrobox_container_states():
+    """{container name: is it already running}, e.g. {'Falco': True}.
+
+    Cached for the process: `distrobox list` is a ~50ms subprocess and every
+    app checked asks for it. Invalidated on create; a container that a later
+    command starts stays cached as stopped, which only makes a read-only
+    version check fall back to recorded state — the same thing it does when the
+    container really is stopped."""
     if command_exists("distrobox"):
         cmd = ["distrobox", "list"]
     elif command_exists("distrobox-list"):
         cmd = ["distrobox-list"]
     else:
-        return []
+        return {}
     res = subprocess.run([*cmd, "--no-color"], capture_output=True, text=True, check=False)
     if res.returncode != 0 or not res.stdout.strip():
-        return []
+        return {}
     lines = res.stdout.splitlines()
-    # Take the NAME column, located via the header ("ID | NAME | STATUS | IMAGE").
-    # (The former shell version grabbed column 1 — the container *ID*.) Rows
-    # with a different field count are wrap-around continuations; skip them.
+    # Locate columns via the header ("ID | NAME | STATUS | IMAGE"). (The former
+    # shell version grabbed column 1 — the container *ID*.) Rows with a
+    # different field count are wrap-around continuations; skip them.
     header = [h.strip().upper() for h in lines[0].split("|")]
     name_idx = header.index("NAME") if "NAME" in header else 0
-    names = set()
+    states = {}
     for line in lines[1:]:
         fields = [f.strip() for f in line.split("|")]
         if len(fields) != len(header) or not fields[name_idx]:
@@ -751,8 +797,19 @@ def list_distrobox_containers():
         # distrobox list sometimes emits garbage rows (image labels/mounts
         # rendered as a container); only accept valid podman container names.
         if re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", fields[name_idx]):
-            names.add(fields[name_idx])
-    return sorted(names)
+            row = dict(zip(header, fields))
+            states[fields[name_idx]] = row.get("STATUS", "").lower().startswith("up")
+    return states
+
+
+def list_distrobox_containers():
+    return sorted(list_distrobox_container_states())
+
+
+def distrobox_container_running(container):
+    """True only for an already-started container. Callers use this to avoid
+    booting a container as a side effect of a read-only check."""
+    return list_distrobox_container_states().get(container, False)
 
 
 # Images matched to the package format; distrobox-enter would otherwise
@@ -766,7 +823,7 @@ DEFAULT_IMAGES = {
 
 
 def ensure_distrobox_container(container, package_type):
-    if container in list_distrobox_containers():
+    if container in list_distrobox_container_states():
         return
     image = DEFAULT_IMAGES.get(package_type, "")
     print_info(f"Container '{container}' does not exist; creating it from {image}...")
@@ -774,6 +831,7 @@ def ensure_distrobox_container(container, package_type):
                          check=False)
     if res.returncode != 0:
         raise AppError(f"Failed to create container '{container}'")
+    list_distrobox_container_states.cache_clear()
 
 
 def pick_existing_distrobox_container():
@@ -793,7 +851,7 @@ def pick_existing_distrobox_container():
 def list_desktop_ids_in_container(container):
     """Desktop file basenames visible in the container; None when listing fails."""
     res = run_in_distrobox(container, "sh", "-lc",
-                           'find /usr/share/applications "$HOME/.local/share/applications" '
+                           f"find {DESKTOP_DIRS_SH} "
                            '-maxdepth 1 -type f -name "*.desktop" -printf "%f\\n" 2>/dev/null '
                            "| sort -u", capture=True)
     if res.returncode != 0:
@@ -805,6 +863,131 @@ def install_package_in_distrobox(container, package_path, package_type):
     script = RESOLVE_PKG_PATH_SNIPPET + INSTALL_SNIPPETS[package_type]
     res = run_in_distrobox(container, "sh", "-lc", script, "sh", str(package_path))
     return res.returncode == 0
+
+
+# ── Live version of a Distrobox app ──────────────────────────────────────────
+#
+# The recorded VERSION in sources/<slug>.env is only ever written by this tool,
+# so an app that updates itself inside its container (Electron's auto-updater
+# shells out to the container's package manager) leaves it stale, and the app
+# then reports an update that is already installed. Asking the container's
+# package database instead makes the recorded value a fallback rather than the
+# source of truth.
+
+
+def _query_in_container(container, script, argument, allow_start):
+    """Run a read-only query in the container. Returns '' for an unsupported
+    package type (empty script), for a container that is stopped when
+    allow_start is False, or when the query yields nothing."""
+    if not (script and container and command_exists("distrobox-enter")):
+        return ""
+    if not allow_start and not distrobox_container_running(container):
+        return ""
+    res = run_in_distrobox(container, "sh", "-lc", script, "sh", argument, capture=True)
+    lines = res.stdout.strip().splitlines() if res.returncode == 0 else []
+    return lines[0].strip() if lines else ""
+
+
+def query_distrobox_package_name(container, package_type, app_id, allow_start=False):
+    """Ask the container which package owns the exported desktop entry."""
+    owner_query = QUERY_OWNER_SNIPPETS.get(package_type, "")
+    script = RESOLVE_DESKTOP_PATH_SNIPPET + owner_query if owner_query else ""
+    return _query_in_container(container, script, app_id, allow_start)
+
+
+def distrobox_package_name(meta, allow_start=False):
+    """Package name backing a managed Distrobox app.
+
+    Recorded by save_distrobox_metadata; state files written before PACKAGE_NAME
+    existed are back-filled here, since a package name never changes for an
+    installed app. The write is best-effort — it must not break a version
+    check."""
+    recorded = meta.get("PACKAGE_NAME", "")
+    if recorded:
+        return recorded
+
+    name = query_distrobox_package_name(meta.get("CONTAINER", ""),
+                                        meta.get("PACKAGE_TYPE", ""),
+                                        meta.get("APP_ID", ""), allow_start)
+    if name:
+        try:
+            write_env(metadata_file_for_name(meta["APP_NAME"]), {**meta, "PACKAGE_NAME": name})
+        except (OSError, KeyError):
+            pass
+    return name
+
+
+def distrobox_installed_version(meta, allow_start=False):
+    """Version reported by the container's package manager, or '' if unknown."""
+    package = distrobox_package_name(meta, allow_start)
+    query = QUERY_VERSION_SNIPPETS.get(meta.get("PACKAGE_TYPE", ""), "")
+    return _query_in_container(meta.get("CONTAINER", ""), query, package, allow_start) \
+        if package else ""
+
+
+def normalize_version(value):
+    """Strip the decorations that differ between a GitHub tag and a native
+    package version: the tag's leading 'v', an rpm/deb epoch, and a purely
+    numeric package revision (upstream tags never carry one)."""
+    v = (value or "").strip()
+    v = re.sub(r"^\d+:", "", v)
+    v = re.sub(r"^[vV](?=\d)", "", v)
+    return re.sub(r"-\d+$", "", v)
+
+
+def versions_match(tag, installed):
+    if not tag or not installed:
+        return False
+    return normalize_version(tag) == normalize_version(installed)
+
+
+def _natural_chunks(text):
+    """Digit runs compare as numbers, letter runs as text, so rc9 precedes
+    rc10. The leading 0/1 keeps the two kinds orderable against each other."""
+    return tuple((1, int(p)) if p.isdigit() else (0, p)
+                 for p in re.findall(r"\d+|[a-zA-Z]+", text.lower()))
+
+
+def version_key(value):
+    """Sortable key: the numeric release, then a prerelease suffix that sorts
+    *before* the bare release it qualifies (1.2.3-beta1 < 1.2.3).
+
+    Deliberately not `sort -V`, which manage-updates.sh uses for tool binaries:
+    it orders 1.2.3-beta1 *after* 1.2.3. That is harmless for a self-reported
+    binary version but wrong for release tags, where switching a repo to the
+    pre-release channel would otherwise offer a beta of a release already
+    installed."""
+    release, _, suffix = normalize_version(value).partition("-")
+    return (tuple(int(n) for n in re.findall(r"\d+", release)),
+            (0, _natural_chunks(suffix)) if suffix else (1, ()))
+
+
+def version_is_outdated(installed, latest):
+    """True only when `latest` is genuinely newer than `installed`.
+
+    Ordered rather than compared for inequality, so an installed version that
+    has run *ahead* of the latest release reads as current instead of as an
+    update the user can apply but never clear — then re-applies as a downgrade
+    on the next run. A Distrobox app that updates itself in-container lands
+    there routinely. manage-updates.sh takes these rows verbatim and never
+    re-checks them, so this is the only place the ordering can be enforced."""
+    if not latest:
+        return False
+    if not installed:
+        return True
+    return version_key(latest) > version_key(installed)
+
+
+def installed_version_for_source(src, allow_start=False):
+    """Best known installed version for a tracked app: live from the container
+    for Distrobox apps, else the version this tool recorded."""
+    recorded = src.get("VERSION", "")
+    if src.get("APP_TYPE", "") != "distrobox":
+        return recorded
+    f = metadata_file_for_name(src.get("APP_NAME", ""))
+    if not f.is_file():
+        return recorded
+    return distrobox_installed_version(read_env(f), allow_start) or recorded
 
 
 def export_distrobox_app(container, app_id):
@@ -1544,20 +1727,30 @@ def collect_update_report(files, quiet):
     """Prefetch all release JSON and compare versions. Returns
     (up_to_date, outdated, failed) where outdated is [(name, installed, latest)]."""
     sources = [read_env(f) for f in files]
+    installed_versions = []
     with Spinner(f"Checking {len(files)} app(s) for updates...") if not quiet else _null_ctx():
         prefetch_release_json((s.get("SOURCE_REPO", ""), source_prerelease(s))
                               for s in sources if s.get("SOURCE_REPO"))
+        # Read-only: a stopped container is left stopped and its recorded
+        # version used, rather than booting it just to answer a check. Entering
+        # a running one costs ~0.4s, so the apps go out in one wave like the
+        # release fetches, not serially behind them.
+        with ThreadPoolExecutor(max_workers=min(8, len(sources) or 1)) as pool:
+            installed_versions = list(pool.map(installed_version_for_source, sources))
 
     up_to_date, outdated, failed = [], [], []
-    for src in sources:
+    for src, installed in zip(sources, installed_versions):
         name = src.get("APP_NAME", "")
         latest = github_latest_tag(src.get("SOURCE_REPO", ""), source_prerelease(src))
         if not latest:
             failed.append((name, src.get("SOURCE_REPO", "")))
-        elif src.get("VERSION", "") == latest:
-            up_to_date.append((name, latest))
+        elif not version_is_outdated(installed, latest):
+            # What is on disk, not `latest`: the two differ whenever the app
+            # has run ahead of its tracked release, which is the case this
+            # ordering exists for.
+            up_to_date.append((name, installed or latest))
         else:
-            outdated.append((name, src.get("VERSION", "") or "unknown", latest))
+            outdated.append((name, installed or "unknown", latest))
     return up_to_date, outdated, failed
 
 
@@ -1616,10 +1809,20 @@ def execute_update_from_source(lookup_name):
 
     tag, asset_urls = github_fetch_latest_release(repo, prerelease)
 
-    if tag == installed:
-        print_info(f"{name} is already up to date ({installed})")
+    # This command is about to enter the container regardless, so starting it
+    # to read the real version costs nothing extra — and saves re-downloading
+    # a release the app already installed by itself.
+    live = installed_version_for_source(src, allow_start=True)
+    if not version_is_outdated(live, tag):
+        print_info(f"{name} is already up to date ({live or 'unknown'})")
+        # VERSION records the tag we consider installed, so compare tag to tag
+        # — and only re-stamp it when the container really is on that release,
+        # never when it has run ahead of it.
+        if tag != installed and versions_match(tag, live):
+            save_source_metadata(name, app_type, repo, pattern, tag, prerelease)
+            print_info(f"Recorded version re-synced ({installed or 'unknown'} → {tag})")
         return
-    print_info(f"Updating {name}: {installed or 'unknown'} → {tag}")
+    print_info(f"Updating {name}: {live or 'unknown'} → {tag}")
 
     type_filter = "appimage" if app_type == "appimage" else "package"
     asset_url = pick_release_asset(asset_urls, pattern, type_filter, False)
@@ -1737,7 +1940,7 @@ def cmd_list(_argv=None):
             src = read_env(src_file)
             channel = " | channel=pre-release" if source_prerelease(src) else ""
             src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
-                         f" | version={src.get('VERSION') or 'unknown'}")
+                         f" | version={installed_version_for_source(src) or 'unknown'}")
         print(f"{slug} | type=appimage | path={path}{src_field}")
 
     listed_ids = []
@@ -1751,8 +1954,9 @@ def cmd_list(_argv=None):
         if src_file.is_file():
             src = read_env(src_file)
             channel = " | channel=pre-release" if source_prerelease(src) else ""
+            # Same notion of "installed" as check-updates, so the two can't disagree.
             src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
-                         f" | version={src.get('VERSION') or 'unknown'}")
+                         f" | version={installed_version_for_source(src) or 'unknown'}")
         print(f"{meta.get('APP_NAME', '')} | type=distrobox | container={meta.get('CONTAINER', '')}"
               f" | app={meta.get('APP_ID', '')} | pkg={meta.get('PACKAGE_TYPE', '')}{args_field}{src_field}")
 
