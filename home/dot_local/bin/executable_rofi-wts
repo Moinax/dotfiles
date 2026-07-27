@@ -8,11 +8,12 @@
 # and errors surface as notifications instead of stderr.
 #
 # Worktree menu: existing worktrees first, then local branches without one
-# (newest commits first); typed text creates a new branch. Enter applies the
-# default /start behavior (-s for a brand-new branch, none otherwise),
-# Ctrl+Enter always sends /start, Shift+Enter submits the typed text even
-# when the list highlights a match (rofi's accept-custom, moved off its
-# default Ctrl+Enter binding to free it for the /start toggle).
+# (newest commits first); typed text creates a new branch. Enter only opens
+# the worktree — a task is never auto-started, not even for a brand-new
+# branch; Ctrl+Enter is the explicit opt-in that sends /start. Shift+Enter
+# submits the typed text even when the list highlights a match (rofi's
+# accept-custom, moved off its default Ctrl+Enter binding to free it for
+# /start).
 set -euo pipefail
 
 notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a rofi-wts "$@" || true; }
@@ -57,7 +58,7 @@ done < <(git for-each-ref refs/heads --sort=-committerdate --format='%(refname:s
 ret=0
 branch=$(printf '%s\n' "${wt_branches[@]}" "${other_branches[@]}" | sed '/^$/d' |
   rofi -dmenu -i -p "Worktree: ${dir##*/}" \
-    -mesg "Enter: open (/start if new branch) · Ctrl+Enter: open + /start · Shift+Enter: force typed text" \
+    -mesg "Enter: open · Ctrl+Enter: open + /start · Shift+Enter: force typed text" \
     -kb-accept-alt "" -kb-accept-custom "Shift+Return" -kb-custom-1 "Control+Return") || ret=$?
 
 branch="${branch//[[:space:]]/}"
@@ -90,9 +91,10 @@ wt_path=$(git worktree list --porcelain | awk -v want="refs/heads/$branch" '
   $1 == "branch" && $2 == want { print path; exit }')
 [[ -n "$wt_path" && -d "$wt_path" ]] || fail "could not locate the worktree for $branch"
 
-# /start defaults to on for a brand-new branch only; Ctrl+Enter (10) forces
-# it on regardless.
-if [[ "$ret" -eq 10 ]]; then send_start=true; else send_start=$create; fi
+# /start is never implicit — a task always has to be asked for, so only
+# Ctrl+Enter (10) sends it. A brand-new branch is no exception.
+send_start=false
+if [[ "$ret" -eq 10 ]]; then send_start=true; fi
 
 launch_args=(-d "$wt_path" -b "$branch")
 if $create; then launch_args+=(--new); fi
