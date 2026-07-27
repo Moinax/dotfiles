@@ -185,8 +185,7 @@ def run_tui(stdscr, groups, mode="install", title="Select packages to install"):
         else:
             counter = f"{sel_count}/{tot_count} selected"
         padding = max_x - len(header) - len(counter) - 1
-        if padding < 1:
-            padding = 1
+        padding = max(padding, 1)
         try:
             stdscr.addstr(0, 0, header, curses.A_BOLD)
             stdscr.addstr(0, len(header) + padding, counter, COL_DIM)
@@ -208,12 +207,10 @@ def run_tui(stdscr, groups, mode="install", title="Select packages to install"):
 
         # Content area: lines 2 .. max_y-2
         content_height = max_y - 3  # header + filter + status bar
-        if content_height < 1:
-            content_height = 1
+        content_height = max(content_height, 1)
 
         # Scroll to keep cursor visible
-        if cursor < scroll_offset:
-            scroll_offset = cursor
+        scroll_offset = min(scroll_offset, cursor)
         if cursor >= scroll_offset + content_height:
             scroll_offset = cursor - content_height + 1
 
@@ -382,10 +379,7 @@ def run_tui(stdscr, groups, mode="install", title="Select packages to install"):
         elif key in (10, 13, curses.KEY_ENTER):  # Enter — confirm
             return True
 
-        elif key == 27:  # Esc — cancel
-            return False
-
-        elif key == ord("q"):
+        elif key in (27, ord("q")):  # Esc / q — cancel
             return False
 
 

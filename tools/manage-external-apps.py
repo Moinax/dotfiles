@@ -188,7 +188,7 @@ def _run_gum(args, options):
     stderr, which must stay connected to the terminal to be visible.
     """
     res = subprocess.run(["gum", *args], input="\n".join(options),
-                         stdout=subprocess.PIPE, text=True)
+                         stdout=subprocess.PIPE, text=True, check=False)
     if res.returncode != 0:
         return None
     return res.stdout.rstrip("\n")
@@ -234,7 +234,7 @@ def gum_confirm(prompt, affirmative=None, negative=None):
             args += ["--affirmative", affirmative]
         if negative:
             args += ["--negative", negative]
-        return subprocess.run([*args, prompt]).returncode == 0
+        return subprocess.run([*args, prompt], check=False).returncode == 0
     try:
         return input(f"{prompt} [y/N]: ").strip().lower() in ("y", "yes")
     except EOFError:
@@ -249,7 +249,7 @@ def prompt_with_default(header, default_value="", placeholder="", required=True)
             res = subprocess.run(
                 ["gum", "input", "--header", header, "--value", default_value,
                  "--placeholder", placeholder],
-                stdout=subprocess.PIPE, text=True)
+                stdout=subprocess.PIPE, text=True, check=False)
             if res.returncode != 0:
                 raise Cancelled()
             value = res.stdout.rstrip("\n")
@@ -272,13 +272,13 @@ def confirm_summary(title, lines):
     if has_gum():
         styled = subprocess.run(
             ["gum", "style", "--foreground", "212", "--bold", title],
-            capture_output=True, text=True).stdout.rstrip("\n")
+            capture_output=True, text=True, check=False).stdout.rstrip("\n")
         try:
             with open("/dev/tty", "w") as tty:
                 subprocess.run(
                     ["gum", "style", "--border", "rounded", "--border-foreground", "212",
                      "--padding", "1 2", "--margin", "1", styled, "", *lines],
-                    stdout=tty)
+                    stdout=tty, check=False)
         except OSError:
             print(title)
             for line in lines:
@@ -305,7 +305,7 @@ def humanize_appimage_name(name):
     """"T3-Code-0.0.13-x86_64_e879597ed9181500dac6cae7f7d710a7" → "T3 Code"."""
     name = name.removesuffix(".AppImage")
     name = re.sub(r"[_-][0-9a-f]{8,}", "", name)  # hex hashes
-    name = re.sub(r"[_-](x86_64|aarch64|arm64|i686|armhf|amd64|x64)", "", name, flags=re.I)
+    name = re.sub(r"[_-](x86_64|aarch64|arm64|i686|armhf|amd64|x64)", "", name, flags=re.IGNORECASE)
     name = re.sub(r"[_-]v?[0-9]+(\.[0-9]+)*", "", name)  # versions
     name = re.sub(r"[_-]", " ", name)
     return re.sub(r" {2,}", " ", name).strip()
@@ -677,8 +677,8 @@ def package_type_for_file(path):
 def run_in_distrobox(container, *args, capture=False):
     cmd = ["distrobox-enter", "--name", container, "--no-tty", "--", *args]
     if capture:
-        return subprocess.run(cmd, capture_output=True, text=True)
-    return subprocess.run(cmd)
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return subprocess.run(cmd, check=False)
 
 
 RESOLVE_PKG_PATH_SNIPPET = """\
@@ -734,7 +734,7 @@ def list_distrobox_containers():
         cmd = ["distrobox-list"]
     else:
         return []
-    res = subprocess.run([*cmd, "--no-color"], capture_output=True, text=True)
+    res = subprocess.run([*cmd, "--no-color"], capture_output=True, text=True, check=False)
     if res.returncode != 0 or not res.stdout.strip():
         return []
     lines = res.stdout.splitlines()
@@ -770,7 +770,8 @@ def ensure_distrobox_container(container, package_type):
         return
     image = DEFAULT_IMAGES.get(package_type, "")
     print_info(f"Container '{container}' does not exist; creating it from {image}...")
-    res = subprocess.run(["distrobox", "create", "--yes", "--name", container, "--image", image])
+    res = subprocess.run(["distrobox", "create", "--yes", "--name", container, "--image", image],
+                         check=False)
     if res.returncode != 0:
         raise AppError(f"Failed to create container '{container}'")
 
@@ -1037,7 +1038,7 @@ def gh_token():
         return None
     try:
         out = subprocess.run(["gh", "auth", "token"], capture_output=True,
-                             text=True, timeout=10)
+                             text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() or None if out.returncode == 0 else None
@@ -1265,10 +1266,11 @@ def download_release_asset(url):
     download_dir = Path(tempfile.mkdtemp())
     dest = download_dir / name
     try:
-        with Spinner(f"Downloading {name}..."):
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HTTP_HEADERS),
-                                        timeout=60) as resp, open(dest, "wb") as f:
-                shutil.copyfileobj(resp, f)
+        with Spinner(f"Downloading {name}..."), \
+             urllib.request.urlopen(urllib.request.Request(url, headers=_HTTP_HEADERS),
+                                    timeout=60) as resp, \
+             open(dest, "wb") as f:
+            shutil.copyfileobj(resp, f)
     except (urllib.error.URLError, OSError):
         shutil.rmtree(download_dir, ignore_errors=True)
         raise AppError(f"Download failed: {url}")
@@ -2035,7 +2037,7 @@ def interactive_manage_apps():
                 print_info(f"Removing exported app '{um_app_id}' from container '{um_container}'...")
                 subprocess.run(["distrobox-enter", "--name", um_container, "--no-tty", "--",
                                 "distrobox-export", "--delete", "--app", um_app_id],
-                               stderr=subprocess.DEVNULL)
+                               stderr=subprocess.DEVNULL, check=False)
             app_key.unlink(missing_ok=True)
             refresh_desktop_db()
             print_success("Removed Distrobox app")

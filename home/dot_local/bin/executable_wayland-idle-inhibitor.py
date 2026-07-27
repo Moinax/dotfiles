@@ -5,6 +5,10 @@
 # timeouts). Runs until SIGINT/SIGTERM. Requires pywayland.
 # Based on https://github.com/stwa/wayland-idle-inhibitor (WTFPL license)
 
+# The exec bit comes from chezmoi's executable_ prefix at apply time, so the
+# source file here is (and stays) mode 644 like every other script in this dir.
+# ruff: noqa: EXE001
+
 import sys
 from dataclasses import dataclass
 from signal import SIGINT, SIGTERM, signal
