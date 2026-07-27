@@ -22,8 +22,12 @@ customCommands:
     command: tuicr -r {{.SelectedLocalBranch.Name}}..HEAD
     output: terminal
     description: Review selected branch..HEAD in tuicr
+  # subCommits is the list you get by pressing Enter on a branch — a distinct
+  # context from the commits panel, so it needs naming here or Alt+R is
+  # silently unbound there. SelectedCommitRange follows the focused context
+  # (see lazygit's session_state_loader), so one command covers both.
   - key: <a-r>
-    context: commits
+    context: commits, subCommits
     command: tuicr -r {{.SelectedCommitRange.From}}^..{{.SelectedCommitRange.To}}
     output: terminal
     description: Review selected commit(s) in tuicr
