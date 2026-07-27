@@ -2,9 +2,10 @@
 # conf.d is sourced by every fish process, so `fish -c` from editors/agents
 # gets the same PATH.
 
-# Pnpm
+# Pnpm. Globally installed binaries live in $PNPM_HOME/bin, not in $PNPM_HOME
+# itself — same rationale as in ~/.zshenv.
 set -gx PNPM_HOME $HOME/.local/share/pnpm
-fish_add_path --path $PNPM_HOME
+fish_add_path --path $PNPM_HOME/bin $PNPM_HOME
 
 # fnm (Node.js version manager)
 set -gx FNM_PATH $HOME/.local/share/fnm

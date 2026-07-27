@@ -1,12 +1,18 @@
 # This file is sourced for all zsh shells (interactive and non-interactive)
 # Perfect for PATH configuration needed by VS Code and other tools
 
-# Pnpm
+# Pnpm. Globally installed binaries (pnpx, pnx, ...) land in $PNPM_HOME/bin, so
+# that subdir is the one that has to be on PATH. $PNPM_HOME itself only holds
+# bin/, global/ and store/ here — `pnpm` comes from fnm, not from pnpm's
+# standalone installer that would drop the executable directly in PNPM_HOME.
 export PNPM_HOME="$HOME/.local/share/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
+for _pnpm_dir in "$PNPM_HOME" "$PNPM_HOME/bin"; do
+  case ":$PATH:" in
+    *":$_pnpm_dir:"*) ;;
+    *) export PATH="$_pnpm_dir:$PATH" ;;
+  esac
+done
+unset _pnpm_dir
 
 # fnm (Node.js version manager)
 export FNM_PATH="$HOME/.local/share/fnm"
