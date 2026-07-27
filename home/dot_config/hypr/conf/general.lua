@@ -29,7 +29,7 @@ hl.config({
         -- stays off rather than costing a blur pass per tab for nothing.
         -- Reserved height = gaps_out * (2 + keep_upper_gap)
         --                 + indicator_height + indicator_gap + height
-        --                 = 3 * 2 + 24 - 24 + 24 = 30px here.
+        --                 = 3 * 2 + 26 - 26 + 26 = 32px here.
         -- The negative indicator_gap is below the option's registered min of 0.
         -- That bound is advisory today, but a release that starts clamping it
         -- would silently flatten the fill back to an underline and take the
@@ -44,32 +44,45 @@ hl.config({
         -- and re-adds it only for the group's first and last — and even those
         -- keep just their outer end (the rect is drawn `rounding * 2` wider and
         -- clipped back). The focused tab of a 3-pane group then has no rounding
-        -- at all, which is worse than the strip is good. gaps_in stays at 1
-        -- rather than 0: nothing separates two adjacent inactive tabs otherwise,
+        -- at all, which is worse than the strip is good. gaps_in must stay above
+        -- 0 regardless: nothing separates two adjacent inactive tabs otherwise,
         -- and a 3-pane group then shows one wide block with two titles in it.
+        -- Tabs deliberately mirror waybar's #workspaces buttons (style-dark.css)
+        -- so a group tab and a workspace pill read as the same control: 26px
+        -- tall, 8px radius, 17px text, 4px between chips, and the same
+        -- magenta-active / indigo-inactive pair. The 26px is measured off screen,
+        -- not read off the CSS — there a pill's height is implied by font size
+        -- plus 2px padding, so it has to be sampled to be matched.
+        -- The colours are NOT waybar's literal CSS values. A waybar button is
+        -- only 30%/50% opaque, and what makes it readable is everything stacked
+        -- under it: `#workspaces` also matches `.module` (another 30% indigo),
+        -- over `window#waybar` at rgba(30,30,46,0.85). A groupbar has none of
+        -- that, only the wallpaper. So these are waybar's *rendered* pill colours
+        -- sampled off screen (#A553B9 active, #504A9A inactive) applied at ~94%
+        -- alpha, which is the effective opacity of that stack. Re-sample with
+        -- grim rather than recomputing if the waybar palette changes — a
+        -- two-layer model undershoots because it misses the module background.
+        -- Copying 0x4d/0x80 straight across instead makes inactive titles
+        -- unreadable over a busy wallpaper and hides the corner rounding
+        -- against a light one.
         groupbar = {
-            height            = 24,
-            indicator_height  = 24,
-            indicator_gap     = -24,
-            gaps_in           = 1,
+            height            = 26,
+            indicator_height  = 26,
+            indicator_gap     = -26,
+            gaps_in           = 4,
             gaps_out          = 3,
             keep_upper_gap    = false,
-            rounding          = 6,
+            rounding          = 8,
             round_only_edges  = false,
             gradients         = false,
             blur              = false,
-            -- Alpha carries the corner, not just the tint: at 0x80 over a light
-            -- wallpaper the antialiased rounding blends into the background at
-            -- nearly equal luminance and the corner reads square, while the
-            -- darker col.inactive shows the same curve clearly. Verified by
-            -- forcing col.active to col.inactive — the geometry is identical.
-            ["col.active"]    = "rgba(ff64ffcc)",
-            ["col.inactive"]  = "rgba(28284bb3)",
-            font_size            = 15,
-            font_weight_active   = 500,
+            ["col.active"]    = "rgba(a553b9f2)",
+            ["col.inactive"]  = "rgba(504a9aed)",
+            font_size            = 17,
+            font_weight_active   = 400,
             font_weight_inactive = 400,
             text_color           = "rgba(ffffffff)",
-            text_color_inactive  = "rgba(c8c8e6c0)",
+            text_color_inactive  = "rgba(cdd6f4ff)",
             text_padding         = 8,
             text_offset          = 0,
         },
