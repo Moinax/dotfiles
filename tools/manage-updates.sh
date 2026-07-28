@@ -460,7 +460,7 @@ build_binary_row() {
     # one; failing that, a declared binary has to be on PATH.
     if { [ -n "$check" ] && ! run_entry_check "$check"; } \
        || { [ -z "$check" ] && [ -n "$binary" ] && ! command_exists "$binary"; }; then
-        emit_row absent "$name" "—" "—" "not installed (./manage.sh packages sync)" "$kind" "" ""
+        emit_row absent "$name" "—" "—" "not installed (dots packages sync)" "$kind" "" ""
         return 0
     fi
 
@@ -584,7 +584,7 @@ apply_row() {
             # Shared with the installer, so a refresh lands the same Node the
             # first setup would have.
             argv=(install_node_lts)
-            note="Global npm packages live per Node version — run './manage.sh update' again to reinstall any that moved"
+            note="Global npm packages live per Node version — run 'dots update' again to reinstall any that moved"
             ;;
         npm)
             activate_node
@@ -656,7 +656,7 @@ report_summary() {
     n_unknown=$(grep -c "^unavailable${US}" <<< "$report" || true)
 
     if [ "${n_action:-0}" -gt 0 ]; then
-        print_info "${n_action} item(s) can be updated — run './manage.sh update' to pick"
+        print_info "${n_action} item(s) can be updated — run 'dots update' to pick"
     elif [ "${n_unknown:-0}" -gt 0 ]; then
         print_warning "Nothing to update among the items that could be checked; ${n_unknown} could not be checked"
     else
@@ -760,7 +760,7 @@ do_update() {
 
 usage() {
     cat <<'EOF'
-Usage: ./manage.sh update [command]
+Usage: dots update [command]
 
 Updates what the system package manager does not own: curl-installed binaries,
 global npm packages, the fnm-managed Node, cargo/git installs, and tracked

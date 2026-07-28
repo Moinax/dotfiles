@@ -38,7 +38,7 @@ DISTROBOX_STATE_DIR = STATE_DIR / "distrobox"
 SOURCES_STATE_DIR = STATE_DIR / "sources"
 
 USAGE = """\
-Usage: ./manage.sh apps [command] [options]
+Usage: dots apps [command] [options]
 
 Commands:
   import-appimage <file> [--name NAME]
@@ -90,8 +90,11 @@ Commands:
 
   latest-release <owner/repo> [owner/repo ...]
       Print "repo<TAB>latest-tag" for each repo, fetched concurrently through one
-      shared cache. Used by './manage.sh update' to resolve upstream versions of
+      shared cache. Used by 'dots update' to resolve upstream versions of
       tools that aren't apps; an unresolvable repo yields an empty tag.
+
+  help
+      Show this help message.
 
 Run without arguments for an interactive wizard:
   - Install app (local file): fuzzy-find a file (.AppImage, .deb, .rpm) and auto-detect the install method
@@ -482,7 +485,7 @@ def load_source_metadata(app_name):
     f = source_file_for_name(app_name)
     if not f.is_file():
         print_error(f"No update source saved for app: {app_name}")
-        print_info(f'Attach one with: ./manage.sh apps set-source --name "{app_name}" --repo owner/repo')
+        print_info(f'Attach one with: dots apps set-source --name "{app_name}" --repo owner/repo')
         raise AppError("")
     return read_env(f)
 
@@ -1654,7 +1657,7 @@ def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=
         app_type = "distrobox"
     else:
         print_error(f"No installed app named '{app_name}' (no AppImage or managed Distrobox app)")
-        print_info("Install it first, or check './manage.sh apps list'")
+        print_info("Install it first, or check 'dots apps list'")
         raise AppError("")
 
     repo = github_normalize_repo(repo_input)
@@ -1678,7 +1681,7 @@ def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=
     else:
         print("  Installed version: unknown — it will show as updatable until the first 'update' runs")
     if version and version != tag:
-        print_info(f"Run './manage.sh apps update --name \"{app_name}\"' to move onto {tag}")
+        print_info(f"Run 'dots apps update --name \"{app_name}\"' to move onto {tag}")
 
 
 def cmd_set_source(argv):
@@ -1797,7 +1800,7 @@ def cmd_check_updates(argv):
     if not outdated and not failed:
         print_success("All external apps are up to date")
     elif outdated:
-        print_info("Run './manage.sh apps update --all' (or update --name <app>) to update")
+        print_info("Run 'dots apps update --all' (or update --name <app>) to update")
     return 0
 
 
@@ -2333,7 +2336,7 @@ if __name__ == "__main__":
             print_error(str(e))
         sys.exit(1)
     except KeyboardInterrupt:
-        # manage.sh's interrupt trap already prints "Interrupted." when it owns
+        # dots's interrupt trap already prints "Interrupted." when it owns
         # the tree (marker exported by install_interrupt_trap) — stay quiet then.
         if not os.environ.get("_INTERRUPT_TRAP_OWNER"):
             print()

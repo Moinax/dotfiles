@@ -1,17 +1,35 @@
 #!/bin/bash
-# Lint staged scripts before committing: shellcheck for *.sh, ruff for *.py.
+# Lint staged scripts before committing: shellcheck for shell, ruff for *.py.
 # Enabled via: git config core.hooksPath .githooks (done by tools/setup.sh).
 # Each linter skips silently when not installed — both ship with the
 # development package group, so a fresh machine can still commit before the
 # first sync.
 set -e
 
-# Staged, still-existing files matching a pathspec (templates *.tmpl don't match).
+# Staged, still-existing files matching a pathspec (all of them without one).
 staged_files() {
     local f
     while IFS= read -r f; do
         [ -f "$f" ] && printf '%s\n' "$f"
-    done < <(git diff --cached --name-only --diff-filter=ACMR -- "$1")
+    done < <(git diff --cached --name-only --diff-filter=ACMR -- "$@")
+}
+
+# Shell scripts by shebang, not by extension: everything meant to be *typed*
+# carries none by convention (./dots, home/dot_local/bin/*), and a '*.sh' glob
+# skipped all ~26 of them silently. Chezmoi templates are excluded since Go
+# template syntax is unparseable here, and the \bsh\b alternation leaves out
+# zsh, which this linter rejects outright (SC1071).
+# (Careful: a comment starting with the linter's own name reads as a directive.)
+staged_shell_scripts() {
+    local f
+    while IFS= read -r f; do
+        case "$f" in
+            *.tmpl) continue ;;
+            *.sh)   printf '%s\n' "$f" ;;
+            *)      head -1 "$f" | grep -qE '^#!.*\b(ba|da|k)?sh\b' \
+                        && printf '%s\n' "$f" ;;
+        esac
+    done < <(staged_files)
 }
 
 fail() {
@@ -21,7 +39,7 @@ fail() {
 }
 
 if command -v shellcheck >/dev/null 2>&1; then
-    mapfile -t sh_files < <(staged_files '*.sh')
+    mapfile -t sh_files < <(staged_shell_scripts)
     if [ ${#sh_files[@]} -gt 0 ]; then
         shellcheck --severity=warning "${sh_files[@]}" || fail shellcheck
     fi

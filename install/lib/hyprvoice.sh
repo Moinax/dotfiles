@@ -1,6 +1,6 @@
 #!/bin/bash
 # Hyprvoice (dictation) configuration helpers, shared by the installer's
-# first-time setup and `manage.sh whisper`. Everything that encodes a hyprvoice
+# first-time setup and `dots whisper`. Everything that encodes a hyprvoice
 # or Groq interface (model-list output format, provider names, API key flow)
 # lives here so the two wizards can't drift apart.
 #

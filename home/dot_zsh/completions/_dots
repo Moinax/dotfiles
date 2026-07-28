@@ -1,0 +1,18 @@
+#compdef dots
+# Completion for `dots` (the dotfiles manager).
+#
+# Candidates come from `dots __complete`, which parses the tools' own help
+# output — adding a command to dots or one of its sub-tools makes it
+# completable here with no change to this file.
+
+local -a candidates
+
+case $CURRENT in
+    2)  candidates=( ${(f)"$(dots __complete 2>/dev/null)"} )
+        _describe -t commands 'dots command' candidates ;;
+    3)  # Empty for commands that take no subcommand (setup, whisper, …) —
+        # then offer nothing rather than a directory listing, as fish does.
+        candidates=( ${(f)"$(dots __complete ${words[2]} 2>/dev/null)"} )
+        (( ${#candidates} )) && _describe -t commands "dots ${words[2]} command" candidates ;;
+    *)  _files ;;
+esac

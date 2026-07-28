@@ -515,7 +515,7 @@ activate_fnm_node() {
 }
 
 # Install the latest Node LTS, make it fnm's default and put it on PATH. Shared
-# with './manage.sh update', which refreshes Node exactly the way the installer
+# with 'dots update', which refreshes Node exactly the way the installer
 # first provisions it, so the two can't drift.
 install_node_lts() {
     fnm install --lts && fnm default lts-latest && activate_fnm_node

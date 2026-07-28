@@ -10,35 +10,14 @@ NVIDIA policy: the dotfiles deliberately install no drivers and apply no NVIDIA 
 
 ## Key Commands
 
-```bash
-# Interactive management menu (single entry point)
-./manage.sh
+`./dots` at the repo root is the single entry point; `home/dot_local/bin/executable_dots`
+puts it on `PATH` as `dots`, callable from anywhere. Bare invocation opens a gum menu.
 
-# CLI subcommands
-./manage.sh setup               # bootstrap: installs gum + git, then launches installer
-./manage.sh apply               # apply dotfiles via chezmoi
-./manage.sh diff                # view dotfiles diff
-./manage.sh whisper             # update whisper model for hyprvoice
-./manage.sh reconfig            # toggle chezmoi data flags
-./manage.sh apps import-appimage ~/Downloads/App.AppImage
-./manage.sh apps install-github owner/repo --name App          # install latest GitHub release (AppImage or deb/rpm) + track updates
-./manage.sh apps install-github owner/repo --name App --prerelease   # ... following nightlies/betas instead of stable
-./manage.sh apps set-source --name App --repo owner/repo       # attach a release source to an already-installed app
-./manage.sh apps set-source --name App --prerelease            # switch a tracked app to the pre-release channel (--stable to revert)
-./manage.sh apps check-updates                                 # compare installed versions vs latest GitHub releases
-./manage.sh apps update --all                                  # update all tracked apps (or --name App)
-./manage.sh apps remove-appimage --name App
-./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
-./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb --args "--disable-gpu"
-./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
-./manage.sh packages sync       # install packages newly added to base.yaml / enabled groups
-./manage.sh update              # check, then pick which non-pacman updates to apply
-./manage.sh update check        # report only, change nothing
-./manage.sh update all          # apply every available update without prompting
-./manage.sh backup create       # encrypted backup of ~/Projects secrets + repo manifest → private GitHub repo
-./manage.sh backup restore      # re-clone all repos and restore secret files on a fresh machine
-./manage.sh backup list         # inspect backup contents
-```
+**Do not document its commands here** — run them instead, they are the source of truth
+and cost one cheap call: `dots help` for the command list, then
+`dots <command> help` (`packages`, `update`, `apps`, `backup`) for subcommands and
+flags. A copy in this file went stale before, listing an `apply` and a `diff` command
+that never existed.
 
 Internals of the `backup` / `apps` / `update` helpers (ownership boundaries, state
 formats, rate limits) live in `.claude/rules/manage-tools.md`, loaded when you touch
@@ -47,7 +26,7 @@ formats, rate limits) live in `.claude/rules/manage-tools.md`, loaded when you t
 ## Architecture
 
 ### Installer pipeline
-`manage.sh` → `tools/setup.sh` → `install/installer.sh` → `install/distros/arch.sh` + package YAML files
+`dots` → `tools/setup.sh` → `install/installer.sh` → `install/distros/arch.sh` + package YAML files
 
 ### Package definitions (`packages/`)
 YAML files define packages (key `arch`, plus `aur`/`desktop_aur` in base). Groups (`packages/groups/`) are selectable during install: `hyprland`, `development`, `gaming`, `multimedia`, `productivity`.

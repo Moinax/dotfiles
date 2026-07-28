@@ -60,7 +60,7 @@ desktop_only:
 #         requires_packages (map of distro family -> system packages to
 #         install before running `install`)
 # Update fields (binary, version, source, update, updated_by) are documented in
-# packages/common.yaml and read by './manage.sh update'.
+# packages/common.yaml and read by 'dots update'.
 custom_install:
   - name: claude-code
     check: command -v claude

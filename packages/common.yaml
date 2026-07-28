@@ -4,11 +4,11 @@
 # every entry is installed from here at setup time. install_common_tools() runs
 # zoxide, fnm and the `npm:` entries; the rest (eza, lazydocker, television,
 # hyprvoice) normally arrive as pacman/AUR packages via base.yaml or a
-# group, and their `install:` is the fallback './manage.sh update' re-runs to
+# group, and their `install:` is the fallback 'dots update' re-runs to
 # refresh a copy that no distro package owns. Wiring those into the installer
 # too would curl-install tools whose group the user deliberately deselected.
 #
-# Update metadata (read by tools/manage-updates.sh — './manage.sh update'):
+# Update metadata (read by tools/manage-updates.sh — 'dots update'):
 #   binary      executable name. Declared, never inferred: it often differs from
 #               the entry name (television ships `tv`). The updater resolves it
 #               to a real path and asks pacman who owns it — anything owned by

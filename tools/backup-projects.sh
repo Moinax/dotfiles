@@ -271,7 +271,7 @@ resolve_archive() {
         }
         if ! gh repo view "$user/$BACKUP_REPO_NAME" &>/dev/null; then
             print_error "No backup repo on GitHub ($user/$BACKUP_REPO_NAME)" >&2
-            print_info "Run './manage.sh backup create' first, or pass an archive path" >&2
+            print_info "Run 'dots backup create' first, or pass an archive path" >&2
             return 1
         fi
         gh repo clone "$user/$BACKUP_REPO_NAME" "$BACKUP_REPO_DIR" -- -q 2>/dev/null
@@ -327,7 +327,7 @@ do_restore() {
 
     if $home_only; then
         print_success "Home secrets restored"
-        print_info "Run './manage.sh backup restore' later to re-clone ~/Projects"
+        print_info "Run 'dots backup restore' later to re-clone ~/Projects"
         return 0
     fi
 

@@ -10,7 +10,7 @@ Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional
 - **Desktop or terminal mode**: Choose a full desktop setup or a lightweight terminal-only install
 - **Interactive installer**: Beautiful TUI prompts using [gum](https://github.com/charmbracelet/gum)
 - **Modular packages**: Choose what to install (Hyprland, Development, Gaming, AI, etc.)
-- **Desktop AppImage support**: Installs the FUSE runtime (`fuse2`) for AppImages with a custom import/remove tool via `./manage.sh apps`
+- **Desktop AppImage support**: Installs the FUSE runtime (`fuse2`) for AppImages with a custom import/remove tool via `dots apps`
 - **Chezmoi-powered**: Smart dotfile management with templates and conditional installation
 - **Easy to extend**: Add new package groups with simple YAML files
 
@@ -22,11 +22,15 @@ git clone https://github.com/yourusername/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 
 # Run the interactive management menu
-./manage.sh
+./dots
 
 # Or run the installer directly
-./manage.sh setup
+./dots setup
 ```
+
+Once the dotfiles are applied, the same entry point is on `PATH` as `dots` — `dots`,
+`dots update`, `dots apps list` — usable from any directory, with zsh and fish
+completion for its commands and subcommands.
 
 The interactive installer will:
 1. Detect your distribution
@@ -52,7 +56,7 @@ The interactive installer will:
 
 ```
 dotfiles/
-├── manage.sh                # Management script (single entry point)
+├── dots                     # Management script (single entry point)
 ├── tools/
 │   └── setup.sh             # Bootstrap script (installs gum + git, runs installer)
 ├── install/
@@ -91,30 +95,30 @@ This repo includes an external apps helper for:
 - installing a local `.deb`, `.rpm`, or `.pkg.tar.*` inside a Distrobox container
 - exporting the installed app to your host launcher with `distrobox-export`
 - updating that Distrobox-managed app later using saved metadata
-- guiding these flows interactively from `./manage.sh apps`
+- guiding these flows interactively from `dots apps`
 
 ### Usage
 
 ```bash
 # Open the helper from the manager
-./manage.sh apps
+dots apps
 
 # Import an AppImage into the desktop launcher
-./manage.sh apps import-appimage ~/Downloads/MyApp.AppImage
+dots apps import-appimage ~/Downloads/MyApp.AppImage
 
 # Install a package into a Distrobox container and export it to the host launcher
-./manage.sh apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
+dots apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
 
 # Update a previously managed Distrobox app
-./manage.sh apps update-distrobox --name app --package ~/Downloads/app-new.deb
+dots apps update-distrobox --name app --package ~/Downloads/app-new.deb
 
 # List saved Distrobox app metadata
-./manage.sh apps list
+dots apps list
 ```
 
 ### Notes
 
-- `./manage.sh apps` is a real interactive wizard, not just a help menu.
+- `dots apps` is a real interactive wizard, not just a help menu.
 - The root `Manage external apps` menu item is shown only on desktop installs where Distrobox is installed.
 - File picking starts in `~/Downloads` and falls back to `$HOME` if that folder does not exist.
 - Distrobox install prefers choosing from existing containers before falling back to manual entry.
@@ -134,7 +138,7 @@ The key mental model: repo files are the **source state** and your home director
 
 ### First-time setup
 
-Always run `./manage.sh setup`. The installer is the only supported bootstrap path: it seeds `~/.config/chezmoi/chezmoi.toml` with your group selections and applies the dotfiles. Running `chezmoi init` directly is not supported — the managed configs assume packages and services the installer provisions, so a cold apply would produce broken configs for software that isn't installed.
+Always run `./dots setup`. The installer is the only supported bootstrap path: it seeds `~/.config/chezmoi/chezmoi.toml` with your group selections and applies the dotfiles. Running `chezmoi init` directly is not supported — the managed configs assume packages and services the installer provisions, so a cold apply would produce broken configs for software that isn't installed.
 
 ### Daily commands (most useful)
 

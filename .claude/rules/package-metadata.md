@@ -9,7 +9,7 @@ paths:
 When adding a tool to `packages/common.yaml` (`tools:`) or a group's `custom_install:`,
 declare its update metadata too — `binary:` (the executable name, which often differs from
 the entry name: television ships `tv`), plus `source:` (owner/repo) or `npm:` so
-`./manage.sh update` can resolve an upstream version. Never let the updater infer the
+`dots update` can resolve an upstream version. Never let the updater infer the
 binary from the entry name.
 
 `update:` is only ever a command; who owns updates is the separate closed-set

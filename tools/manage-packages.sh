@@ -458,7 +458,7 @@ build_manage_json() {
 # pre-checked. Toggle anything, confirm the diff, and the changes are applied.
 show_manage() {
     if ! command_exists gum; then
-        print_error "gum is not installed. Run './manage.sh setup' first."
+        print_error "gum is not installed. Run './dots setup' first."
         return 1
     fi
 
@@ -753,7 +753,7 @@ do_sync() {
 
 usage() {
     cat <<'EOF'
-Usage: ./manage.sh packages [command]
+Usage: dots packages [command]
 
 Opens a unified manager: one searchable tree of every package group with the
 packages you already have pre-checked. Toggle anything (Space), review the
@@ -771,7 +771,7 @@ EOF
 # Fallback for hosts without python3: the original split add/remove menu.
 legacy_menu() {
     if ! command_exists gum; then
-        print_error "gum is not installed. Run './manage.sh setup' first."
+        print_error "gum is not installed. Run './dots setup' first."
         exit 1
     fi
 

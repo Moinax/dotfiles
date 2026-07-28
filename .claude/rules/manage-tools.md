@@ -1,14 +1,14 @@
 ---
-description: How the backup, external-apps, and update helpers behind ./manage.sh actually work — ownership boundaries, state formats, and rate-limit behavior.
+description: How the backup, external-apps, and update helpers behind dots actually work — ownership boundaries, state formats, and rate-limit behavior.
 paths:
   - tools/backup-projects.sh
   - tools/manage-external-apps.py
   - tools/manage-updates.sh
 ---
 
-# manage.sh helper internals
+# dots helper internals
 
-## `./manage.sh backup` — `tools/backup-projects.sh`
+## `dots backup` — `tools/backup-projects.sh`
 
 Repos are NOT archived (only a manifest of remote+branch), just gitignored env/config
 files plus `~/.npmrc`, `~/.ssh`, `~/.config/gh`, `~/.config/tea/config.yml` — age-encrypted
@@ -21,7 +21,7 @@ config in `~/.config/projects-backup/`: `extra-includes` (repo-relative path reg
 to bootstrap a fresh machine (gh OAuth device flow over HTTPS needs no SSH key, so
 GitHub login + age passphrase are the only secrets).
 
-## `./manage.sh apps` — `tools/manage-external-apps.py`
+## `dots apps` — `tools/manage-external-apps.py`
 
 A wizard-driven helper (Python, stdlib-only). State files in
 `~/.local/state/dotfiles/external-apps/` are bash-quoted `KEY=VALUE` .env files kept
@@ -92,7 +92,7 @@ re-syncs `VERSION` to the tag on the way out, but only when `versions_match()` s
 container really is on that release — an app running ahead of the tag keeps its recorded
 value rather than being stamped with a release it does not have.
 
-## `./manage.sh update` — `tools/manage-updates.sh`
+## `dots update` — `tools/manage-updates.sh`
 
 Deliberately does NOT update the system: pacman + AUR belong to cachy-update (a symlink
 to arch-update, which picks up paru on its own). It covers only what cachy-update can't

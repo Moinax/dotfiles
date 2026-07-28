@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Runs the dotfiles repo's ./dots from anywhere — `dots update`, `dots apps
+# ...`, or bare `dots` for the interactive menu, with no need to cd first.
+#
+# The repo is located through chezmoi rather than hardcoded: `chezmoi
+# source-path` returns the source *of the home tree* (<repo>/home), whose
+# parent is the repo root. Falls back to ~/dotfiles when chezmoi is absent or
+# not yet initialised (a fresh machine mid-bootstrap).
+set -euo pipefail
+
+repo=""
+if command -v chezmoi >/dev/null 2>&1; then
+    src="$(chezmoi source-path 2>/dev/null)" && repo="$(dirname "$src")"
+fi
+[[ -x "$repo/dots" ]] || repo="$HOME/dotfiles"
+
+if [[ ! -x "$repo/dots" ]]; then
+    echo "dots: dotfiles repo not found (looked in $repo)" >&2
+    echo "dots: clone it there, or set chezmoi's source dir to <repo>/home" >&2
+    exit 1
+fi
+
+# ── Completion support ───────────────────────────────────────────────────────
+#
+# `dots __complete [command]` prints candidate names, one per line, for the zsh
+# and fish completers to consume. Parsing `help` output keeps completion from
+# going stale the way a hand-written command list does — the tools stay the
+# single source of truth.
+
+# Names from a "Commands:" block: two-space indent, up to the next unindented
+# line (which starts a new section, e.g. backup's per-command option lists).
+# "(none)" documents the no-argument default and isn't typeable.
+parse_command_names() {
+    sed -n '/^Commands:/,/^[^[:space:]]/{/^  (none)/d; s/^  \([^ ]\{1,\}\).*/\1/p;}'
+}
+
+# No allowlist of which commands are safe to probe: ./dots answers a help
+# request before dispatching, so asking any command — including a typo — prints
+# help or nothing, and never executes it. Commands that take no subcommands
+# print no "Commands:" block, which parses to the empty list they should offer.
+if [[ "${1:-}" == "__complete" ]]; then
+    "$repo/dots" ${2:+"$2"} help 2>/dev/null | parse_command_names
+    exit 0
+fi
+
+exec "$repo/dots" "$@"

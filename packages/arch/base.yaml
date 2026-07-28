@@ -27,7 +27,7 @@ packages:
     - socat  # talk to herdr's unix-socket API (tab.move, etc.) from dev scripts
     - rsync
     - unzip
-    - age  # encrypt project backups (./manage.sh backup)
+    - age  # encrypt project backups (dots backup)
     - fontconfig
     - downgrade  # AUR — roll a package back to a cached/ALA version + offer to pin it via IgnorePkg
 

@@ -563,7 +563,7 @@ install_base_packages() {
 }
 
 # Install a packages/common.yaml `tools:` entry using the command the yaml
-# declares, so the installer and './manage.sh update' (which re-runs the same
+# declares, so the installer and 'dots update' (which re-runs the same
 # command to refresh the tool) can't drift apart. A missing declaration warns
 # rather than failing: every caller gates on the tool's own availability check.
 install_common_tool() {
@@ -804,7 +804,7 @@ install_common_tools() {
 
     # Ensure global npm packages (idempotent — also runs when fnm pre-exists).
     # The list and each package's install spec come from common.yaml's `tools:`
-    # entries, so they stay in step with what './manage.sh update' checks.
+    # entries, so they stay in step with what 'dots update' checks.
     local npm_pkgs=()
     mapfile -t npm_pkgs < <(parse_entry_field_values "$common_file" tools npm)
 
@@ -1820,7 +1820,7 @@ show_completion() {
     fi
 
     if [ "$SSH_KEY_RESTORED" = true ]; then
-        steps+=("  $next_step. Run './manage.sh backup restore' to re-clone ~/Projects")
+        steps+=("  $next_step. Run 'dots backup restore' to re-clone ~/Projects")
         next_step=$((next_step + 1))
     fi
 
@@ -1857,6 +1857,10 @@ show_completion() {
     fi
 
     local body=("$(gum style --foreground 82 --bold '✅ Installation Complete!')")
+    # chezmoi just put the manager on PATH; the shell that ran ./dots setup
+    # picked up its PATH before that, so it takes a new shell to see it.
+    body+=("" "This manager is now on PATH as 'dots' — run it from anywhere" \
+              "(new shell required), with tab-completion in zsh and fish.")
     if [ ${#steps[@]} -gt 0 ]; then
         body+=("" "Next steps:" "${steps[@]}")
     fi

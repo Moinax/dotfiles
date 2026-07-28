@@ -79,7 +79,7 @@ custom_install:
   # picks the asset for the current arch, imports it via the AppImage mechanism
   # (~/.local/share/AppImages/helium.AppImage + helium.desktop launcher that
   # mimeapps.list points at as the default browser), and records the release
-  # source so './manage.sh apps check-updates / update' keep it current.
+  # source so 'dots apps check-updates / update' keep it current.
   # --name helium is load-bearing: slugify lowercases it to "helium", so the
   # resulting helium.AppImage / helium.desktop match the binds + mimeapps refs.
   - name: helium
@@ -93,7 +93,7 @@ custom_install:
     install: |
       "$DOTFILES_DIR/tools/manage-external-apps.py" install-github imputnet/helium-linux \
         --name helium --type appimage --non-interactive
-    # Tracked as an external app (recorded release source), so './manage.sh
+    # Tracked as an external app (recorded release source), so 'dots
     # update' reports it from the apps updater instead of re-running install.
     updated_by: app
 

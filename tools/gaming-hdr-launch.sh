@@ -28,7 +28,7 @@ install_interrupt_trap
 # ── Preconditions ──────────────────────────────────────────────────────────────
 
 # --check: report whether an HDR monitor is available (exit 0/1, no output).
-# manage.sh gates its "Gaming HDR launch" menu entry on this, so the HDR
+# dots gates its "Gaming HDR launch" menu entry on this, so the HDR
 # detection lives only in this script.
 check_only=false
 [ "${1:-}" = "--check" ] && check_only=true
@@ -159,7 +159,7 @@ else
     # gamescope route.
     if ! command_exists gamescope; then
         print_warning "gamescope is not installed — the generated string won't run until it is"
-        print_info "Install it via the Gaming package group (./manage.sh packages)"
+        print_info "Install it via the Gaming package group (dots packages)"
     fi
     gs_args=(-W "$width" -H "$height" -r "$refresh" --hdr-enabled)
     $want_itm && gs_args+=(--hdr-itm-enabled)

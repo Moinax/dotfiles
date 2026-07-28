@@ -1,2 +1,2 @@
-# Extra regexes (repo-relative paths) to include in ./manage.sh backup
+# Extra regexes (repo-relative paths) to include in dots backup
 (^|/)devreport\.config\.json$

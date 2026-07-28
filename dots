@@ -1,5 +1,6 @@
 #!/bin/bash
-# Dotfiles Management Script — single entry point for all dotfiles operations
+# Dotfiles management — single entry point, also on PATH as `dots` (see
+# home/dot_local/bin/executable_dots). Run ./dots from the repo before install.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,7 +15,7 @@ install_interrupt_trap
 
 usage() {
     cat <<'EOF'
-Usage: ./manage.sh [command]
+Usage: dots [command]
 
 Commands:
   packages    Manage packages (add/remove from groups, sync missing)
@@ -30,6 +31,15 @@ Commands:
 
 Run without arguments for an interactive menu.
 EOF
+}
+
+# `help` for a command that takes neither subcommands nor options. The one-line
+# description is read back out of usage() so it is only ever written once, and
+# the output deliberately has no "Commands:" block — shell completion parses
+# that heading, and an empty result is the correct answer here.
+argless_command_help() {
+    printf 'Usage: dots %s\n\n%s\n\nTakes no subcommands or options.\n' \
+        "$1" "$(usage | sed -n "s/^  $1  *//p")"
 }
 
 # ── Actions ──────────────────────────────────────────────────────────────────
@@ -148,7 +158,7 @@ whisper_restart_daemon() {
 do_reconfig() {
     if [ ! -f "$CHEZMOI_CONF" ]; then
         print_error "chezmoi.toml not found at $CHEZMOI_CONF"
-        print_info "Run the full installer first: ./manage.sh setup"
+        print_info "Run the full installer first: ./dots setup"
         return 1
     fi
 
@@ -272,6 +282,15 @@ do_gaming() {
     # Only HDR-launch for now; dispatch on subcommand so it can grow later.
     case "${1:-hdr-launch}" in
         hdr-launch) "$SCRIPT_DIR/tools/gaming-hdr-launch.sh" ;;
+        help|--help|-h)
+            cat <<'EOF'
+Usage: dots gaming [command]
+
+Commands:
+  hdr-launch  Print the HDR launch string to paste into Steam (default)
+  help        Show this help message
+EOF
+            ;;
         *)
             print_error "Unknown gaming subcommand: $1"
             print_info "Available: hdr-launch"
@@ -302,7 +321,7 @@ do_lazy_lock() {
 
 do_menu() {
     if ! command_exists gum; then
-        print_error "gum is not installed. Run './manage.sh setup' first or install gum manually."
+        print_error "gum is not installed. Run './dots setup' first or install gum manually."
         exit 1
     fi
 
@@ -348,6 +367,25 @@ do_menu() {
 }
 
 # ── CLI dispatch ─────────────────────────────────────────────────────────────
+
+# Asking a command for help must never run it. setup/whisper/reconfig/lazy-lock
+# ignore their arguments entirely, so `dots setup help` used to run the whole
+# installer, and an unknown command falls through to the interactive menu. Both
+# are resolved here, once, rather than by teaching each do_* function to spot a
+# help word — which also means shell completion can safely ask *any* command
+# for its subcommands (see home/dot_local/bin/executable_dots).
+case "${2:-}" in
+    help|--help|-h)
+        case "${1:-}" in
+            packages|update|apps|backup|gaming) ;;  # forward: these answer for themselves
+            setup|whisper|reconfig|lazy-lock)   argless_command_help "$1"; exit 0 ;;
+            # Unknown command: everything goes to stderr (print_error prints to
+            # stdout by default), leaving stdout empty so a completion asking
+            # about a typo gets nothing rather than the interactive menu.
+            *) print_error "Unknown command: ${1:-}" >&2; usage >&2; exit 1 ;;
+        esac
+        ;;
+esac
 
 case "${1:-}" in
     setup)      do_setup ;;
