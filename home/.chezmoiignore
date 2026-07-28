@@ -6,6 +6,12 @@
 README.md
 LICENSE
 
+# Python bytecode caches: .gitignore hides them from git, but chezmoi reads
+# only this file — a stray `py_compile` in the source tree would otherwise
+# install .pyc files into ~/.local/bin.
+**/__pycache__
+**/__pycache__/**
+
 # Ignore Hyprland configs if not selected
 {{- if not .install_hyprland }}
 .config/hypr/hyprland.lua
@@ -80,7 +86,7 @@ LICENSE
 .local/bin/wtupdate
 {{- end }}
 
-# Neovim lazy-lock.json — managed via 'manage.sh lazy-lock' instead of chezmoi apply
+# Neovim lazy-lock.json — managed via 'dots lazy-lock' instead of chezmoi apply
 .config/nvim/lazy-lock.json
 
 # Active theme files managed by apply-dark-mode.sh (variants are still tracked)
