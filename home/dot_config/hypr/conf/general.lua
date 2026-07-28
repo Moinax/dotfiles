@@ -1,9 +1,17 @@
 -- See https://wiki.hypr.land/Configuring/Basics/Variables/ for more
+
+local tab = require("conf.theme").groupbar
+
 hl.config({
     general = {
         gaps_in     = 4,
         gaps_out    = 8,
         border_size = 4,
+        -- Borders deliberately stay on the dark palette in both modes: the
+        -- pink/lavender gradient reads well against either kitty theme, and
+        -- swapping accents on Mod+N is a visual jolt for no gain. Being
+        -- mode-independent, they are set here only — nothing re-applies them
+        -- at runtime.
         ["col.active_border"]   = { colors = { "rgba(ff64ff80)", "rgba(9696ffff)" }, angle = 45 },
         ["col.inactive_border"] = "rgba(6464ff4d)",
         layout            = "dwindle",
@@ -24,9 +32,9 @@ hl.config({
         -- indicator_height == height and indicator_gap == -height. Any other
         -- combination leaves the title off-centre in the fill. `blur` hangs off
         -- that same indicator rect (never the title band), so it does nothing at
-        -- all until the two overlap — and once col.* alpha is this high it is
-        -- still a no-op: measured max 12/255 per-pixel difference on/off, so it
-        -- stays off rather than costing a blur pass per tab for nothing.
+        -- all until the two overlap. Left off regardless: a blur pass per tab,
+        -- across every tab of every group on ~15 workspaces, to soften a
+        -- backdrop the tab already covers ~88% of.
         -- Reserved height = gaps_out * (2 + keep_upper_gap)
         --                 + indicator_height + indicator_gap + height
         --                 = 3 * 2 + 26 - 26 + 26 = 32px here.
@@ -47,24 +55,16 @@ hl.config({
         -- at all, which is worse than the strip is good. gaps_in must stay above
         -- 0 regardless: nothing separates two adjacent inactive tabs otherwise,
         -- and a 3-pane group then shows one wide block with two titles in it.
-        -- Tabs deliberately mirror waybar's #workspaces buttons (style-dark.css)
-        -- so a group tab and a workspace pill read as the same control: 26px
-        -- tall, 8px radius, 17px text, 4px between chips, and the same
-        -- magenta-active / indigo-inactive pair. The 26px is measured off screen,
+        -- Tabs deliberately mirror waybar's #workspaces buttons (style-dark.css
+        -- and style-light.css) so a group tab and a workspace pill read as the
+        -- same control: 26px tall, 8px radius, 17px text, 4px between chips, and
+        -- the magenta-active / indigo-inactive pair. The 26px is measured off screen,
         -- not read off the CSS — there a pill's height is implied by font size
         -- plus 2px padding, so it has to be sampled to be matched.
-        -- The colours are NOT waybar's literal CSS values. A waybar button is
-        -- only 30%/50% opaque, and what makes it readable is everything stacked
-        -- under it: `#workspaces` also matches `.module` (another 30% indigo),
-        -- over `window#waybar` at rgba(30,30,46,0.85). A groupbar has none of
-        -- that, only the wallpaper. So these are waybar's *rendered* pill colours
-        -- sampled off screen (#A553B9 active, #504A9A inactive) applied at ~94%
-        -- alpha, which is the effective opacity of that stack. Re-sample with
-        -- grim rather than recomputing if the waybar palette changes — a
-        -- two-layer model undershoots because it misses the module background.
-        -- Copying 0x4d/0x80 straight across instead makes inactive titles
-        -- unreadable over a busy wallpaper and hides the corner rounding
-        -- against a light one.
+        -- Colours are solved in conf/theme.lua, not copied from the CSS:
+        -- copying the alphas across drops the 85% bar the pill stands on, which
+        -- left inactive titles unreadable over a busy wallpaper and hid the
+        -- rounding against a light one.
         groupbar = {
             height            = 26,
             indicator_height  = 26,
@@ -76,13 +76,13 @@ hl.config({
             round_only_edges  = false,
             gradients         = false,
             blur              = false,
-            ["col.active"]    = "rgba(a553b9f2)",
-            ["col.inactive"]  = "rgba(504a9aed)",
+            ["col.active"]    = tab.active,
+            ["col.inactive"]  = tab.inactive,
             font_size            = 17,
             font_weight_active   = 400,
             font_weight_inactive = 400,
-            text_color           = "rgba(ffffffff)",
-            text_color_inactive  = "rgba(cdd6f4ff)",
+            text_color           = tab.text,
+            text_color_inactive  = tab.text_dim,
             text_padding         = 8,
             text_offset          = 0,
         },

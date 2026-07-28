@@ -1,3 +1,9 @@
+/* The chip and accent alphas below also feed the group-tab colour solve in
+ * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
+ * stops matching the pill it mirrors. */
+@define-color chip rgba(100, 100, 255, 0.22);
+@define-color accent rgba(255, 100, 255, 0.35);
+
 * {
   color: #cdd6f4;
   border: none;
@@ -28,15 +34,15 @@ tooltip label {
 .modules-right {
   padding-top: 2px;
 }
+/* Every widget carries the same @chip as an inactive workspace pill, so the bar
+ * reads as one set of chips. #window has no rule of its own — it matches
+ * `.module` like every other module and inherits this (verified on screen). */
 #stats,
 .module {
   margin: 4px 2px;
   padding: 2px 8px;
-  background: rgba(100, 100, 255, 0.3);
+  background: @chip;
   border-radius: 8px;
-}
-#window {
-  background: rgba(100, 100, 255, 0.15);
 }
 #custom-system,
 #cpu,
@@ -46,11 +52,23 @@ tooltip label {
   background: transparent;
   border: none;
 }
+/* `#workspaces` also matches `.module`, so without this the pills would sit on
+ * a second indigo layer of their own container — measured (74,65,114) in the
+ * gaps, against a bar of (62,49,55). Because the strip and an inactive button
+ * are the same RGB, that layer does not tint, it only stacks alpha: at 0.3 each
+ * the two rendered as one 51%-opaque indigo, and the button cleared its own
+ * container by ~40/255 in blue. It also made the active pill brighter than the
+ * identical magenta on #custom-caffeine.activated and friends, which are single
+ * elements whose `.module` background is replaced, not stacked. Dropping it
+ * makes the button alpha below mean exactly what it says. */
 #workspaces {
   padding: 2px 2px;
+  background: transparent;
 }
+/* 0.22 rather than the old 0.3: the number to beat is the 0.51 the pill
+ * effectively rendered at with the container layer, so this is ~43% of it. */
 #workspaces button {
-  background: rgba(100, 100, 255, 0.3);
+  background: @chip;
   min-width: 24px;
   padding: 2px 8px;
   margin: 0 2px;
@@ -60,11 +78,11 @@ tooltip label {
 
 #workspaces button:hover {
   color: white;
-  background: rgba(100, 100, 255, 0.5);
+  background: rgba(100, 100, 255, 0.3);
 }
 #workspaces button.active {
   color: white;
-  background: rgba(255, 100, 255, 0.5);
+  background: @accent;
 }
 #custom-exit,
 #custom-system,
@@ -90,7 +108,7 @@ tooltip label {
   padding-right: 12px;
 }
 #custom-caffeine.activated {
-  background: rgba(255, 100, 255, 0.5);
+  background: @accent;
   color: white;
 }
 #custom-dark-mode.light { color: #f9e2af; }
@@ -120,7 +138,7 @@ tooltip label {
 
 /* Notification center */
 #custom-notification.notification {
-  background: rgba(255, 100, 255, 0.5);
+  background: @accent;
   color: white;
   border-radius: 10px;
   padding: 0 8px;
@@ -155,5 +173,5 @@ tooltip label {
  * Pango-colored accent (Catppuccin yellow) via the daemon. */
 #custom-vibewatch.attention {
   color: white;
-  background: rgba(255, 100, 255, 0.5);
+  background: @accent;
 }

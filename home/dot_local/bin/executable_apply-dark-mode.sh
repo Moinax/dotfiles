@@ -173,16 +173,25 @@ fi
 # color-scheme (set through gsettings above) and loads style-dark.css /
 # style-light.css itself, live-switching when the scheme flips.
 
-# ---------- Compositor borders ----------
-# Hyprland 0.55+ on Lua config rejects `hyprctl keyword` ("non-legacy parsers").
-# Use `hyprctl eval` with `hl.config({...})` instead; gradients are tables.
+# ---------- Compositor group tabs ----------
+# Group tabs are the one compositor colour that differs between modes (they
+# mirror waybar's workspace pills, which have a light and a dark palette).
+# Borders do not, and are set from conf/general.lua at parse time only.
+#
+# The palette is not repeated here: conf/theme.lua derives it from "$STATE_FILE"
+# — written above — and is loaded with dofile so this stays one `eval` and not a
+# `hyprctl reload`. A reload would re-apply the whole config over the live
+# session, reverting anything else set at runtime through `hyprctl eval`
+# (toggle-monitors, toggle-hdr, toggle-all-opacity, toggle-workspace-scrolling).
+# dofile rather than require: require would return the palette cached from
+# before the flip. `hyprctl keyword` is not an option at all — Hyprland 0.55+
+# rejects it on Lua configs ("non-legacy parsers").
 if is_hyprland; then
-    # Border colors stay on the dark palette in both modes — pink/lavender
-    # gradient reads well on either kitty theme and avoids the visual jolt
-    # of swapping accent colors on Mod+N.
-    ACTIVE='{ colors = {"rgba(ff64ff80)", "rgba(9696ffff)"}, angle = 45 }'
-    INACTIVE='"rgba(6464ff4d)"'
-    hyprctl eval "hl.config({ general = { [\"col.active_border\"] = ${ACTIVE}, [\"col.inactive_border\"] = ${INACTIVE} } })" >/dev/null 2>&1 || true
+    hyprctl eval 'local t = dofile(os.getenv("HOME") .. "/.config/hypr/conf/theme.lua").groupbar
+        hl.config({ group = { groupbar = {
+            ["col.active"] = t.active, ["col.inactive"] = t.inactive,
+            text_color = t.text, text_color_inactive = t.text_dim,
+        } } })' >/dev/null 2>&1 || true
 fi
 
 # ---------- Neovim ----------

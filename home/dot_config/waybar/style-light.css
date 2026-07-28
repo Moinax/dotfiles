@@ -1,3 +1,9 @@
+/* The chip and accent alphas below also feed the group-tab colour solve in
+ * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
+ * stops matching the pill it mirrors. */
+@define-color chip rgba(100, 100, 255, 0.22);
+@define-color accent rgba(170, 40, 170, 0.45);
+
 * {
   color: #4c4f69;
   border: none;
@@ -28,15 +34,20 @@ tooltip label {
 .modules-right {
   padding-top: 2px;
 }
+/* See style-dark.css: every widget carries the same alpha as an inactive
+ * workspace pill.
+ * The alphas here are not scaled-down copies of the dark ones, they are
+ * contrast-matched to them. Indigo over this near-white bar shifts mostly R
+ * and G downward, where the dark bar's shift is almost all in B, so equal
+ * alpha does not mean equal separation. Matching dark's chip-vs-bar RGB
+ * distance (~44) lands at a = 0.237, which is why these round to the same
+ * 0.22 the dark sheet uses rather than the 0.14/0.15 they sat at before. */
 #stats,
 .module {
   margin: 4px 2px;
   padding: 2px 8px;
-  background: rgba(100, 100, 255, 0.15);
+  background: @chip;
   border-radius: 8px;
-}
-#window {
-  background: rgba(100, 100, 255, 0.08);
 }
 #custom-system,
 #cpu,
@@ -46,11 +57,14 @@ tooltip label {
   background: transparent;
   border: none;
 }
+/* See style-dark.css: `#workspaces` also matches `.module`, so the pills would
+ * otherwise stack alpha on a second indigo layer of their own container. */
 #workspaces {
   padding: 2px 2px;
+  background: transparent;
 }
 #workspaces button {
-  background: rgba(100, 100, 255, 0.15);
+  background: @chip;
   min-width: 24px;
   padding: 2px 8px;
   margin: 0 2px;
@@ -62,9 +76,15 @@ tooltip label {
   color: #1e1e2e;
   background: rgba(100, 100, 255, 0.3);
 }
+/* The active accent is rgb(170,40,170) here, not the rgb(255,100,255) the dark
+ * sheet uses. Alpha alone cannot make this state read darker: 255,100,255 has
+ * R = B = 255, so over a near-white bar it only ever gets pinker — pushing it
+ * to a = 0.73 (dark's contrast, matched) still lands at luminance 183. The
+ * darker tint reaches the same separation at a = 0.45 and luminance 168. Same
+ * hue, R = B with G low; only the lightness is retuned for the backdrop. */
 #workspaces button.active {
   color: #1e1e2e;
-  background: rgba(255, 100, 255, 0.3);
+  background: @accent;
 }
 #custom-exit,
 #custom-system,
@@ -90,7 +110,7 @@ tooltip label {
   padding-right: 12px;
 }
 #custom-caffeine.activated {
-  background: rgba(255, 100, 255, 0.3);
+  background: @accent;
   color: #1e1e2e;
 }
 #custom-dark-mode.light { color: #4c4f69; padding-right: 16px; }
@@ -119,9 +139,12 @@ tooltip label {
 }
 
 /* Notification center */
+/* #1e1e2e, not white: this is a light-mode chip, so the same dark text every
+ * other magenta state uses. White here measured ~2.6:1 against the rendered
+ * background — it was inherited from the dark sheet and never re-checked. */
 #custom-notification.notification {
-  background: rgba(255, 100, 255, 0.5);
-  color: white;
+  background: @accent;
+  color: #1e1e2e;
   border-radius: 10px;
   padding: 0 8px;
   font-size: 12px;
@@ -150,10 +173,10 @@ tooltip label {
 #custom-vibewatch.active {
   color: #4c4f69;
 }
-/* Attention: same magenta/dark treatment as workspaces.active and
- * caffeine.activated — state word + dot get their own Pango-colored
+/* Attention: same magenta/dark treatment as workspaces.active,
+ * caffeine.activated, notification — state word + dot get their own Pango-colored
  * accent (Catppuccin Latte yellow) via the daemon. */
 #custom-vibewatch.attention {
   color: #1e1e2e;
-  background: rgba(255, 100, 255, 0.3);
+  background: @accent;
 }
