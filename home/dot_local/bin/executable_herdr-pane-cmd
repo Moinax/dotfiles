@@ -49,11 +49,26 @@ hunk_bin() {
 }
 
 case "${1:-}" in
-  # No "git" tab: lazygit is the ctrl+alt+g popup (rationale in herdr-nav's
-  # git verb); herdr-clients migrate-layout removes the old per-workspace ones.
+  # Only nvim is per-workspace. The tool tabs (files/git/review) are created on
+  # demand by the ctrl+alt+f/g/r binds — see herdr-nav's tool_tab.
   --util-tabs) printf '%s\n' nvim ;;
   # watch = true in ~/.config/hunk/config.toml makes a plain `diff` watch.
+  # This is the agent tab's live-diff pane, NOT the ctrl+alt+r review tab —
+  # that one's pane is labeled "tuicr" below, precisely because this label was
+  # already taken.
   review) echo "$(hunk_bin) diff" ;;
   nvim)   echo "nvim" ;;
+  # Tool tabs, created where you ask for them (herdr-nav's tool_tab, which owns
+  # the why and the idle measurements) and closed with ctrl+alt+w. Deliberately
+  # absent from --util-tabs, which would hand one of each to every workspace at
+  # create time and backfill the rest via migrate-layout. The cases still belong
+  # here — revive-panes reads this map, so a tool tab left open comes back
+  # running its tool after a server restart instead of as a puzzling empty
+  # shell.
+  files)  echo "yazi" ;;
+  git)    echo "lazygit" ;;
+  # The clean-tree fallback (tuicr -w vs the commit selector) lives in
+  # herdr-nav, so the tab and a revived pane can never disagree about it.
+  tuicr)  echo "herdr-nav review-run" ;;
   *)      exit 1 ;;
 esac

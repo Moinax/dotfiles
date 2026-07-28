@@ -12,12 +12,14 @@
 #                                   workspace; PROV overrides the inherited
 #                                   provider (e.g. claudex for a GPT tab), NAME
 #                                   labels the tab and the agent
-#        herdr-nav review           tuicr on the focused pane's working tree,
-#                                   or its commit selector when the tree is
-#                                   clean (run from the ctrl+alt+r popup)
-#        herdr-nav git              lazygit on the focused pane's checkout
-#                                   (run from the ctrl+alt+g popup, which
-#                                   replaced the per-workspace git tab)
+#        herdr-nav files|git|review focus this workspace's tool tab — yazi,
+#                                   lazygit, tuicr — creating it on the focused
+#                                   pane's cwd when it has none (the
+#                                   ctrl+alt+f/g/r binds; ctrl+alt+w closes
+#                                   one again). See tool_tab.
+#        herdr-nav review-run       tuicr on the cwd, or its commit selector
+#                                   when the tree is clean — the review tab's
+#                                   pane command, via herdr-pane-cmd tuicr
 #        herdr-nav quit             stop the current session and close its
 #                                   client window (the in-herdr `hss`)
 set -euo pipefail
@@ -45,15 +47,57 @@ focused_workspace() {
     || die "no focused workspace"
 }
 
-# cd into the focused pane's cwd — the project dir for popup-launched tools
-# (popups run detached from any pane, so pane env is unavailable).
-cd_focused_pane() {
-  local ws dir
+# Focus the focused workspace's TAB_LABEL tab, creating it on the focused
+# pane's cwd if it has none. Backs the ctrl+alt+f/g/r tool binds (yazi,
+# lazygit, tuicr), which were popups until they all grew the same two
+# problems: a popup is session-modal, so the sidebar and tab bar keep
+# rendering while silently swallowing clicks (it reads as a hung UI), and it
+# forgets its cwd, filters and selection the moment you look away. A tab keeps
+# its state while you work in other tabs, and ctrl+alt+w disposes of it.
+# On demand rather than in herdr-pane-cmd --util-tabs, which would give one to
+# every workspace: idle, yazi is 28MB and ~0.4% of a core (it never fully
+# idles), lazygit 17MB and tuicr 26MB at 0 measurable CPU — but ~15 workspaces
+# turns even the free-looking ones into hundreds of MB standing by. Created by
+# keypress, the cost follows actual use.
+# PANE_LABEL defaults to TAB_LABEL and is worth overriding only because pane
+# labels are a global command map, not decoration: herdr-clients revive-panes
+# feeds them to herdr-pane-cmd to rebuild the command after a server restart.
+# "review" is already taken there by the agent tab's hunk pane, so the review
+# tab's pane is labeled "tuicr" while the tab itself still reads "review" —
+# the one call below passing two words is flagging exactly that.
+# Usage: tool_tab TAB_LABEL [PANE_LABEL]
+tool_tab() {
+  local tab_label="$1" pane_label="${2:-$1}" ws tab dir tab_json t_new p_new
   ws="$(focused_workspace)"
+  # Reuse before create, like dev-herdr's reattach path: a second press should
+  # return to the tool you left, not stack up another copy of it.
+  tab="$(herdr tab list --workspace "$ws" \
+    | jq -r --arg l "$tab_label" \
+        '.result.tabs[] | select(.label == $l) | .tab_id' | head -n1)"
+  if [[ -n "$tab" ]]; then
+    herdr tab focus "$tab" >/dev/null
+    return
+  fi
+  # Open on the checkout being worked in, not the workspace root — these tools
+  # are all about the current repo.
   dir="$(herdr pane list --workspace "$ws" \
     | jq -re '.result.panes[] | select(.focused) | .cwd')" \
     || die "no focused pane"
-  cd "$dir" || die "cannot cd to $dir"
+  # create → label the root pane → run, dev-herdr's util_tab sequence.
+  # Appending puts these after the nvim tab, keeping utility tabs at the end;
+  # agent-tab inserts before them and is unaffected, since it counts agent and
+  # provider-labeled panes and these are neither.
+  tab_json="$(herdr tab create --workspace "$ws" --label "$tab_label" \
+    --cwd "$dir" --no-focus)"
+  t_new="$(jq -r '.result.tab.tab_id' <<<"$tab_json")"
+  p_new="$(jq -r '.result.root_pane.pane_id' <<<"$tab_json")"
+  [[ -n "$p_new" && "$p_new" != null ]] ||
+    die "tab create returned no pane id: $tab_json"
+  herdr pane rename "$p_new" "$pane_label" >/dev/null
+  herdr pane run "$p_new" "$(herdr-pane-cmd "$pane_label")" >/dev/null
+  # --no-focus above, then focus explicitly: same order as dev-herdr, so the
+  # pane is labeled and running before it is looked at.
+  herdr tab focus "$t_new" >/dev/null
 }
 
 # Known agent providers — one list serves the agent-picker menu, agent-tab's
@@ -180,32 +224,27 @@ case "${1:-}" in
     # new agent explicitly.
     herdr tab focus "$t_new" >/dev/null
     ;;
-  review)
-    # Active code review: tuicr on the working tree of the focused pane's
-    # checkout, meant for the full-screen ctrl+alt+r popup. The passive
-    # live diff stays in the hunk review pane; tuicr comments are exported
-    # with y/:clip or read back with `tuicr review comments`.
-    cd_focused_pane
-    # -w alone skips the commit selector, so on a clean tree tuicr has
-    # nothing to show and exits — the popup flashes and closes. Fall back
-    # to the selector (plain tuicr) when nothing is dirty. The probes
-    # mirror tuicr's own "anything to show" test (git backend only — a
-    # tuicr upgrade may obsolete this) and stop at the first hit, where a
-    # `git status --porcelain` would scan the whole tree ahead of tuicr
+  files)  tool_tab files ;;
+  git)    tool_tab git ;;
+  review) tool_tab review tuicr ;;
+  review-run)
+    # tuicr as the review tab's pane command (herdr-pane-cmd tuicr), so
+    # revive-panes rebuilds it after a server restart. No cd: the pane already
+    # opened on the checkout tool_tab resolved. The passive live diff stays in
+    # the agent tab's hunk pane; tuicr is the typed-comments tool (export with
+    # y/:clip, or read back via `tuicr review comments`).
+    # -w alone skips the commit selector, so on a clean tree tuicr has nothing
+    # to show and exits — as a popup that flashed and closed; in a tab it drops
+    # to a bare shell. Fall back to the selector (plain tuicr) when nothing is
+    # dirty. The probes mirror tuicr's own "anything to show" test (git backend
+    # only — a tuicr upgrade may obsolete this) and stop at the first hit,
+    # where a `git status --porcelain` would scan the whole tree ahead of tuicr
     # scanning it again.
     if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null \
         || [[ -n "$(git ls-files --others --exclude-standard 2>/dev/null | head -c1)" ]]; then
       exec tuicr -w
     fi
     exec tuicr
-    ;;
-  git)
-    # lazygit on the focused pane's checkout, meant for the full-screen
-    # ctrl+alt+g popup. This replaced the per-workspace git tab: lazygit
-    # here is quick pulls/rebases/history checks, so the popup lifecycle
-    # fits; long-running git work gets a manual tab ad hoc.
-    cd_focused_pane
-    exec lazygit
     ;;
   quit)
     # Stop the current session — detach its client window, then stop its
@@ -225,6 +264,6 @@ case "${1:-}" in
     setsid -f herdr-clients stop "$session" >/dev/null 2>&1 </dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | review | git | quit)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | files | git | review | review-run | quit)"
     ;;
 esac

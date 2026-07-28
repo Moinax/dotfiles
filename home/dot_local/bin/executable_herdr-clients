@@ -146,11 +146,11 @@ list_sessions() {
 # Only panes whose foreground process is still a plain shell are touched, so
 # this is idempotent and safe on a session that never went down.
 # Classify a pane's foreground state: "starting" (no foreground process yet),
-# "shell" (a single plain shell — or one of the extra |-separated names in
-# $3), "busy" (anything else). Fails when the pane can't be inspected.
-pane_state() { # $1: session, $2: pane, $3: extra idle process names (optional)
+# "shell" (a single plain shell), "busy" (anything else). Fails when the pane
+# can't be inspected.
+pane_state() { # $1: session, $2: pane
   herdr --session "$1" pane process-info --pane "$2" 2>/dev/null \
-    | jq -r --arg re "^(zsh|bash|fish|sh${3:+|$3})\$" '
+    | jq -r --arg re '^(zsh|bash|fish|sh)$' '
         .result.process_info.foreground_processes
         | if length == 0 then "starting"
           elif length == 1 and (.[0].name | test($re)) then "shell"
@@ -337,20 +337,23 @@ workspace_cwd() { # $1: session, $2: workspace_id, $3: workspace label
 # processes are left alone; commands follow at the next revive-panes):
 #   - a "git"-labeled pane in a tab NOT labeled git is the old in-tab lazygit
 #     split → relabel "review" (hunk). Historical rule: retire it once no
-#     persisted workspace predates the git tab.
-#   - a tab labeled "git" is the retired per-workspace lazygit tab (replaced
-#     by the ctrl+alt+g popup) → close it, but only the pristine layout
-#     shape: single pane, running nothing but lazygit or a bare shell. A
-#     split or busy git tab is user-customized — leave it (the user opens
-#     manual tabs for long-running git work; those are unlabeled anyway).
-#     Historical rule too: retire once no persisted workspace has one.
+#     persisted workspace predates the git tab. Tabs labeled "git" are exempt,
+#     which is what keeps this off the ctrl+alt+g tool tab.
+#   - NO rule closes tabs labeled "git" any more. There was one, for the
+#     retired per-workspace lazygit tab, and it was retired itself once no
+#     persisted session had such a tab left (verified across all four
+#     session.json files: only review/nvim labels remained). It had to go: a
+#     "git" tab is now something you asked for with ctrl+alt+g, and the rule
+#     matched exactly its pristine shape — single pane running lazygit or a
+#     bare shell — so it would have closed the new tool tab on the next
+#     migrate-layout run.
 #   - the unlabeled root pane of a single-pane utility tab gets the tab's
 #     label (workspaces predating dev-herdr labeling utility root panes)
 #   - a workspace missing a utility tab gets it, with a labeled bare-shell
 #     root pane (dev-herdr util_tab's create→label sequence, minus the
 #     command — revive-panes launches that)
 migrate_layout() {
-  local session="$1" tabs panes pane label ws util cwd tab state
+  local session="$1" tabs panes pane label ws util cwd
   local -a util_tabs=()
   mapfile -t util_tabs < <(herdr-pane-cmd --util-tabs)
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
@@ -364,22 +367,6 @@ migrate_layout() {
   done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" '
     ($tabs | map({(.tab_id): .label}) | add // {}) as $tl
     | $panes[] | select(.label == "git" and $tl[.tab_id] != "git") | .pane_id')
-
-  # Close retired git tabs — see the "git" rule above. "starting" counts as
-  # idle: a just-booted session's shells may have no foreground process yet.
-  while IFS=$'\t' read -r tab pane; do
-    state="$(pane_state "$session" "$pane" lazygit)" || state=""
-    case "$state" in
-      starting|shell)
-        herdr --session "$session" tab close "$tab" >/dev/null
-        echo "$session: closed retired git tab $tab" ;;
-      *) echo "$session: git tab $tab looks busy — close it manually" >&2 ;;
-    esac
-  done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" '
-    ($tabs | map({(.tab_id): .label}) | add // {}) as $tl
-    | $panes | group_by(.tab_id)[] | select(length == 1) | .[0]
-    | select($tl[.tab_id] == "git")
-    | [.tab_id, .pane_id] | @tsv')
 
   while IFS=$'\t' read -r pane label; do
     herdr --session "$session" pane rename "$pane" "$label" >/dev/null

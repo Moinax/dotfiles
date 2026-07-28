@@ -85,31 +85,42 @@ type = "shell"
 command = "herdr-nav quit"
 description = "Stop session & close window (kills agents)"
 
-# Active code review: tuicr full-screen over the focused pane's working
-# tree. The passive live diff stays in the hunk review pane; tuicr is the
-# typed-comments tool (export with y/:clip, or read back via
+# Active code review: a "review" tab running tuicr on the focused pane's
+# working tree. The passive live diff stays in the agent tab's hunk pane;
+# tuicr is the typed-comments tool (export with y/:clip, or read back via
 # `tuicr review comments`). ctrl+alt+r matches lazygit's Alt+R review bind;
 # kitty used to eat it for set_window_title — that custom map was dropped
-# (rename stays on kitty's default ctrl+shift+alt+t). Quit tuicr (q) to
-# close the popup.
+# (rename stays on kitty's default ctrl+shift+alt+t).
 [[keys.command]]
 key = "ctrl+alt+r"
-type = "popup"
+type = "shell"
 command = "herdr-nav review"
-width = "100%"
-height = "100%"
-description = "Review working tree (tuicr)"
+description = "Review tab (tuicr)"
 
-# Git ops: lazygit full-screen over the focused pane's checkout, mirroring
-# the ctrl+alt+r review popup. Replaced the per-workspace git tab (rationale
-# in herdr-nav's git verb). Quit lazygit (q) to close the popup.
+# Git ops: a "git" tab running lazygit on the focused pane's checkout.
 [[keys.command]]
 key = "ctrl+alt+g"
-type = "popup"
+type = "shell"
 command = "herdr-nav git"
-width = "100%"
-height = "100%"
-description = "Git (lazygit)"
+description = "Git tab (lazygit)"
+
+# The tool tabs: ctrl+alt+f/g/r each focus this workspace's yazi / lazygit /
+# tuicr tab, creating it on the focused pane's cwd on first press. ctrl+alt+w
+# (close_tab) disposes of one. All three were full-screen popups first and all
+# three had the same two faults: a popup is session-modal, so the sidebar and
+# tab bar keep rendering while swallowing clicks (it reads as a hung UI), and
+# it forgets its cwd, filters and selection every time it closes. On demand
+# rather than shipped in every workspace — rationale and measurements in
+# herdr-nav's tool_tab.
+# type = "shell" (not "pane"/"popup"): herdr-nav only talks to the socket API
+# here; the tab it creates is what runs the tool.
+# ctrl+alt+f is free across the stack; herdr's own alt+f (zoom pane) is a
+# different chord.
+[[keys.command]]
+key = "ctrl+alt+f"
+type = "shell"
+command = "herdr-nav files"
+description = "Files tab (yazi)"
 
 # Direct pane resize (alt+shift+hjkl) without a mode; the native resize
 # mode (prefix+r, then hjkl/arrows) also remains available.
