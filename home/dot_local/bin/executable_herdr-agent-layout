@@ -10,9 +10,10 @@
 #        Without -s the CLI resolves the session itself (default session, or
 #        the one inherited via HERDR_SOCKET_PATH when run from inside a pane).
 #        -k pin marks LABEL as the user's own wording (a task they typed), so
-#        herdr-agent-title leaves the tab alone instead of renaming it once
-#        the agent has a title of its own; the default (seed) is a generated
-#        label — project name, provider + number — and is free to be replaced.
+#        herdr-agent-title holds it against the name it would otherwise guess;
+#        the default (seed) is a generated label — project name, provider +
+#        number — and is free to be replaced. That script's header owns what a
+#        pin does and does not survive; don't restate it here.
 set -euo pipefail
 
 usage="usage: herdr-agent-layout [-s SESSION] [-k seed|pin] PANE_ID DIR PROVIDER LABEL [PROMPT]"
@@ -54,7 +55,8 @@ h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
 
 # Register the launch label before the agent can report a better one, so the
 # Claude Code hook (herdr-agent-title) knows what it is allowed to replace:
-# a generated "dotfiles (claude 2)" yes, a task the user typed no.
+# a generated "dotfiles (claude 2)" freely, a task the user typed only once the
+# agent's own title moves.
 seed_args=()
 [[ -n "$session" ]] && seed_args=(-s "$session")
 herdr-agent-title seed "${seed_args[@]}" "$p_agent" "$kind" "$label" || true

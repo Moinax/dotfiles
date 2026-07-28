@@ -194,8 +194,8 @@ case "${1:-}" in
           | "\($num) \($last_agent + 1)"')
     # A name the user typed wins over the numbered placeholder: it labels the
     # tab, it is the agent's display name (so Claude's own resume picker and
-    # terminal title agree with the tab), and -k pin tells herdr-agent-title
-    # to keep its hands off a name that was chosen rather than generated.
+    # terminal title agree with the tab), and -k pin tells herdr-agent-title to
+    # hold it against the name it would otherwise guess.
     kind=seed; label=""
     [[ -n "$name" ]] && label="$(herdr-task-name "$name" || true)"
     if [[ -n "$label" ]]; then
