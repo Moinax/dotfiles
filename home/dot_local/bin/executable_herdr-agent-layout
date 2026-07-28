@@ -6,14 +6,24 @@
 # hunk here is review-only; real git ops (stage/commit/push) live in the
 # ctrl+alt+g lazygit popup (herdr-nav git).
 #
-# Usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]
+# Usage: herdr-agent-layout [-s SESSION] [-k seed|pin] PANE_ID DIR PROVIDER LABEL [PROMPT]
 #        Without -s the CLI resolves the session itself (default session, or
 #        the one inherited via HERDR_SOCKET_PATH when run from inside a pane).
+#        -k pin marks LABEL as the user's own wording (a task they typed), so
+#        herdr-agent-title leaves the tab alone instead of renaming it once
+#        the agent has a title of its own; the default (seed) is a generated
+#        label — project name, provider + number — and is free to be replaced.
 set -euo pipefail
 
-usage="usage: herdr-agent-layout [-s SESSION] PANE_ID DIR PROVIDER LABEL [PROMPT]"
-session=""
-[[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+usage="usage: herdr-agent-layout [-s SESSION] [-k seed|pin] PANE_ID DIR PROVIDER LABEL [PROMPT]"
+session=""; kind=seed
+while [[ "${1:-}" == -[sk] ]]; do
+  case "$1" in
+    -s) session="${2:?$usage}" ;;
+    -k) kind="${2:?$usage}" ;;
+  esac
+  shift 2
+done
 p_agent="${1:?$usage}"
 dir="${2:?$usage}"
 provider="${3:?$usage}"
@@ -41,6 +51,13 @@ p_review="$(h pane split "$p_agent" --direction right \
   --cwd "$dir" --no-focus | jq -r '.result.pane.pane_id')"
 h pane rename "$p_review" review >/dev/null
 h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
+
+# Register the launch label before the agent can report a better one, so the
+# Claude Code hook (herdr-agent-title) knows what it is allowed to replace:
+# a generated "dotfiles (claude 2)" yes, a task the user typed no.
+seed_args=()
+[[ -n "$session" ]] && seed_args=(-s "$session")
+herdr-agent-title seed "${seed_args[@]}" "$p_agent" "$kind" "$label" || true
 
 # Agent command comes from dev-agent-argv (single source of truth; -q emits
 # it %q-quoted so prompts with spaces/quotes survive the pane's shell). The

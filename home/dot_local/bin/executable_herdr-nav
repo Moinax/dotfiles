@@ -5,11 +5,13 @@
 #
 # Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
 #        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
-#        herdr-nav agent-picker     pick an agent provider, then add it as a
-#                                   tab to the focused workspace
-#        herdr-nav agent-tab [PROV] add another agent tab to the focused
+#        herdr-nav agent-picker     pick an agent provider and name it, then
+#                                   add it as a tab to the focused workspace
+#        herdr-nav agent-tab [PROV [NAME]]
+#                                   add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
-#                                   provider (e.g. claudex for a GPT tab)
+#                                   provider (e.g. claudex for a GPT tab), NAME
+#                                   labels the tab and the agent
 #        herdr-nav review           tuicr on the focused pane's working tree,
 #                                   or its commit selector when the tree is
 #                                   clean (run from the ctrl+alt+r popup)
@@ -82,7 +84,18 @@ case "${1:-}" in
     provider="$(tv --source-command "printf '%s\\n' $providers" \
       --no-status-bar --input-header "New agent" < /dev/tty)" || exit 0
     [[ -n "$provider" ]] || exit 0
-    exec "$0" agent-tab "$provider"
+    # A name for the tab, nothing else — it is not typed into the agent (a
+    # name is not a prompt, and having it submitted is a surprise). It also
+    # becomes the agent's display name (claude -n, so its resume picker and
+    # terminal title agree with the tab). Enter on an empty input keeps the
+    # numbered tab — herdr-agent-title renames it after the first exchange
+    # instead. Esc cancels the whole thing.
+    name=""
+    if command -v gum >/dev/null 2>&1; then
+      name="$(gum input --header "$provider" --char-limit 0 \
+        --placeholder "Name this agent (optional)" </dev/tty)" || exit 0
+    fi
+    exec "$0" agent-tab "$provider" "$name"
     ;;
   agent-tab)
     # Clone the dev-herdr "agent" tab layout into a new tab of the focused
@@ -90,8 +103,11 @@ case "${1:-}" in
     # agents can share one checkout — no worktree needed. Provider and
     # project dir come from the workspace's existing agent pane; an explicit
     # PROVIDER argument overrides it (the ctrl+alt+a picker passes the chosen
-    # agent). Tabs are labeled by provider, so mixed tabs stay tellable apart.
-    provider_override="${2:-}"
+    # agent). Tabs are labeled by NAME when one was given, by provider (+
+    # number) otherwise, so several agents on one checkout stay tellable
+    # apart. NAME labels the tab and names the agent; it is never typed into
+    # the agent, which starts on an empty prompt like any other tab.
+    provider_override="${2:-}"; name="${3:-}"
     [[ -z "$provider_override" || " $providers " == *" $provider_override "* ]] \
       || die "agent-tab: unknown provider '$provider_override'"
     # Workspace id + label in one `workspace list` call.
@@ -109,21 +125,42 @@ case "${1:-}" in
         || die "no focused pane"
     fi
     [[ -n "$provider_override" ]] && provider="$provider_override"
-    # Tabs are labeled by provider — "claude", "claude 2", "claudex", ... —
-    # one numbered family per provider. One pass over the tab labels finds
-    # the next free suffix and the insertion point. Insert immediately after
-    # the last agent tab so the agent block stays contiguous and lands before
-    # the shared utility tabs (nvim); with no agent tab, insert at the
-    # front — no tab-name list needed beyond the agent family itself.
+    # Where to insert, and what to call it. Agent tabs are found through their
+    # panes — a pane herdr detected an agent in, or one labeled with a
+    # provider (herdr-agent-layout labels the agent pane, and revive-panes
+    # needs that label to stay a provider name). Tab labels cannot answer
+    # this any more: they carry task names now, not "claude 2".
+    # Insert right after the last agent tab so the agent block stays
+    # contiguous and lands before the shared utility tabs (nvim); with no
+    # agent tab, insert at the front.
+    # The number is still needed for an unnamed tab, and it is per provider —
+    # "claude", "claude 2", "claudex" — so it comes from the labels that still
+    # look like that. Renamed tabs drop out of the family and free their
+    # number, which is fine: it is a placeholder, not an identity.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
-      | jq -r --arg base "$provider" --arg fam "^(agent|${providers// /|})(?: [0-9]+)?\$" '
-          [.result.tabs[].label] as $ls
-          | ([$ls[] | capture("^\($base)(?: (?<n>[0-9]+))?$")
+      | jq -r --arg base "$provider" --arg provs "$providers" --argjson panes "$panes" '
+          ($provs | split(" ")) as $ps
+          | [$panes.result.panes[]?
+             | select(((.agent // "") != "") or IN(.label; $ps[]))
+             | .tab_id] as $agent_tabs
+          | ([.result.tabs[].label | capture("^\($base)(?: (?<n>[0-9]+))?$")
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
-          | ([range(0; $ls | length) | select($ls[.] | test($fam))]
-              | max // -1) as $last_agent
+          | ([.result.tabs | to_entries[]
+              | select(IN(.value.tab_id; $agent_tabs[])) | .key] | max // -1) as $last_agent
           | "\($num) \($last_agent + 1)"')
-    label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
+    # A name the user typed wins over the numbered placeholder: it labels the
+    # tab, it is the agent's display name (so Claude's own resume picker and
+    # terminal title agree with the tab), and -k pin tells herdr-agent-title
+    # to keep its hands off a name that was chosen rather than generated.
+    kind=seed; label=""
+    [[ -n "$name" ]] && label="$(herdr-task-name "$name" || true)"
+    if [[ -n "$label" ]]; then
+      kind=pin
+      display="$label"
+    else
+      label="$provider"; [[ "$num" -gt 1 ]] && label="$provider $num"
+      display="$ws_label ($label)"
+    fi
 
     tab_json="$(herdr tab create --workspace "$ws" --label "$label" --cwd "$dir")"
     t_new="$(jq -r '.result.tab.tab_id' <<<"$tab_json")"
@@ -135,9 +172,9 @@ case "${1:-}" in
     # Panes (agent + hunk review top row, dev/logs bottom row) are built by
     # herdr-agent-layout, shared with dev-herdr's create path. No -s: the
     # session comes from the inherited HERDR_SOCKET_PATH, like every other
-    # herdr call in this script. The agent display name carries the tab
-    # label: "ws (claude 2)".
-    herdr-agent-layout "$p_agent" "$dir" "$provider" "$ws_label ($label)"
+    # herdr call in this script. Unnamed tabs keep the old display name
+    # ("ws (claude 2)") until the agent has a title of its own.
+    herdr-agent-layout -k "$kind" "$p_agent" "$dir" "$provider" "$display"
 
     # tab create does not switch the workspace's active tab — land on the
     # new agent explicitly.

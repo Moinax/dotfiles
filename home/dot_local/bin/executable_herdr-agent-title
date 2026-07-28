@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# Name a herdr agent tab after what its conversation is actually about — the
+# "agent session" identity the desktop agents (Claude, Codex, Cursor) have and
+# a pane grid does not. Three claude tabs on one checkout read as
+# "remove-lfs-boilerplate", "flaky-updater-tests", "sidebar-agent-rows"
+# instead of "claude", "claude 2", "claude 3".
+#
+# Usage: herdr-agent-title sync              Claude Code hook (Stop /
+#                                            SessionStart); hook JSON on stdin
+#        herdr-agent-title seed [-s SESSION] PANE KIND NAME
+#                                            record the launch label so the
+#                                            hook knows what it may replace
+#
+# Where the name comes from, in order:
+#   1. Claude Code's own session title — the `custom-title` record it keeps in
+#      the transcript. It is what `/rename` writes, what Claude regenerates as
+#      the work drifts, and what it pushes to the terminal title (which is why
+#      the sidebar's terminal_title_stripped row already tracks it live).
+#   2. A slug of the first user prompt, until (1) says anything other than the
+#      launch label — this is what makes a brand-new tab self-name after one
+#      exchange instead of sitting on "claude 2" for the first ten minutes.
+#
+# Seed kinds (written by herdr-agent-layout at launch, one line KIND<TAB>NAME
+# under $XDG_RUNTIME_DIR):
+#   seed  launched with a generated label (project / provider + number) — the
+#         hook is free to replace it
+#   pin   launched from a task the user typed — their words win; the hook
+#         leaves the tab alone (the live Claude title still shows in the
+#         sidebar's own terminal-title row)
+#   set   written by this script: the last name it applied, and therefore the
+#         tab label it expects to find. A different live label means the user
+#         renamed the tab by hand, which flips the entry to `pin` for good.
+# With no entry at all — a pane from before this existed, or after a reboot,
+# which reassigns pane ids anyway — the live tab label is adopted as the
+# baseline: a name that is already right then costs a re-report, not a rename.
+# A `pin` does not survive that (the state is per boot by nature), so a
+# hand-named tab can be renamed once after a reboot if the agent's own title
+# has moved on since; renaming it again re-pins it.
+#
+# Nothing here is fatal and every herdr call is time-boxed: a wedged server
+# must never cost a turn. Cost is ~10ms per turn end, and only on a pane that
+# hosts an agent inside herdr.
+set -euo pipefail
+
+usage="usage: herdr-agent-title sync | seed [-s SESSION] PANE KIND NAME"
+
+cache_root="${XDG_RUNTIME_DIR:-/tmp}/herdr-agent-title"
+
+# Pane ids (w8:p48) are unique per session only, so the key carries both.
+cache_path() { # $1: session, $2: pane id
+  local key="$1.$2"
+  printf '%s/%s\n' "$cache_root" "${key//[![:alnum:]._-]/_}"
+}
+
+# Session name from the inherited socket path — named sessions live in
+# ~/.config/herdr/sessions/<name>/herdr.sock, the default one sits directly in
+# ~/.config/herdr (same derivation as herdr-nav quit).
+session_from_socket() {
+  local dir="$HOME/.config/herdr/sessions" sock="${HERDR_SOCKET_PATH:-}"
+  if [[ "$sock" == "$dir"/?*/* ]]; then
+    sock="${sock#"$dir/"}"
+    printf '%s\n' "${sock%%/*}"
+  else
+    printf 'default\n'
+  fi
+}
+
+write_cache() { # $1: file, $2: kind, $3: name
+  [[ -d "$cache_root" ]] || mkdir -p "$cache_root"
+  printf '%s\t%s\n' "$2" "$3" >"$1"
+}
+
+# The tab's current label, empty on any failure. Time-boxed like every other
+# herdr call here (see the header).
+tab_label() { # $1: tab id
+  timeout 2 herdr tab get "$1" 2>/dev/null \
+    | jq -r '.result.tab.label // empty' 2>/dev/null
+}
+
+# Both readers below run in a subshell with pipefail off on purpose: their
+# bounded greps exit early, which kills the upstream `tac`/`grep` with SIGPIPE
+# — a failure this script must not see. They also re-check the record type in
+# jq, because a transcript quotes these very strings inside tool output (any
+# turn that read a transcript, this script's own runs included), and they end
+# on a single slurping jq so nothing has to early-exit a second time.
+
+# The title Claude Code maintains for the session, newest record first (tac
+# streams from the end — a multi-MB transcript costs ~4ms, not a full read).
+# The length filter keeps a multi-MB tool-result line out of jq; a real
+# record is ~120 bytes.
+claude_title() { # $1: transcript
+  ( set +o pipefail
+    tac "$1" 2>/dev/null \
+      | grep -m20 -E '"type": ?"custom-title"' \
+      | awk 'length < 400' \
+      | jq -R -s -r 'split("\n")
+          | map(fromjson? | select(.type == "custom-title") | .customTitle // empty)
+          | map(select(length > 0)) | first // empty' 2>/dev/null )
+}
+
+# The opening prompt. A few user records, not just the first: a session opened
+# with a slash command leads with a <local-command-caveat> block. Only records
+# with a promptId count — that is what a typed prompt has and a tool result or
+# an injected command body does not — and text that opens with a tag is
+# scaffolding (<command-name>, <local-command-caveat>), never the prompt.
+# The length filter is the same guard claude_title uses, just looser: the grep
+# also matches tool-result records, and one 800KB line among the first eight
+# would otherwise be slurped whole into jq.
+first_prompt() { # $1: transcript
+  ( set +o pipefail
+    grep -m8 -E '"type": ?"user"' "$1" 2>/dev/null \
+      | awk 'length < 8000' \
+      | jq -R -s -r 'split("\n")
+          | map(fromjson? | select(.type == "user")
+                | select(.promptId != null)
+                | select((.isSidechain // false) | not)
+                | [.message.content?] | flatten
+                | map(if type == "object" then (.text // "") else . end)
+                | map(select(type == "string" and length > 0
+                             and (test("^\\s*<") | not)))
+                | first // empty)
+          | first // empty' 2>/dev/null )
+}
+
+case "${1:-sync}" in
+  seed)
+    shift
+    # Without -s the session is the one this call inherited (herdr-agent-layout
+    # runs inside a pane for the agent-tab path); dev-herdr passes it
+    # explicitly because it can create a workspace in another session than the
+    # pane it was launched from.
+    session="$(session_from_socket)"
+    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    pane="${1:?$usage}"; kind="${2:?$usage}"; name="${3:?$usage}"
+    [[ "$kind" == seed || "$kind" == pin ]] || { echo "$usage" >&2; exit 2; }
+    write_cache "$(cache_path "$session" "$pane")" "$kind" "$name"
+    ;;
+
+  sync)
+    # Outside a herdr pane there is nothing to label. This is also the fast
+    # exit for every agent the hook fires in that herdr never spawned.
+    [[ "${HERDR_ENV:-}" == 1 && -n "${HERDR_PANE_ID:-}" && -n "${HERDR_SOCKET_PATH:-}" ]] \
+      || exit 0
+    command -v jq >/dev/null 2>&1 || exit 0
+
+    # Cache first, so a pinned pane exits before anything forks: it is the one
+    # state that needs nothing from the transcript, and the ctrl+alt+a name
+    # prompt makes pinned panes common. Reading it costs no process at all.
+    cache="$(cache_path "$(session_from_socket)" "$HERDR_PANE_ID")"
+    kind=""; applied=""
+    if [[ -r "$cache" ]]; then
+      IFS=$'\t' read -r kind applied <"$cache" || true
+    fi
+    [[ "$kind" == pin ]] && exit 0
+
+    # Both payload fields in one jq: the hook JSON is a handful of lines and
+    # this runs at every turn end, on every pane.
+    IFS=$'\t' read -r transcript event \
+      < <(jq -r '[.transcript_path // "", .hook_event_name // ""] | @tsv' \
+            2>/dev/null) || true
+    [[ -n "$transcript" && -r "$transcript" ]] || exit 0
+
+    if [[ -z "$kind" && -n "${HERDR_TAB_ID:-}" ]]; then
+      # No entry: this pane predates the cache, or the machine rebooted (pane
+      # ids are reassigned on restore anyway, so the cache cannot outlive a
+      # boot). Adopt whatever the tab is called as the baseline, so a name
+      # that is already right costs a re-report and not a rename.
+      applied="$(tab_label "$HERDR_TAB_ID")" || applied=""
+    fi
+
+    task_name="${0%/*}/herdr-task-name"
+    [[ -x "$task_name" ]] || task_name=herdr-task-name
+
+    # Claude writes its title as a slug ("workspace-pane-agent-labeling");
+    # herdr-task-name reads it back as words and applies the same length cap
+    # every other name goes through, so the cached value and the label always
+    # compare like with like.
+    name="$(claude_title "$transcript")" || name=""
+    [[ -n "$name" ]] && name="$("$task_name" "$name" 2>/dev/null || true)"
+
+    # Nothing better than the launch label yet — no title at all, or still the
+    # one we passed as `claude -n`: name it after the opening prompt instead.
+    # Both gates are narrow on purpose. Once a real name has been applied a
+    # stale first prompt must not undo a title Claude has since sharpened, and
+    # a title that merely matches an adopted tab label is not a seed.
+    if [[ "$kind" != set ]] \
+       && [[ -z "$name" || ( "$kind" == seed && "$name" == "$applied" ) ]]; then
+      first="$(first_prompt "$transcript")" || first=""
+      [[ -n "$first" ]] && name="$("$task_name" "$first" 2>/dev/null || true)"
+    fi
+    [[ -n "$name" ]] || exit 0
+
+    # A server restart wipes reported metadata (herdr only persists labels),
+    # so SessionStart re-reports even when the name has not moved.
+    [[ "$name" == "$applied" && "$kind" == set && "$event" != SessionStart ]] && exit 0
+
+    # Display-only metadata: the $task sidebar token and the pane title. The
+    # semantic agent state stays herdr's own integration's business.
+    timeout 2 herdr pane report-metadata "$HERDR_PANE_ID" \
+      --source dots:agent-title --title "$name" --token "task=$name" \
+      >/dev/null 2>&1 || true
+
+    # Deliberately NOT `herdr agent rename`: that replaces the value behind
+    # the sidebar's `agent` token, so the row loses the one short thing it had
+    # ("claude") and repeats the long name instead. The tab label is where the
+    # name belongs; the agent stays its provider.
+
+    if [[ -n "${HERDR_TAB_ID:-}" ]]; then
+      live=""
+      [[ "$kind" == set ]] && { live="$(tab_label "$HERDR_TAB_ID")" || live=""; }
+      if [[ -n "$live" && "$live" != "$applied" ]]; then
+        # Renamed by hand since our last write — hand the tab back for good.
+        write_cache "$cache" pin "$live"
+        exit 0
+      fi
+      timeout 2 herdr tab rename "$HERDR_TAB_ID" "$name" >/dev/null 2>&1 || true
+    fi
+
+    write_cache "$cache" set "$name"
+    ;;
+
+  *)
+    echo "$usage" >&2
+    exit 2
+    ;;
+esac

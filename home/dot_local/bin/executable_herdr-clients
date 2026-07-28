@@ -175,7 +175,7 @@ revive_pane_cmd() {
 }
 
 revive_panes() {
-  local session="$1" panes tabs workspaces pane label ws_label cmd
+  local session="$1" panes tabs workspaces pane label ws_label tab_label name cmd
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
@@ -188,18 +188,22 @@ revive_panes() {
   # else — dev/logs panes match neither and stay bare shells. Agent panes
   # with a recorded agent_session are excluded up front: herdr resumes those
   # itself (see the note above), so only agents herdr never registered get
-  # the fresh-conversation fallback. The workspace label becomes the agent's
-  # display name, matching how dev-herdr launched it; extra agent tabs added
-  # by herdr-nav (named "ws (claude 2)") revive under the plain workspace
-  # label — cosmetic, and their conversation is fresh either way.
+  # the fresh-conversation fallback. The agent's display name is the tab
+  # label when that says something — tabs carry task names now
+  # ("fix-flaky-updater-tests"), and a fresh conversation in that tab is still
+  # about that task — and the workspace label otherwise, matching how
+  # dev-herdr launched it. "Says something" means anything but the generated
+  # "<provider>[ N]" placeholder.
   # Workspaces created before dev-herdr labeled utility-tab
   # root panes fall back to the tab label for single-pane tabs (a split tab
   # is user-customized — leave it alone). Panes revive concurrently: each
   # waits up to ~3s for its shell, so serial cost would grow with pane count.
-  while IFS=$'\t' read -r pane label ws_label; do
+  while IFS=$'\t' read -r pane label ws_label tab_label; do
     [[ -n "$pane" && -n "$label" ]] || continue
+    name="$ws_label"
+    [[ -n "$tab_label" && ! "$tab_label" =~ ^"$label"( [0-9]+)?$ ]] && name="$tab_label"
     cmd="$(herdr-pane-cmd "$label")" \
-      || cmd="$(dev-agent-argv -q "$label" "$ws_label" 2>/dev/null)" \
+      || cmd="$(dev-agent-argv -q "$label" "$name" 2>/dev/null)" \
       || continue
     revive_pane_cmd "$session" "$pane" "$cmd" &
   done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" \
@@ -207,7 +211,8 @@ revive_panes() {
     ($workspaces | map({(.workspace_id): .label}) | add // {}) as $ws_label
     | ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
     | ($panes | map(select(.label) | select(.agent_session == null)
-                    | [.pane_id, .label, ($ws_label[.workspace_id] // "")])),
+                    | [.pane_id, .label, ($ws_label[.workspace_id] // ""),
+                       ($tab_label[.tab_id] // "")])),
       ($panes | group_by(.tab_id)
               | map(select(length == 1) | .[0] | select(.label == null)
                     | [.pane_id, ($tab_label[.tab_id] // "")]))

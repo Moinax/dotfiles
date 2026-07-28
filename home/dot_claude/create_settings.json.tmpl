@@ -32,27 +32,35 @@
   "effortLevel": "high",
   "permissions": {
     "defaultMode": "auto"
-  }{{ if .install_vibewatch }},
-  {{- /* vibewatch hook per event, mirroring `vibewatch install`'s merge (the
-         CLI subcommand is the kebab-cased event name). PermissionRequest is
-         the one sync hook, as vibewatch installs it. */}}
-  "hooks": {
-    {{- range $i, $event := list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "UserPromptSubmit" }}
-    {{- if $i }},{{ end }}
-    "{{ $event }}": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            {{- if ne $event "PermissionRequest" }}
-            "async": true,
-            {{- end }}
-            "command": "~/.cargo/bin/vibewatch notify {{ kebabcase $event }} --agent claude-code"
-          }
-        ]
-      }
-    ]
-    {{- end }}
-  }{{ end }}
+  },
+  {{- /* Hooks, two families merged per event:
+         - vibewatch, one per event, mirroring `vibewatch install`'s merge
+           (the CLI subcommand is the kebab-cased event name). PermissionRequest
+           is the one sync hook, as vibewatch installs it.
+         - herdr-agent-title, on Stop (the turn ended, Claude may have sharpened
+           its session title) and SessionStart (a herdr server restart drops
+           reported metadata — re-report it). It no-ops outside a herdr pane. */}}
+  {{- /* Built as data and serialized, not printed as text: the two families
+         overlap on SessionStart and Stop, and hand-placed commas between a
+         variable number of hook objects is the one part of this that can
+         emit invalid JSON. A third family is one more `if` here. */}}
+  {{- $title_events := list "SessionStart" "Stop" }}
+  {{- $vibe_events := list }}
+  {{- if .install_vibewatch }}
+  {{-   $vibe_events = list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "UserPromptSubmit" }}
+  {{- end }}
+  {{- $hooks := dict }}
+  {{- range $event := concat $vibe_events $title_events | uniq | sortAlpha }}
+  {{-   $cmds := list }}
+  {{-   if has $event $vibe_events }}
+  {{-     $vibe := dict "type" "command" "command" (printf "~/.cargo/bin/vibewatch notify %s --agent claude-code" (kebabcase $event)) }}
+  {{-     if ne $event "PermissionRequest" }}{{ $vibe = set $vibe "async" true }}{{ end }}
+  {{-     $cmds = append $cmds $vibe }}
+  {{-   end }}
+  {{-   if has $event $title_events }}
+  {{-     $cmds = append $cmds (dict "type" "command" "async" true "command" "~/.local/bin/herdr-agent-title sync") }}
+  {{-   end }}
+  {{-   $hooks = set $hooks $event (list (dict "matcher" "" "hooks" $cmds)) }}
+  {{- end }}
+  "hooks": {{ $hooks | toPrettyJson | indent 2 | trim }}
 }

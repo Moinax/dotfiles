@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Turn free text — a name typed in the agent picker, a first prompt, an
+# agent's own session title — into the short label herdr shows on a tab and in
+# the agent sidebar. Single source of truth shared by herdr-nav (new agent
+# tab), dev-herdr (workspace create) and herdr-agent-title (the Claude Code
+# hook that keeps the name fresh), so a name never depends on which path
+# created it.
+#
+# Words, not slugs: these are labels to read, not identifiers. Text is kept as
+# written, only shortened — and kebab/snake input (Claude Code's own session
+# titles look like "workspace-pane-agent-labeling") is turned back into words.
+#
+# Usage: herdr-task-name TEXT...
+# Exits 1 when nothing usable survives, so callers fall back to their own
+# label (provider + number, project name, ...).
+#
+# Builtins only past the argument list: herdr-agent-title calls this on every
+# agent turn end, so a `tr | sed` chain here is a fork per pane per turn.
+set -euo pipefail
+shopt -s extglob
+
+max_words=6
+max_chars=48
+
+text="$*"
+# Transliterate (é -> e): the prompts here are often French, and herdr renders
+# labels in a terminal cell grid where wide/combining glyphs misalign. Guarded
+# on the text actually holding a non-ASCII byte — most labels do not, and this
+# is the one command substitution left on the hot path.
+if [[ "$text" == *[![:ascii:]]* ]] && command -v iconv >/dev/null 2>&1; then
+  text="$(printf '%s' "$text" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null \
+          || printf '%s' "$text")"
+fi
+# Control characters, dropped — except the whitespace ones, which become word
+# breaks. `read -a` below collapses the runs and trims the ends.
+text="${text//[$'\v\f']/}"
+text="${text//[[:space:]]/ }"
+text="${text//[[:cntrl:]]/}"
+read -r -a words <<<"$text"
+(( ${#words[@]} )) || exit 1
+text="${words[*]}"
+
+# A single unspaced run of dashes/underscores is a slug someone else made
+# (Claude's session titles, a branch name) — read it back as words. Text that
+# already has spaces keeps its hyphens: "pre-commit hook" is not a slug.
+if [[ "$text" != *" "* ]]; then
+  text="${text//[-_]/ }"
+  read -r -a words <<<"$text"
+fi
+
+# Keep the head: the first words carry the intent, and a ~26-column sidebar
+# has room for about that much anyway.
+(( ${#words[@]} > max_words )) && words=("${words[@]:0:max_words}")
+name="${words[*]}"
+
+# Hard cap, cut back to the last whole word when the trim landed mid-word.
+if (( ${#name} > max_chars )); then
+  name="${name:0:max_chars}"
+  [[ "$name" == *" "* ]] && name="${name% *}"
+fi
+# Punctuation the cut left dangling — but not a closing bracket, which would
+# unbalance a name like "dotfiles (claude 2)".
+name="${name%%+([,\;:.…-])}"
+name="${name% }"
+[[ -n "$name" ]] || exit 1
+
+printf '%s\n' "$name"

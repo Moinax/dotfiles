@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
-#   agent tab (labeled by provider: "claude", "claudex", ...):
+#   agent tab (labeled by task when a prompt came with it, else by provider:
+#                  "claude", "claudex", ...):
 #                  agent (top-left) + hunk review (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
 #   tab "nvim":    full-window nvim
@@ -84,10 +85,25 @@ p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
 t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
 [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 
-h tab rename "$t_agent" "$provider" >/dev/null
+# The workspace keeps the project name (revive-panes and the reattach path
+# above both match on it), but the agent tab can say what this run is for when
+# a prompt came with it: "fix the flaky updater tests" beats "claude". Slash
+# commands are excluded — `wtstart -s` sends "/start <branch>", which is an
+# instruction, not a description of the work. It stays a seed, not a pin: the
+# opening prompt is a first approximation, and herdr-agent-title should be
+# free to replace it once the agent has titled the session itself. Only a name
+# typed in the ctrl+alt+a picker is pinned.
+tab_label="$provider"; agent_name="$name"
+if [[ -n "$prompt" && "$prompt" != /* ]]; then
+  prompt_label="$(herdr-task-name "$prompt" || true)"
+  [[ -n "$prompt_label" ]] && { tab_label="$prompt_label"; agent_name="$prompt_label"; }
+fi
+
+h tab rename "$t_agent" "$tab_label" >/dev/null
 # Panes (agent + hunk review top row, dev/logs bottom row) are built by
 # herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
-herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" "$name" "$prompt"
+herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" \
+  "$agent_name" "$prompt"
 
 # Full-window utility tabs (currently just "nvim"; lazygit moved to the
 # ctrl+alt+g popup). One of each is shared by all agent tabs in this

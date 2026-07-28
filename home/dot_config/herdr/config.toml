@@ -60,18 +60,20 @@ width = "70%"
 height = "60%"
 description = "Open project (dev picker)"
 
-# Pick an agent provider (herdr-nav's shared list), then open it as an extra
-# agent tab in the focused workspace. The tab clones the dev-herdr layout
-# (agent + lazygit top row, dev/logs bottom row) in the same project directory
-# — several agents on one checkout, no worktree needed. ctrl+alt is mostly
-# free across the stack.
+# Pick an agent provider (herdr-nav's shared list), name it, and open it as an
+# extra agent tab in the focused workspace. The tab clones the dev-herdr
+# layout (agent + lazygit top row, dev/logs bottom row) in the same project
+# directory — several agents on one checkout, no worktree needed. The name
+# only labels the tab and the agent; it is never typed into the agent. Skip it
+# (Enter) and herdr-agent-title names the tab after the first exchange.
+# ctrl+alt is mostly free across the stack.
 [[keys.command]]
 key = "ctrl+alt+a"
 type = "popup"
 command = "herdr-nav agent-picker"
-width = "40%"
+width = "60%"
 height = "35%"
-description = "New agent tab (pick provider)"
+description = "New agent tab (provider + name)"
 
 # Stop the current session and close its client window — the in-herdr
 # equivalent of `hss <session>` (kills the agents; the saved layout
@@ -140,5 +142,21 @@ description = "Resize pane right"
 [ui]
 agent_panel_sort = "spaces"
 show_agent_labels_on_pane_borders = true
+
+# What each agent row says. The sidebar is ~26 columns, so exactly one long
+# thing fits and it must not appear twice:
+#   row 1  the short coordinates — state, space, provider
+#   row 2  the task, alone on its line: the tab label, which is named after
+#          the work (herdr-agent-title keeps it in step with the agent's own
+#          session title; herdr-nav seeds it from the task typed in the
+#          ctrl+alt+a picker)
+# The default layout put the tab on row 1 next to the space, which truncated
+# both. Nothing here renames the agent itself — the `agent` token has to stay
+# short ("claude", "codex") for row 1 to be worth reading.
+[ui.sidebar.agents]
+rows = [
+  ["state_icon", "workspace", { token = "agent", dim = true }],
+  ["tab"],
+]
 [ui.toast]
 delivery = "herdr"
