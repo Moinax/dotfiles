@@ -7,6 +7,7 @@ set -e
 if [ -z "$1" ]; then
     cliphist list
 else
-    # Decode selected entry and type it
+    # Decode selected entry and paste it (the wtype wrapper turns `-` into a
+    # real paste, so multi-line entries stay one block)
     echo "$1" | cliphist decode | wtype -
 fi
