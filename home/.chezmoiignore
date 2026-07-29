@@ -107,6 +107,8 @@ Wallpapers/**
 # Ignore Productivity configs if not selected
 {{- if not .install_productivity }}
 .local/share/applications/google-chrome.desktop
+.local/share/applications/messenger.desktop
+.local/bin/messenger
 {{- end }}
 
 # ssh-agent runs via OpenSSH's systemd `ssh-agent.socket` user unit

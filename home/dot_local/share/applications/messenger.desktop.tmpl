@@ -1,0 +1,17 @@
+[Desktop Entry]
+Version=1.0
+Name=Messenger
+GenericName=Instant Messaging
+Comment=Facebook Messenger in a dedicated window
+# Absolute, like google-chrome.desktop next to it: a launcher is not started
+# from a login shell, so ~/.local/bin is only on PATH when the Hyprland session
+# put it there — a different condition than the one that installs this entry.
+Exec={{ .chezmoi.homeDir }}/.local/bin/messenger
+StartupNotify=true
+# Must match the app_id the script sets via setDesktopFileName(), otherwise the
+# launcher cannot tie the window back to this entry.
+StartupWMClass=messenger
+Terminal=false
+Icon=internet-chat
+Type=Application
+Categories=Network;InstantMessaging;

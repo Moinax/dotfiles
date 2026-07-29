@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""Facebook Messenger in a dedicated window, built on Qt WebEngine.
+
+Why this exists rather than a browser PWA: a Chromium or Firefox app window
+never calls xdg-open, so a clicked link opens in whichever browser hosts the
+app instead of the system default. It also inherits that browser's branding in
+the window title, which no setting removes. Owning the window means owning the
+title and the Wayland app_id, and routing links through xdg-open on purpose.
+
+The engine matters: Qt WebEngine *is* Chromium, which is what Meta's properties
+expect. Tauri would give WebKitGTK on Linux, a different and weaker engine for
+this job.
+
+Deliberately not implemented: anything that reads Messenger's DOM. Scraping is
+what turns a wrapper into a maintenance treadmill and eventually abandonware —
+the unread count comes from document.title instead, which Meta has no reason to
+restructure.
+
+Set MESSENGER_DEBUG=1 for a running commentary plus F9, which dumps whatever
+modal or overlay is currently covering the page. That probe is how the
+notification nag below was identified; keep it for the next time Meta changes
+something.
+"""
+
+# The exec bit comes from chezmoi's executable_ prefix at apply time, so the
+# source file here is (and stays) mode 644 like every other script in this dir.
+# ruff: noqa: EXE001
+
+import os
+import re
+import sys
+from pathlib import Path
+
+from PyQt6.QtCore import QLockFile, QProcess, QStandardPaths, Qt, QTimer, QUrl
+from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEnginePermission,
+    QWebEngineProfile,
+)
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QApplication
+
+APP_ID = "messenger"       # Wayland app_id; must match StartupWMClass
+APP_TITLE = "Messenger"
+DEBUG = os.environ.get("MESSENGER_DEBUG") == "1"
+
+# Pinned rather than read from the session locale, which is en_US here: Meta
+# otherwise falls back to geo-IP and serves Dutch from a Belgian address. Both
+# the ?locale= (which decides the pre-login pages) and the Accept-Language
+# header (which Qt leaves empty, so Meta has nothing else to go on) derive from
+# this one value.
+LOCALE = "fr_FR"
+START_URL = f"https://www.messenger.com/?locale={LOCALE}"
+ACCEPT_LANGUAGE = f"{LOCALE.replace('_', '-')},{LOCALE[:2]};q=0.9,en;q=0.8"
+
+# Hosts that count as "inside the app", matched on the registrable suffix so
+# subdomains are covered. Messenger's login spans several Meta properties, and
+# attachments open on the CDN:
+#   messenger.com  the app itself
+#   facebook.com   two-factor and consent screens — main frame only while
+#                  authenticating, see is_out_of_scope()
+#   fbsbx.com      the login captcha iframe
+#   fbcdn.net      images and files opened from a conversation
+# Anything else is somebody else's site and goes to the default browser, Meta's
+# own marketing pages included: this window has no back button, so a navigation
+# that leaves Messenger is a dead end.
+INTERNAL_DOMAINS = (
+    "messenger.com",
+    "facebook.com",
+    "fbsbx.com",
+    "fbcdn.net",
+)
+
+# The only legitimate reasons for the main frame to be on facebook.com.
+AUTH_PATH_PREFIXES = (
+    "/login",
+    "/two_step_verification",
+    "/checkpoint",
+    "/authentication",
+    "/captcha",
+    "/recover",
+    "/common/referer_frame.php",
+    "/privacy/consent",
+    "/cookie",
+)
+
+# Navigation the user asked for, as opposed to the redirects and form posts the
+# auth flow is made of. Built once: the check runs on every navigation.
+USER_NAV_TYPES = frozenset({
+    QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+    QWebEnginePage.NavigationType.NavigationTypeTyped,
+})
+
+
+def log(tag, msg):
+    if DEBUG:
+        print(f"[{tag}] {msg}", flush=True)
+
+
+def state_dir():
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.GenericDataLocation
+    )
+    d = Path(base) / APP_ID
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def is_within(host, domains):
+    """True when host is one of these registrable domains, or a subdomain."""
+    host = host.lower()
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def is_internal(host):
+    return is_within(host, INTERNAL_DOMAINS)
+
+
+def is_out_of_scope(host, path):
+    """True for a main frame on facebook.com outside the auth flow.
+
+    Meta redirects to facebook.com/?lsrc=cf once two-factor completes, ignoring
+    the ?next= it was handed, which lands the app in full Facebook — feed,
+    Marketplace, and the conversation wrapped in a modal.
+    """
+    return (is_within(host, ("facebook.com",))
+            and not path.startswith(AUTH_PATH_PREFIXES))
+
+
+def messenger_equivalent(path):
+    """Map a facebook.com path onto its messenger.com counterpart."""
+    m = re.match(r"^/messages/t/(\w+)", path)
+    if m:
+        return QUrl(f"https://www.messenger.com/t/{m.group(1)}/")
+    return QUrl("https://www.messenger.com/")
+
+
+def window_title(page_title):
+    """Always "Messenger", carrying nothing but the unread count.
+
+    Messenger names the document after the open conversation
+    ("Johnny, Florence | Messenger"), and Qt reports the bare URL as the title
+    while a page loads. Passing either through would put contact names into the
+    Waybar and Hyprland group-tab labels and rewrite them on every conversation
+    switch. Only the "(3)" prefix earns its place: it makes the window title an
+    unread indicator without reading a single DOM node.
+    """
+    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
+    return f"({m.group(1)}) {APP_TITLE}" if m else APP_TITLE
+
+
+def hand_to_browser(url):
+    """Send a URL to the system default browser.
+
+    QDesktopServices.openUrl() is the idiomatic call and does work here, but it
+    goes through the XDG portal and reports failure by returning False rather
+    than raising, so the result is checked and xdg-open spawned as a fallback.
+    """
+    ok = QDesktopServices.openUrl(url)
+    log("HANDOFF", f"openUrl -> {ok} for {url.toString()[:70]}")
+    if not ok:
+        spawned = QProcess.startDetached("xdg-open", [url.toString()])
+        log("HANDOFF", f"fallback xdg-open -> {spawned}")
+
+
+# Reports whatever is covering the page: every dialog, whatever is really
+# painted in the top-left corner, and any bare "Close" affordance.
+PROBE_JS = r"""
+(() => {
+  const desc = el => {
+    if (!el) return null;
+    const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+    return {
+      tag: el.tagName, role: el.getAttribute('role') || null,
+      label: el.getAttribute('aria-label') || null,
+      pos: cs.position, z: cs.zIndex, bg: cs.backgroundColor,
+      box: [Math.round(r.width), Math.round(r.height)],
+      at: [Math.round(r.x), Math.round(r.y)],
+      text: (el.innerText || '').trim().slice(0, 70).replace(/[ \t\n]+/g, ' '),
+    };
+  };
+  const corners = [[10, 10], [30, 30], [60, 60]].map(([x, y]) => {
+    const el = document.elementFromPoint(x, y);
+    const d = desc(el);
+    if (d && el) {
+      d.chain = [];
+      let a = el.parentElement;
+      for (let i = 0; a && i < 5; i++, a = a.parentElement) {
+        const role = a.getAttribute('role');
+        d.chain.push(a.tagName + (role ? '[' + role + ']' : ''));
+      }
+    }
+    return { pt: [x, y], el: d };
+  });
+  return JSON.stringify({
+    path: location.pathname, title: document.title,
+    dialogs: [...document.querySelectorAll('[role="dialog"],[role="alertdialog"],dialog')]
+      .slice(0, 4).map(desc),
+    corners,
+    closers: [...document.querySelectorAll('div,span,button,a')]
+      .filter(el => ['Fermer', 'Close'].includes((el.textContent || '').trim())
+                    && el.children.length === 0)
+      .slice(0, 3).map(desc),
+  });
+})()
+"""
+
+
+class ShellPage(QWebEnginePage):
+    def acceptNavigationRequest(self, url, nav_type, is_main_frame):
+        scheme = url.scheme()
+
+        # The app's own plumbing: media viewer, downloads, PDF preview.
+        if scheme in {"blob", "about", "data"}:
+            return True
+
+        # A sub-frame is part of the page, never the user leaving the app. Meta
+        # serves the login captcha as an iframe on fbsbx.com wrapping a
+        # google.com recaptcha, so ejecting sub-frames strands authentication in
+        # another browser with no way back.
+        if not is_main_frame:
+            log("FRAME", f"sub-frame {url.host()} -> in-app")
+            return True
+
+        if scheme in {"http", "https"}:
+            host = url.host()
+            path = url.path()
+
+            # Keep the main frame on messenger.com.
+            if is_out_of_scope(host, path):
+                target = messenger_equivalent(path)
+                log("SCOPE", f"{host}{path[:40]} -> {target.toString()}")
+                # Deferred: navigating while this handler is still deciding on a
+                # navigation invites re-entrancy.
+                QTimer.singleShot(0, lambda t=target: self.setUrl(t))
+                return False
+
+            # Only deliberate navigation leaves. Redirects and form posts are
+            # the auth machinery working; they stay, whatever host they land on.
+            if nav_type in USER_NAV_TYPES and not is_internal(host):
+                log("EXTERNAL", f"{host} -> handing off")
+                hand_to_browser(url)
+                return False
+            log("NAV", f"[{nav_type.name}] {host}{path[:50]}")
+
+        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+
+    def createWindow(self, _type):
+        # target=_blank / window.open. The URL is only known once the throwaway
+        # page begins loading it, hence the urlChanged detour.
+        holder = QWebEnginePage(self.profile(), self)
+
+        def hand_off(url):
+            if url.isValid() and not url.isEmpty():
+                if is_internal(url.host()):
+                    # Meta runs parts of the auth flow in popups; sending those
+                    # to another browser breaks login exactly as ejecting the
+                    # captcha iframe did. setUrl re-enters
+                    # acceptNavigationRequest, so scoping still applies.
+                    log("POPUP", f"internal {url.host()} -> main view")
+                    self.setUrl(url)
+                else:
+                    log("EXTERNAL", f"popup {url.host()} -> handing off")
+                    hand_to_browser(url)
+
+        # Single-shot: a popup that redirects would otherwise hand off twice.
+        # The timer is what actually frees the page — window.open() with no URL
+        # never emits urlChanged, and an undeleted holder keeps a whole
+        # Chromium-side page alive for as long as the app runs.
+        holder.urlChanged.connect(hand_off, Qt.ConnectionType.SingleShotConnection)
+        QTimer.singleShot(10_000, holder.deleteLater)
+        return holder
+
+
+def build_profile(app):
+    profile = QWebEngineProfile(APP_ID, app)
+    state = state_dir()
+    profile.setPersistentStoragePath(str(state / "profile"))
+    profile.setCachePath(str(state / "cache"))
+    # Also persists session cookies, so the login survives a restart.
+    profile.setPersistentCookiesPolicy(
+        QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies
+    )
+    profile.setHttpAcceptLanguage(ACCEPT_LANGUAGE)
+
+    # QtWebEngine denies every permission nobody handles, so
+    # Notification.permission reads "denied" and Messenger answers with a
+    # permanent role="alertdialog" — "Ouvrez les paramètres de votre
+    # navigateur…" — over an 80%-black backdrop that dims the whole app on
+    # every load. Granting the permission up front is what removes it.
+    profile.setPersistentPermissionsPolicy(
+        QWebEngineProfile.PersistentPermissionsPolicy.StoreOnDisk
+    )
+    for origin in ("https://www.messenger.com", "https://www.facebook.com"):
+        perm = profile.queryPermission(
+            QUrl(origin), QWebEnginePermission.PermissionType.Notifications
+        )
+        if perm.isValid():
+            perm.grant()
+        log("PERM", f"{origin} -> valid={perm.isValid()} state={perm.state().name}")
+
+    def present(notification):
+        log("NOTIFY", f"{notification.title()} :: {notification.message()[:60]}")
+        QProcess.startDetached(
+            "notify-send",
+            ["-a", APP_TITLE, "-i", "internet-chat",
+             notification.title(), notification.message()],
+        )
+        notification.show()
+
+    profile.setNotificationPresenter(present)
+
+    # Qt advertises "QtWebEngine/x.y.z Chrome/N". Meta gates on the user agent,
+    # so the Qt token is dropped to present as plain Chrome — derived from the
+    # bundled Chromium rather than hardcoded, so it cannot go stale.
+    ua = re.sub(r"QtWebEngine/\S+\s*", "", profile.httpUserAgent()).strip()
+    profile.setHttpUserAgent(ua)
+    log("UA", ua)
+    return profile
+
+
+def bind_shortcuts(view, page):
+    """Wire the browser keys by hand.
+
+    A bare QWebEngineView binds none of these: QtWebEngine handles text-editing
+    keys internally and nothing else, so every affordance a browser gives for
+    free has to be written out here.
+    """
+    def zoom(step):
+        view.setZoomFactor(max(0.5, min(view.zoomFactor() + step, 3.0)))
+
+    act = QWebEnginePage.WebAction
+    bindings = [
+        ("F5", lambda: page.triggerAction(act.Reload)),
+        ("Ctrl+R", lambda: page.triggerAction(act.Reload)),
+        ("Ctrl+Shift+R", lambda: page.triggerAction(act.ReloadAndBypassCache)),
+        ("Ctrl+0", lambda: view.setZoomFactor(1.0)),
+        ("Ctrl++", lambda: zoom(0.1)),
+        ("Ctrl+-", lambda: zoom(-0.1)),
+    ]
+    if DEBUG:
+        bindings.append(
+            ("F9", lambda: page.runJavaScript(
+                PROBE_JS, lambda r: log("PROBE", r)))
+        )
+
+    # Each shortcut is parented to the view, which owns it for the app's
+    # lifetime — nothing here needs holding onto.
+    for seq, fn in bindings:
+        QShortcut(QKeySequence(seq), view).activated.connect(fn)
+
+
+def main():
+    # One Chromium stack is enough: a second instance would cost a few hundred
+    # megabytes for a duplicate window. QLockFile identifies the holder by pid
+    # rather than by an open descriptor, so the inherited-fd deadlock that bites
+    # flock-based locks does not apply to QtWebEngine's subprocesses.
+    runtime = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.RuntimeLocation
+    ) or str(state_dir())
+    lock = QLockFile(str(Path(runtime) / f"{APP_ID}.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        print(f"{APP_ID}: already running", file=sys.stderr)
+        return 1
+
+    app = QApplication(sys.argv)
+    app.setApplicationName(APP_TITLE)
+    app.setDesktopFileName(APP_ID)  # drives the Wayland app_id
+
+    profile = build_profile(app)
+
+    view = QWebEngineView()
+    page = ShellPage(profile, view)
+    view.setPage(page)
+
+    def on_permission(permission):
+        kind = permission.permissionType()
+        allow = kind == QWebEnginePermission.PermissionType.Notifications
+        permission.grant() if allow else permission.deny()
+        log("PERM", f"request {kind.name} from {permission.origin().host()}"
+                    f" -> {'grant' if allow else 'deny'}")
+
+    page.permissionRequested.connect(on_permission)
+    view.titleChanged.connect(lambda t: view.setWindowTitle(window_title(t)))
+    if DEBUG:
+        view.loadFinished.connect(
+            lambda ok: log("LOAD", "ok" if ok else "FAILED"))
+
+    bind_shortcuts(view, page)
+
+    view.setWindowTitle(APP_TITLE)
+    view.resize(1280, 900)
+    view.load(QUrl(START_URL))
+    view.show()
+
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

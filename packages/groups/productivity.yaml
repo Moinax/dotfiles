@@ -23,10 +23,13 @@ descriptions:
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
   slack-desktop: Team communication app (AUR)
   telegram-desktop: Telegram messaging app
+  zapzap: WhatsApp desktop client, Qt WebEngine wrapper (AUR)
+  python-pyqt6-webengine: Chromium-based webview — runtime for the `messenger` app
   bitwarden: Bitwarden password manager desktop app
   helium: Helium web browser (AppImage, set as default)
   zen-browser-bin: Zen Browser (AUR)
   google-chrome: Google Chrome web browser (AUR)
+  speech-dispatcher: Speech synthesis backend for the browsers' SpeechSynthesis API
   dropbox: Dropbox cloud file sync (official dist binary, bypasses distro package)
   localsend-bin: LocalSend — AirDrop-style LAN file sharing (AUR)
   p7zip: 7-Zip archive tool
@@ -54,6 +57,13 @@ packages:
     # Communication
     - slack-desktop  # AUR
     - telegram-desktop
+    - zapzap  # AUR
+
+    # Runtime for ~/.local/bin/messenger, the Messenger app shell. Declared
+    # explicitly rather than leaned on as a dependency of zapzap above: the day
+    # zapzap changes engine or leaves this list, the app must not lose its
+    # webview with it.
+    - python-pyqt6-webengine
 
     # Password manager
     - bitwarden
