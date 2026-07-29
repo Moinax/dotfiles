@@ -18,7 +18,7 @@ Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/dotfiles.git ~/dotfiles
+git clone https://github.com/Moinax/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 
 # Run the interactive management menu
@@ -46,19 +46,30 @@ The interactive installer will:
 | Group | Description |
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `hyprpaper`, `hyprshot`, `waybar`, `rofi`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
-| **Development** | `neovim`, Cursor, Git tooling (`gh`, `lazygit`, `hunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
-| **Gaming** | Steam + Discord with performance helpers (`mangohud`, `gamemode`) |
-| **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape) |
-| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), BTRFS snapshots (`snapper`, `snap-pac`), communication/browser apps (Slack, Chrome), archive tools, and themes/icons |
-| **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation with local Whisper models |
+| **Development** | `neovim`, Cursor, Zed, the [`herdr`](https://github.com/ogulcancelik/herdr) multiplexer, Git tooling (`gh`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
+| **Gaming** | Steam, Heroic and Discord with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
+| **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
+| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), chat apps (Slack, Telegram, ZapZap for WhatsApp, plus a `messenger` app shell), browsers (Zen, Chrome, Helium), archive tools, and themes/icons |
+| **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation, backed by either local `whisper-cpp` models or Groq's cloud API |
+| **Security** | ClamAV antivirus with its `clamtk` GUI |
+| **Biometric** | `fprintd` fingerprint authentication |
+
+BTRFS snapshots are deliberately absent: CachyOS's own `snapper` + `snap-pac` +
+`limine-snapper-sync` stack is installed by the distro, so this repo touches
+none of it.
 
 ## Structure
 
 ```
 dotfiles/
 ├── dots                     # Management script (single entry point)
-├── tools/
-│   └── setup.sh             # Bootstrap script (installs gum + git, runs installer)
+├── tools/                   # One helper per `dots` subcommand
+│   ├── setup.sh             # Bootstrap (installs gum + git, runs installer)
+│   ├── manage-packages.sh   # dots packages
+│   ├── manage-updates.sh    # dots update
+│   ├── manage-external-apps.py  # dots apps
+│   ├── backup-projects.sh   # dots backup
+│   └── gaming-hdr-launch.sh # dots gaming
 ├── install/
 │   ├── installer.sh         # Main interactive installer
 │   ├── distros/
@@ -67,64 +78,66 @@ dotfiles/
 │       ├── common.sh        # Shared utilities
 │       ├── detect.sh        # Distro detection (CachyOS/Arch family)
 │       ├── services.sh      # Service management
+│       ├── hyprvoice.sh     # Whisper/Groq model setup for dictation
 │       └── tree_select.py   # Interactive package selector TUI
 ├── packages/
 │   ├── common.yaml          # Tools installed via curl/git (zoxide, fnm, etc.)
 │   ├── arch/
 │   │   └── base.yaml        # Base packages (pacman + AUR)
-│   └── groups/
-│       ├── hyprland.yaml    # Hyprland + Wayland tools
-│       ├── development.yaml # Dev tools
-│       ├── gaming.yaml      # Gaming packages
-│       ├── multimedia.yaml  # Media tools
-│       ├── productivity.yaml
-│       └── ai.yaml          # AI tools (dictation, Whisper)
+│   └── groups/              # One YAML per selectable group
 ├── home/                    # Chezmoi source directory
 │   ├── .chezmoiignore       # Conditional dotfile rules
+│   ├── .chezmoiremove       # Configs to delete on apply (retired features)
 │   ├── dot_config/          # ~/.config files
 │   ├── dot_zshrc            # ~/.zshrc
 │   └── ...
+├── KEYBINDINGS.md           # Hyprland keybinding reference
 └── README.md
 ```
 
 ## External Apps Helper
 
-This repo includes an external apps helper for:
+This repo includes an external apps helper, for the software pacman and paru do
+not carry:
 
-- importing an AppImage into your desktop launcher
-- installing a local `.deb`, `.rpm`, or `.pkg.tar.*` inside a Distrobox container
-- exporting the installed app to your host launcher with `distrobox-export`
-- updating that Distrobox-managed app later using saved metadata
-- guiding these flows interactively from `dots apps`
+- importing an AppImage into your desktop launcher (and removing it again)
+- installing a local `.deb`, `.rpm`, or `.pkg.tar.*` inside a Distrobox
+  container, exported to your host launcher with `distrobox-export`
+- installing straight from a GitHub release, which is how Helium is installed —
+  the release source is recorded, so `dots update` keeps the app current
+- updating a managed app later from its saved metadata
+- guiding all of it interactively from `dots apps`
 
 ### Usage
 
 ```bash
-# Open the helper from the manager
+# Open the interactive wizard
 dots apps
 
-# Import an AppImage into the desktop launcher
-dots apps import-appimage ~/Downloads/MyApp.AppImage
-
-# Install a package into a Distrobox container and export it to the host launcher
-dots apps install-distrobox --container ubuntu --package ~/Downloads/app.deb
-
-# Update a previously managed Distrobox app
-dots apps update-distrobox --name app --package ~/Downloads/app-new.deb
-
-# List saved Distrobox app metadata
-dots apps list
+# The full command list, which is the source of truth
+dots apps help
 ```
+
+The subcommands are not reproduced here on purpose — they carry their own flags
+and gain more over time, and a copy in this file would rot. `dots apps help`
+costs one command.
 
 ### Notes
 
 - `dots apps` is a real interactive wizard, not just a help menu.
-- The root `Manage external apps` menu item is shown only on desktop installs where Distrobox is installed.
-- File picking starts in `~/Downloads` and falls back to `$HOME` if that folder does not exist.
-- Distrobox install prefers choosing from existing containers before falling back to manual entry.
-- Distrobox update uses saved managed app records instead of asking you to type the app name.
-- `install-distrobox` tries to auto-detect the new `.desktop` file after install; if multiple entries are added, pass `--app your.desktop`.
-- Managed Distrobox app metadata is stored under `${XDG_STATE_HOME:-~/.local/state}/dotfiles/external-apps/distrobox/`.
+- The menu entry appears on desktop installs. Distrobox is *not* required for
+  it to show: only some subcommands need Distrobox, and each one checks for
+  itself.
+- File picking starts in `~/Downloads` and falls back to `$HOME` if that folder
+  does not exist.
+- Distrobox install prefers choosing from existing containers before falling
+  back to manual entry.
+- Distrobox update uses saved managed app records instead of asking you to type
+  the app name.
+- `install-distrobox` tries to auto-detect the new `.desktop` file after
+  install; if multiple entries are added, pass `--app your.desktop`.
+- Managed app metadata is stored under
+  `${XDG_STATE_HOME:-~/.local/state}/dotfiles/external-apps/`.
 
 ## Supported Distributions
 
@@ -182,20 +195,20 @@ After running the installer:
 
 1. **Log out and back in** for shell changes to take effect
 2. **Add SSH key** to GitHub/GitLab (displayed during setup)
-3. **Hyprland users**: Press `Super+?` to see keybindings
+3. **Hyprland users**: Press `Super+H` for the searchable keybinding list (also in [KEYBINDINGS.md](KEYBINDINGS.md))
 4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte (the prompt and Claude Code status line switch with it)
 5. **Plymouth**: Reboot to see the boot splash (if configured during install)
 
 ## Included Configurations
 
-- **Shell**: zsh with starship prompt, zoxide, television
+- **Shell**: zsh and fish, both with the starship prompt, zoxide, television
 - **Terminal**: kitty
-- **Editor**: Neovim (AstroNvim-based), Cursor
-- **Git**: Hunk for diffs and reviews, lazygit for Git operations
-- **Multiplexer**: Zellij
+- **Editor**: Neovim (AstroNvim-based), Cursor, Zed
+- **Git**: hunk for diffs, tuicr for reviews, lazygit for Git operations, `gh-dash` for pull requests, WorkTrunk for worktrees
+- **Multiplexer**: herdr (Zellij is retired — nothing here configures it any more)
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout
-- **AI**: hyprvoice dictation with local Whisper speech recognition
+- **AI**: hyprvoice dictation, local `whisper-cpp` or Groq (switch with `dots whisper`)
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (flat Catppuccin-matched theme, dark/light switched), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
 
