@@ -1,19 +1,22 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Jetpack-style layout: bare prompt character on the left, context bar on the
-# right (needs a shell with right-prompt support; zsh/fish are fine).
+# Jetpack-style layout: bare prompt character on the left, context on the right
+# prompt (needs a shell with right-prompt support; zsh/fish are fine).
 format = """
 $username\
 $cmd_duration\
 $character"""
 
+# No segment carries a background — see the translucent-pane convention in
+# CLAUDE.md. The trailing space is for fish, which flushes the right prompt to
+# the last column; zsh already indents by one (ZLE_RPROMPT_INDENT default).
+# Empty style rather than a bare trailing space, which an editor would strip.
 right_format = """
-[ ](bg:bar)\
 $directory\
 $git_branch\
 $git_status\
 $conda\
-[ ](bg:bar)"""
+[ ]()"""
 
 palette = '{{ if eq .dark_mode "light" }}light{{ else }}dark{{ end }}'
 
@@ -27,7 +30,7 @@ show_milliseconds = true
 format = '[◄ $duration ](fg:cream)'
 
 [directory]
-style = "fg:green bg:bar"
+style = "fg:green"
 format = "[$path]($style)"
 truncation_symbol = "…/"
 
@@ -40,10 +43,10 @@ truncation_symbol = "…/"
 
 [git_branch]
 symbol = ""
-format = '[ · ](fg:dim bg:bar)[$symbol $branch](fg:blue bg:bar)'
+format = '[ · ](fg:dim)[$symbol $branch](fg:blue)'
 
 [git_status]
-format = '([$all_status$ahead_behind](fg:pink bg:bar))'
+format = '([$all_status$ahead_behind](fg:pink))'
 conflicted = '  ${count}'
 ahead = ' ⇡${count}'
 behind = ' ⇣${count}'
@@ -56,7 +59,7 @@ renamed = '  ${count}'
 stashed = '  ${count}'
 
 [conda]
-format = '[ · ](fg:dim bg:bar)[$environment](fg:teal bg:bar)'
+format = '[ · ](fg:dim)[$environment](fg:teal)'
 ignore_base = false
 
 # success/error/vimcmd symbols are the starship defaults ([❯] green/red, [❮]
@@ -69,7 +72,6 @@ vimcmd_visual_symbol = '[❮](bold fg:peach)'
 # Flat pastel palette matched to the Catppuccin colors (ccstatusline
 # settings.json uses the same hex values).
 [palettes.dark]
-bar = "#262434"
 dim = "#8D92A7"
 cream = "#F6E2B7"
 peach = "#F2B590"
@@ -81,7 +83,6 @@ red = "#F0919B"
 
 # Darkened variants of the same hues for readable contrast on light terminals.
 [palettes.light]
-bar = "#E4E1ED"
 dim = "#767C93"
 cream = "#97742A"
 peach = "#B4642A"
