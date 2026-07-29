@@ -1,3 +1,8 @@
+/* First, before any declaration: GTK only honours @import at the top of a
+ * stylesheet. See the twin note in style-dark.css — the marks are single-colour
+ * and picked to hold up on this ground too, so both themes import the same set. */
+@import url("../vibewatch/logos.css");
+
 /* The chip and accent alphas below also feed the group-tab colour solve in
  * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
  * stops matching the pill it mirrors. */
@@ -163,7 +168,10 @@ tooltip label {
 /* vibewatch — AI agent monitor
  * Status word is colored inline via Pango markup from the daemon
  * (Catppuccin Latte palette). Only the `.attention` background is
- * styled here; idle/active text color inherits default. */
+ * styled here; idle/active text color inherits default.
+ * The agent's mark comes from logos.css, imported at the top: the daemon adds a
+ * second `logo-*` class naming whose logo to paint, so nothing about it belongs
+ * in this file. */
 #custom-vibewatch {
   transition:
     color 0.25s ease-in-out,

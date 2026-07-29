@@ -1,3 +1,11 @@
+/* First, before any declaration: GTK only honours @import at the top of a
+ * stylesheet. `vibewatch install` writes both this file's target and the SVGs
+ * it names into ~/.config/vibewatch, so the agent marks stay vibewatch's to
+ * ship and this side needs one line. The paths inside it are relative to it,
+ * not to us. Both style-dark.css and style-light.css need the import — Waybar
+ * 0.15 loads them directly — and one set of marks serves both themes. */
+@import url("../vibewatch/logos.css");
+
 /* The chip and accent alphas below also feed the group-tab colour solve in
  * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
  * stops matching the pill it mirrors. */
@@ -158,7 +166,10 @@ tooltip label {
 /* vibewatch — AI agent monitor
  * Status word is colored inline via Pango markup from the daemon
  * (Catppuccin Mocha palette). Only the `.attention` background is
- * styled here; idle/active text color inherits default. */
+ * styled here; idle/active text color inherits default.
+ * The agent's mark comes from logos.css, imported at the top: the daemon adds a
+ * second `logo-*` class naming whose logo to paint, so nothing about it belongs
+ * in this file. */
 #custom-vibewatch {
   transition:
     color 0.25s ease-in-out,
