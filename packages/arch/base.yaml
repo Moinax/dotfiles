@@ -33,6 +33,7 @@ packages:
 
     # File management
     - yazi
+    - resvg  # yazi rasterizes SVG previews through it; missing = "Failed to start `resvg`"
 
   desktop:
     # Terminal emulator

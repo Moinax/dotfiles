@@ -170,4 +170,17 @@ rows = [
   ["tab"],
 ]
 [ui.toast]
-delivery = "herdr"
+delivery = "off"
+
+[ui.sound]
+enabled = false
+
+# Let programs inside a pane draw real images (yazi previews) instead of
+# nothing at all. herdr swallows the Kitty graphics APC sequences unless this
+# is on; yazi then falls through its adapter list to ueberzugpp/chafa, neither
+# of which is installed, so the preview pane just stays blank. The outer
+# terminal has to speak the protocol — kitty does. See herdrdev/herdr#1324.
+# The attached client only picks this up on reattach: reload-config is not
+# enough, detach (prefix+q) and run `herdr` again.
+[experimental]
+kitty_graphics = true
