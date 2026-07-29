@@ -11,10 +11,15 @@ The engine matters: Qt WebEngine *is* Chromium, which is what Meta's properties
 expect. Tauri would give WebKitGTK on Linux, a different and weaker engine for
 this job.
 
+It has a tray icon for the unread count, and a clicked notification comes back to
+the conversation it came from. Closing the window quits: on Hyprland nothing is
+ever buried, so there is no minimising habit for a background process to serve.
+
 Deliberately not implemented: anything that reads Messenger's DOM. Scraping is
 what turns a wrapper into a maintenance treadmill and eventually abandonware —
 the unread count comes from document.title instead, which Meta has no reason to
-restructure.
+restructure, and a notification click is handed straight back to Messenger's own
+service worker rather than resolved to a URL here.
 
 Set MESSENGER_DEBUG=1 for a running commentary plus F9, which dumps whatever
 modal or overlay is currently covering the page. That probe is how the
@@ -31,19 +36,47 @@ import re
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QLockFile, QProcess, QStandardPaths, Qt, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PyQt6.QtCore import (
+    QMetaType,
+    QObject,
+    QProcess,
+    QRectF,
+    QStandardPaths,
+    Qt,
+    QTimer,
+    QUrl,
+    pyqtSlot,
+)
+from PyQt6.QtDBus import QDBusArgument, QDBusConnection, QDBusInterface
+from PyQt6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QShortcut,
+)
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEnginePermission,
     QWebEngineProfile,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 APP_ID = "messenger"       # Wayland app_id; must match StartupWMClass
 APP_TITLE = "Messenger"
 DEBUG = os.environ.get("MESSENGER_DEBUG") == "1"
+
+# Breeze has no "internet-chat" — the obvious name for a chat app is simply
+# absent from the theme, so asking for it yields a null icon and a blank
+# launcher entry. This one is a speech bubble and actually exists, and it is only
+# ever a placeholder: the page favicon takes over everywhere once it loads, which
+# is Messenger's own glyph without shipping a trademarked file in this repo.
+FALLBACK_ICON = "dialog-messages"
+ICON_SIZE = 64        # the tray pixmap, and what the badge is sized against
+ICON_CACHE_SIZE = 128  # what IconCache writes, for launchers to scale down from
 
 # Pinned rather than read from the session locale, which is en_US here: Meta
 # otherwise falls back to geo-IP and serves Dutch from a Belgian address. Both
@@ -92,17 +125,42 @@ USER_NAV_TYPES = frozenset({
     QWebEnginePage.NavigationType.NavigationTypeTyped,
 })
 
+# org.freedesktop.Notifications: the bus name, object path and interface name.
+# The service and the interface are spelled the same, which is why one constant
+# does for both.
+NOTIFY_SVC = "org.freedesktop.Notifications"
+NOTIFY_PATH = "/org/freedesktop/Notifications"
+NOTIFY_TIMEOUT_MS = 8000        # how long the daemon shows a notification
+NOTIFY_CALL_TIMEOUT_MS = 2000   # how long we wait on the daemon to answer
+
+# Action pairs, key then label, flattened the way the D-Bus signature wants
+# them. "default" is the click on the notification body, which swaync
+# deliberately keeps out of its button row — verified: it indexes "open" as
+# action 0. "open" is therefore the visible button, and the fallback for any
+# daemon that ignores the default action. Both keys do the same thing.
+NOTIFY_LABEL = "Ouvrir"
+NOTIFY_ACTIONS = ["default", NOTIFY_LABEL, "open", NOTIFY_LABEL]
+
+# PyQt maps a Python int to D-Bus "i" and a list of str to "av", but Notify's
+# signature is (susssasa{sv}i) — an unsigned id and a real string array. The
+# mismatched arguments have to be typed explicitly or the call is rejected.
+DBUS_UINT = QMetaType.Type.UInt.value
+DBUS_STRLIST = QMetaType.Type.QStringList.value
+
 
 def log(tag, msg):
     if DEBUG:
         print(f"[{tag}] {msg}", flush=True)
 
 
-def state_dir():
-    base = QStandardPaths.writableLocation(
+def data_home():
+    return Path(QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.GenericDataLocation
-    )
-    d = Path(base) / APP_ID
+    ))
+
+
+def state_dir():
+    d = data_home() / APP_ID
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -136,18 +194,243 @@ def messenger_equivalent(path):
     return QUrl("https://www.messenger.com/")
 
 
-def window_title(page_title):
+def unread_count(page_title):
+    """The "(3)" Messenger puts in front of document.title, or 0.
+
+    The whole unread story rests on this prefix, and on nothing else: no DOM
+    node is read, which is what keeps the app out of the scraping treadmill.
+    """
+    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
+    return int(m.group(1)) if m else 0
+
+
+def window_title(count):
     """Always "Messenger", carrying nothing but the unread count.
 
     Messenger names the document after the open conversation
     ("Johnny, Florence | Messenger"), and Qt reports the bare URL as the title
     while a page loads. Passing either through would put contact names into the
     Waybar and Hyprland group-tab labels and rewrite them on every conversation
-    switch. Only the "(3)" prefix earns its place: it makes the window title an
-    unread indicator without reading a single DOM node.
+    switch.
     """
-    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
-    return f"({m.group(1)}) {APP_TITLE}" if m else APP_TITLE
+    return f"({count}) {APP_TITLE}" if count else APP_TITLE
+
+
+def paint_badge(pixmap, count):
+    """Stamp the unread count into the bottom-right corner of an icon."""
+    d = pixmap.width()
+    box = QRectF(d * 0.45, d * 0.45, d * 0.55, d * 0.55)
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(220, 50, 60))
+    p.drawEllipse(box)
+    font = p.font()
+    font.setBold(True)
+    font.setPixelSize(int(box.height() * 0.7))
+    p.setFont(font)
+    p.setPen(QColor("white"))
+    p.drawText(box, Qt.AlignmentFlag.AlignCenter, "9+" if count > 9 else str(count))
+    p.end()
+
+
+class IconCache:
+    """The page favicon, mirrored to a file, so every surface shows one icon.
+
+    The tray can take a live QIcon; nothing else can. rofi resolves Icon= out of
+    the desktop entry while building its list, and the notification daemon
+    resolves app_icon per notification — neither has anywhere to wait for a page
+    to load, so both need a path that already exists. This writes one, seeded
+    from the theme on the very first run and overwritten by the favicon after
+    that, which is why the desktop entry can point at it unconditionally.
+
+    Under hicolor rather than beside the app's profile: that is the directory the
+    icon-theme spec has launchers search, and it means the entry's Icon= keeps
+    working if it is ever changed from this absolute path to a bare name.
+    """
+
+    def __init__(self):
+        self.path = (data_home() / "icons" / "hicolor"
+                     / f"{ICON_CACHE_SIZE}x{ICON_CACHE_SIZE}" / "apps"
+                     / f"{APP_ID}.png")
+        self.written = None
+        if not self.path.exists():
+            self.store(QIcon.fromTheme(FALLBACK_ICON))
+
+    def store(self, icon):
+        if icon.isNull():
+            return
+        image = icon.pixmap(ICON_CACHE_SIZE, ICON_CACHE_SIZE).toImage()
+        # iconChanged fires several times per page load, with favicons that are
+        # byte-identical but never the same QIcon. Comparing the rendered image
+        # is what keeps this to a single write.
+        if image == self.written:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if image.save(str(self.path), "PNG"):
+            self.written = image
+            log("ICON", f"cached {ICON_CACHE_SIZE}px -> {self.path}")
+        else:
+            log("ICON", f"could not write {self.path}")
+
+
+class Tray(QSystemTrayIcon):
+    """Tray presence and the unread badge.
+
+    The badge is painted rather than looked up: no icon theme ships "messenger
+    with 3 unread". It is repainted only when the count actually changes, since
+    titleChanged fires on every conversation switch and Messenger rewrites the
+    document title freely.
+    """
+
+    def __init__(self, view, app):
+        super().__init__(app)
+        self.view = view
+        self.base = QIcon.fromTheme(FALLBACK_ICON).pixmap(ICON_SIZE, ICON_SIZE)
+        self.unread = 0
+        self.pushed = None
+        # Parented to the view, which owns it: setContextMenu does not take
+        # ownership, and an unparented menu would be collected out from under
+        # the tray icon.
+        menu = QMenu(view)
+        menu.addAction("Ouvrir", view.reveal)
+        menu.addSeparator()
+        # Reaches the app when its window is on another workspace or monitor,
+        # which is the only thing the tray offers that the window does not.
+        menu.addAction("Quitter", app.quit)
+        self.setContextMenu(menu)
+        self.activated.connect(self.on_activated)
+        self.refresh()
+
+    def set_base_icon(self, icon):
+        """Adopt the page favicon — Messenger's own glyph, fetched not shipped."""
+        if not icon.isNull():
+            self.base = icon.pixmap(ICON_SIZE, ICON_SIZE)
+            self.refresh()
+
+    def set_unread(self, count):
+        if count != self.unread:
+            self.unread = count
+            self.refresh()
+
+    def refresh(self):
+        pixmap = self.base.copy()
+        if self.unread:
+            paint_badge(pixmap, self.unread)
+        s = "s" if self.unread > 1 else ""
+        tip = f"{self.unread} message{s} non lu{s}" if self.unread else APP_TITLE
+        # setIcon and setToolTip each emit a StatusNotifierItem signal, and every
+        # one of those costs each tray host a GetAll reply carrying the whole
+        # pixmap. iconChanged fires several times per page load, with favicons
+        # that are byte-identical but never the same QIcon, so comparing the
+        # result is what keeps those redundant rounds off the session bus.
+        image = pixmap.toImage()
+        if image != self.pushed:
+            self.pushed = image
+            self.setIcon(QIcon(pixmap))
+        if tip != self.toolTip():
+            self.setToolTip(tip)
+
+    def on_activated(self, reason):
+        # Raise, never toggle: closing the window quits the app, so there is no
+        # hidden state for a second click to restore, and hiding a window is not
+        # something this desktop does.
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.view.reveal()
+
+
+class ShellView(QWebEngineView):
+    """The window. Closing it quits the app, tray icon or not.
+
+    No close-to-background: on Hyprland every window is on a workspace you can
+    reach, so minimising is a habit this desktop does not have, and an invisible
+    process holding half a gigabyte of Chromium is a worse deal than a cold
+    start. The tray icon is there for the unread badge, not as a place to hide.
+    """
+
+    def reveal(self):
+        """Raise and focus, from the tray, a notification, or a relaunch.
+
+        Lives here rather than on Tray because raising a window is the window's
+        own business: hanging it off the tray is what would force notifications
+        and the single-instance doorbell to hold a tray they have no use for,
+        and to go silent when there is none.
+        """
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+
+class Notifier(QObject):
+    """Desktop notifications that can be clicked back into the conversation.
+
+    notify-send cannot do this: it exits before the user clicks, so the click has
+    nowhere to land. QSystemTrayIcon.showMessage() cannot either — Qt discards
+    the daemon's notification id and emits a bare messageClicked(), leaving
+    nothing to match a click against. Talking to org.freedesktop.Notifications
+    directly keeps the id, which is what lets ActionInvoked be matched back to
+    the QWebEngineNotification it came from — and calling click() on that hands
+    the click to Messenger's own service worker, which opens the right thread. No
+    DOM read, no URL to parse, nothing that breaks when Meta reshuffles its
+    markup.
+    """
+
+    def __init__(self, view, icon, parent):
+        super().__init__(parent)
+        bus = QDBusConnection.sessionBus()
+        self.view = view
+        # The cached favicon's path, so a notification carries the same icon as
+        # the tray and the launcher. A path rather than a theme name: it resolves
+        # whatever icon theme the daemon happens to be configured with.
+        self.icon = str(icon)
+        self.iface = QDBusInterface(NOTIFY_SVC, NOTIFY_PATH, NOTIFY_SVC, bus, self)
+        # present() below has to block for the id it needs, and the libdbus
+        # default would make that 25 seconds of frozen window whenever the daemon
+        # is wedged or the bus is still activating it.
+        self.iface.setTimeout(NOTIFY_CALL_TIMEOUT_MS)
+        # Notifications the daemon still knows about, by its id, so ActionInvoked
+        # can be routed back to one. Expiry signals nothing — swaync parks an
+        # expired popup in its control center — so an entry outlives the popup
+        # and is dropped on NotificationClosed or on the click itself.
+        self.live = {}
+        bus.connect(NOTIFY_SVC, NOTIFY_PATH, NOTIFY_SVC, "ActionInvoked",
+                    self.on_action)
+        bus.connect(NOTIFY_SVC, NOTIFY_PATH, NOTIFY_SVC, "NotificationClosed",
+                    self.on_closed)
+
+    def present(self, notification):
+        reply = self.iface.call(
+            "Notify", APP_TITLE, QDBusArgument(0, DBUS_UINT), self.icon,
+            notification.title(), notification.message(),
+            QDBusArgument(NOTIFY_ACTIONS, DBUS_STRLIST),
+            # Lets the daemon tie the notification back to the desktop entry,
+            # for its icon and its per-app rules.
+            {"desktop-entry": APP_ID}, NOTIFY_TIMEOUT_MS,
+        )
+        args = reply.arguments()
+        if args:
+            self.live[args[0]] = notification
+        # Tells the page the notification was displayed, whatever the daemon did.
+        notification.show()
+        log("NOTIFY", f"{args or reply.errorMessage()} {notification.title()} :: "
+                      f"{notification.message()[:50]}")
+
+    @pyqtSlot("uint", str)
+    def on_action(self, nid, key):
+        notification = self.live.pop(nid, None)
+        log("NOTIFY", f"action {key!r} on {nid} -> "
+                      f"{'click' if notification else 'stale, ignored'}")
+        if notification is not None:
+            notification.click()
+            self.view.reveal()
+
+    @pyqtSlot("uint", "uint")
+    def on_closed(self, nid, _reason):
+        notification = self.live.pop(nid, None)
+        if notification is not None:
+            # Fires the page's own Notification.onclose, so Messenger's idea of
+            # what is on screen keeps up with what the daemon actually dismissed.
+            notification.close()
 
 
 def hand_to_browser(url):
@@ -300,16 +583,8 @@ def build_profile(app):
             perm.grant()
         log("PERM", f"{origin} -> valid={perm.isValid()} state={perm.state().name}")
 
-    def present(notification):
-        log("NOTIFY", f"{notification.title()} :: {notification.message()[:60]}")
-        QProcess.startDetached(
-            "notify-send",
-            ["-a", APP_TITLE, "-i", "internet-chat",
-             notification.title(), notification.message()],
-        )
-        notification.show()
-
-    profile.setNotificationPresenter(present)
+    # Only the permission is granted here; presenting a notification is the
+    # caller's job (see Notifier), which needs the window a click comes back to.
 
     # Qt advertises "QtWebEngine/x.y.z Chrome/N". Meta gates on the user agent,
     # so the Qt token is dropped to present as plain Chrome — derived from the
@@ -351,29 +626,105 @@ def bind_shortcuts(view, page):
         QShortcut(QKeySequence(seq), view).activated.connect(fn)
 
 
-def main():
-    # One Chromium stack is enough: a second instance would cost a few hundred
-    # megabytes for a duplicate window. QLockFile identifies the holder by pid
-    # rather than by an open descriptor, so the inherited-fd deadlock that bites
-    # flock-based locks does not apply to QtWebEngine's subprocesses.
+def socket_path():
+    """Where the single-instance socket lives.
+
+    Under XDG_RUNTIME_DIR, which is per-user and 0700, like the lock file this
+    replaced. A bare name — QLocalServer's own default — would put it in the
+    world-writable /tmp, where any local user can pre-create it and either wedge
+    every launch or answer the doorbell themselves, and where systemd-tmpfiles
+    can unlink it from under a running app.
+    """
     runtime = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.RuntimeLocation
     ) or str(state_dir())
-    lock = QLockFile(str(Path(runtime) / f"{APP_ID}.lock"))
-    lock.setStaleLockTime(0)
-    if not lock.tryLock(0):
-        print(f"{APP_ID}: already running", file=sys.stderr)
-        return 1
+    return str(Path(runtime) / f"{APP_ID}.sock")
+
+
+def doorbell_answered(path):
+    """True when an instance was already listening, and has been told to show.
+
+    One Chromium stack is enough — a second instance costs a few hundred
+    megabytes for a duplicate window. A pid lock could only *refuse*, and a
+    refusal reads as a broken launcher: the window is open on some other
+    workspace or monitor, and clicking the icon prints to a stderr nobody sees.
+    A socket both excludes and delivers, so the second launch raises the window
+    where it actually is. Connecting is the whole message; there is nothing to
+    write.
+    """
+    probe = QLocalSocket()
+    probe.connectToServer(path)
+    return probe.waitForConnected(200)
+
+
+def listen_for_doorbell(app, path):
+    """Answer later launches for the rest of this process's life."""
+    # Nothing answered the probe, so a socket file still sitting here is the
+    # debris of an instance that was killed rather than closed — and listen()
+    # would fail on it.
+    QLocalServer.removeServer(path)
+    server = QLocalServer(app)
+    if not server.listen(path):
+        # Not fatal: this instance runs, later launches just cannot reach it.
+        log("INSTANCE", f"listen {path} failed: {server.errorString()}")
+    return server
+
+
+def main():
+    # Before QApplication, deliberately: every launcher click made while the app
+    # is already running ends here, and it has no use for the platform, portal
+    # and theme initialisation that costs.
+    sock = socket_path()
+    if doorbell_answered(sock):
+        log("INSTANCE", "already running -> asked it to show itself")
+        return 0
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
     app.setDesktopFileName(APP_ID)  # drives the Wayland app_id
+    app.setWindowIcon(QIcon.fromTheme(FALLBACK_ICON))
 
+    server = listen_for_doorbell(app, sock)
     profile = build_profile(app)
+    icons = IconCache()
 
-    view = QWebEngineView()
+    view = ShellView()
     page = ShellPage(profile, view)
     view.setPage(page)
+
+    # The tray icon carries the unread badge, and nothing depends on it: with no
+    # StatusNotifier host (waybar's tray module, here) the app is simply a window.
+    tray = None
+    if QSystemTrayIcon.isSystemTrayAvailable():
+        tray = Tray(view, app)
+        view.iconChanged.connect(tray.set_base_icon)
+        tray.show()
+    else:
+        log("TRAY", "no system tray available -> window-only mode")
+
+    # quitOnLastWindowClosed is true, and it is not enough: a visible
+    # QSystemTrayIcon makes Qt keep the process running when the last window
+    # closes, which is exactly how a close-to-tray app is built. Measured — the
+    # window closed, no visible top-level widget was left, lastWindowClosed did
+    # fire, and the process stayed up until this connect was added. Suppressed is
+    # only Qt's own response to the signal, not the signal, so asking for the
+    # quit here is all it takes.
+    app.lastWindowClosed.connect(app.quit)
+
+    # The favicon reaches the launcher and the notification daemon through the
+    # cache file, and the window and tray directly. One icon, four surfaces.
+    view.iconChanged.connect(icons.store)
+    view.iconChanged.connect(view.setWindowIcon)
+
+    # Both of these only need the window, so both work without a tray.
+    profile.setNotificationPresenter(Notifier(view, icons.path, app).present)
+
+    def on_doorbell():
+        server.nextPendingConnection().deleteLater()
+        log("INSTANCE", "second launch -> revealing")
+        view.reveal()
+
+    server.newConnection.connect(on_doorbell)
 
     def on_permission(permission):
         kind = permission.permissionType()
@@ -382,8 +733,14 @@ def main():
         log("PERM", f"request {kind.name} from {permission.origin().host()}"
                     f" -> {'grant' if allow else 'deny'}")
 
+    def on_title(page_title):
+        count = unread_count(page_title)
+        view.setWindowTitle(window_title(count))
+        if tray is not None:
+            tray.set_unread(count)
+
     page.permissionRequested.connect(on_permission)
-    view.titleChanged.connect(lambda t: view.setWindowTitle(window_title(t)))
+    view.titleChanged.connect(on_title)
     if DEBUG:
         view.loadFinished.connect(
             lambda ok: log("LOAD", "ok" if ok else "FAILED"))

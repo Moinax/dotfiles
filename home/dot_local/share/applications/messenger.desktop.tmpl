@@ -12,6 +12,13 @@ StartupNotify=true
 # launcher cannot tie the window back to this entry.
 StartupWMClass=messenger
 Terminal=false
-Icon=internet-chat
+# The favicon the app caches on every run (IconCache in ~/.local/bin/messenger),
+# so the launcher shows the same icon as the tray and the notifications. An
+# absolute path, which beats any icon theme that also ships a "messenger": the
+# point is *this* icon, not a lookalike. It only misses on a machine where the
+# app has never run — the app seeds the file from a theme icon at startup.
+# ~/.local/share rather than $XDG_DATA_HOME: a desktop entry cannot read the
+# environment, and chezmoi has no more idea than it does what that will be set to.
+Icon={{ .chezmoi.homeDir }}/.local/share/icons/hicolor/128x128/apps/messenger.png
 Type=Application
 Categories=Network;InstantMessaging;
