@@ -47,7 +47,7 @@
   {{- $title_events := list "SessionStart" "Stop" }}
   {{- $vibe_events := list }}
   {{- if .install_vibewatch }}
-  {{-   $vibe_events = list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "UserPromptSubmit" }}
+  {{-   $vibe_events = list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "SubagentStop" "UserPromptSubmit" }}
   {{- end }}
   {{- $hooks := dict }}
   {{- range $event := concat $vibe_events $title_events | uniq | sortAlpha }}
