@@ -356,9 +356,16 @@ class ShellView(QWebEngineView):
         and the single-instance doorbell to hold a tray they have no use for,
         and to go silent when there is none.
         """
-        self.showNormal()
         self.raise_()
         self.activateWindow()
+        # showNormal() must not be used here: a compositor-fullscreen window is
+        # already visible, and normalising it exposes the rest of its Hyprland
+        # group. Qt's activation request can then focus that group without
+        # selecting this tab, so ask Hyprland to focus Messenger explicitly.
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            selector = f'class:^({APP_ID})$'
+            dispatcher = f'hl.dsp.focus({{ window = "{selector}" }})'
+            QProcess.startDetached("hyprctl", ["dispatch", dispatcher])
 
 
 class Notifier(QObject):
