@@ -45,7 +45,11 @@ tooltip label {
 /* Every widget carries the same @chip as an inactive workspace pill, so the bar
  * reads as one set of chips. #window has no rule of its own — it matches
  * `.module` like every other module and inherits this (verified on screen). */
+/* `#stats` and `#vibewatch` are named because a `group/` does not match
+ * `.module` — a group is a box, not a module, so it needs the chip spelled out
+ * or its children would each carry one and the bar would grow extra pills. */
 #stats,
+#vibewatch,
 .module {
   margin: 4px 2px;
   padding: 2px 8px;
@@ -164,25 +168,88 @@ tooltip label {
 }
 
 /* vibewatch — AI agent monitor
- * Status word is colored inline via Pango markup from the daemon
- * (Catppuccin Mocha palette). Only the `.attention` background is
- * styled here; idle/active text color inherits default.
+ * A `group/` of three children: logo+name, the state, the count. Text colours
+ * come from the daemon as inline Pango (Catppuccin Mocha), so nothing here sets
+ * a foreground per state — only backgrounds, which Pango cannot draw rounded.
  * The agent's mark comes from logos.css, imported at the top: the daemon adds a
- * second `logo-*` class naming whose logo to paint, so nothing about it belongs
- * in this file. */
-#custom-vibewatch {
+ * second `logo-*` class naming whose logo to paint. */
+/* The one module that does not wear @chip: it renders the same colour as
+ * vibewatch's overlay, so the pill and the window it opens are one material.
+ *
+ * Both numbers are solved, not picked, and the alpha is the important one. A
+ * chip at the neighbours' 0.22 covers only 0.22 + 0.78*0.85 = 88% of the
+ * wallpaper, where the panel covers 95%; that 7% gap lets the desktop tint the
+ * pill, so it read lighter and teal-ish over a colourful wallpaper no matter
+ * what colour was chosen. Matching on one wallpaper is all a colour can buy.
+ *
+ * 0.667 (2/3) is the alpha where a + (1-a)*0.85 = 0.95: identical passthrough,
+ * so the pill tracks the panel under *any* wallpaper rather than one. Then
+ * 0.667C + 0.333*(0.85*#1e1e2e) = 0.95*#2c2d3d gives C = (50,51,67) — close to
+ * the panel's own #2c2d3d, lifted just enough to cover the bar's darker base
+ * showing through the remaining third.
+ *
+ * This is the one module that deliberately breaks the shared 0.22: being the
+ * same material as the window it opens was worth more than matching its
+ * neighbours' transparency. Re-solve if the panel's ground or alpha moves — it
+ * has already moved twice (#313244 at 0.92, then #2c2d3d at 0.95).
+ *
+ * The fill alone does not define the pill's edge, which is why the border is
+ * back. Separation from the bar is worth
+ * 0.95*#2c2d3d - 0.85*#1e1e2e - 0.10*wallpaper = 17.1 - 0.10*wallpaper_luminance,
+ * so it cancels at a wallpaper luminance of ~171. Measured along this bar: 12.7
+ * points to the right of the pill, but -0.4 to its left, over a bright teal —
+ * where the two were 3.3 apart in RGB, which is nothing. Only hue carried that
+ * edge, and hue is not something a fill can be relied on for.
+ *
+ * The rim is `alpha(@cat_border, 0.25)` from vibewatch's Mocha palette — the very
+ * treatment the panel gives its own edge, so the pill is bordered like the window
+ * it opens. Measured on screen: +10.4 luminance points over the fill, against the
+ * panel's +11.8 over its ground.
+ *
+ * The obvious cheaper idea does not work: the fill's own colour at a higher alpha
+ * renders +2.4, and +2.6 even at alpha 1.0. The fill is 0.667 opaque, so a
+ * same-colour rim can only recover the last third of a gap the wallpaper has
+ * already closed — 5% of the wallpaper reaches the fill against 0.5% for a
+ * near-opaque border, which lifts the fill to meet it. Computing that ceiling over
+ * black instead of over the actual wallpaper is what made it look like +8 was
+ * available. A visible rim has to change hue, not opacity. */
+#vibewatch {
+  background: rgba(50, 51, 67, 0.667);
+  border: 1px solid rgba(88, 91, 112, 0.25);
   transition:
     color 0.25s ease-in-out,
     background 0.25s ease-in-out;
 }
-#custom-vibewatch.idle,
-#custom-vibewatch.active {
+/* The group is the pill. Its children must not each be one too, or the widget
+ * reads as three separate chips — same reason #cpu and #memory go transparent
+ * inside #stats. Vertical padding stays 0: the group already has `.module`'s. */
+#custom-vibewatch-name,
+#custom-vibewatch-state,
+#custom-vibewatch-count {
+  margin: 0;
+  padding: 0 4px;
+  background: transparent;
+  border: none;
   color: white;
 }
-/* Attention: same magenta/white treatment as workspaces.active,
- * caffeine.activated, notification — state word + dot get their own
- * Pango-colored accent (Catppuccin yellow) via the daemon. */
-#custom-vibewatch.attention {
-  color: white;
+/* The state is dug in by the same amount the panel digs its rows: 0.45 black,
+ * matching `cat_row_step` in vibewatch's Mocha palette. Identical grounds and
+ * identical depth mean the pill's state and a panel card land on one colour.
+ * Keep the two numbers together.
+ *
+ * 0.45 rather than the 0.26 this started at: 0.26 gave 14 points of luminance
+ * against the pill, which reads as a smudge rather than as depth. */
+#custom-vibewatch-state {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 7px;
+  padding: 0 7px;
+  margin: 2px 2px;
+}
+/* Attention: the magenta of workspaces.active, caffeine.activated and
+ * notification, but on the recess rather than the whole pill. A `group/` emits
+ * no class of its own — only the children do — so the group cannot know it is
+ * blocked. Putting it on the state chip is the better reading anyway: the state
+ * is the thing waiting on you, and it is already the loudest object in the pill. */
+#custom-vibewatch-state.attention {
   background: @accent;
 }

@@ -47,7 +47,10 @@ tooltip label {
  * alpha does not mean equal separation. Matching dark's chip-vs-bar RGB
  * distance (~44) lands at a = 0.237, which is why these round to the same
  * 0.22 the dark sheet uses rather than the 0.14/0.15 they sat at before. */
+/* `#stats` and `#vibewatch` are named because a `group/` does not match
+ * `.module` — see the twin note in style-dark.css. */
 #stats,
+#vibewatch,
 .module {
   margin: 4px 2px;
   padding: 2px 8px;
@@ -166,25 +169,57 @@ tooltip label {
 }
 
 /* vibewatch — AI agent monitor
- * Status word is colored inline via Pango markup from the daemon
- * (Catppuccin Latte palette). Only the `.attention` background is
- * styled here; idle/active text color inherits default.
- * The agent's mark comes from logos.css, imported at the top: the daemon adds a
- * second `logo-*` class naming whose logo to paint, so nothing about it belongs
- * in this file. */
-#custom-vibewatch {
+ * A `group/` of three children: logo+name, the state, the count. Text colours
+ * come from the daemon as inline Pango (Catppuccin Latte), so nothing here sets
+ * a foreground per state — only backgrounds, which Pango cannot draw rounded.
+ * The agent's mark comes from logos.css, imported at the top. */
+/* Same intent as the dark sheet — render vibewatch's own ground. With the alpha
+ * at the 0.667 that equalises wallpaper passthrough (the long note in
+ * style-dark.css has the derivation), the panel's Latte ground of #ccd0da at 0.95
+ * solves to 0.667C + 0.333*(0.85*#eff1f5) = 0.95*#ccd0da, so C = (189,194,206).
+ *
+ * At the neighbours' 0.22 this needed a colour of (312,314,320) — past white — so
+ * it sat at pure white and landed ~12 short of the panel. Measured on screen at
+ * 0.667, the pill now sits 1.4 luminance points off the panel's ground.
+ *
+ * The rim is `alpha(@cat_border, 0.25)` from the Latte palette, the same rule the
+ * dark sheet follows and the same treatment the panel gives its own edge. It comes
+ * out *darker* than the fill here where Mocha's comes out lighter, with no
+ * inversion written anywhere: @cat_border is surface2 in both flavours, which sits
+ * below base in Latte and above it in Mocha. Measured on screen: -6.3 against the
+ * fill, where Mocha's reads +10.4 — a light theme has less room to spend, and
+ * -6.3 is on the quiet side of subtle. If it ever reads as absent, 0.35 buys
+ * roughly -10 without becoming a hairline. */
+#vibewatch {
+  background: rgba(189, 194, 206, 0.667);
+  border: 1px solid rgba(172, 176, 190, 0.25);
   transition:
     color 0.25s ease-in-out,
     background 0.25s ease-in-out;
 }
-#custom-vibewatch.idle,
-#custom-vibewatch.active {
+/* The group is the pill; its children must not each be one too. */
+#custom-vibewatch-name,
+#custom-vibewatch-state,
+#custom-vibewatch-count {
+  margin: 0;
+  padding: 0 4px;
+  background: transparent;
+  border: none;
   color: #4c4f69;
 }
-/* Attention: same magenta/dark treatment as workspaces.active,
- * caffeine.activated, notification — state word + dot get their own Pango-colored
- * accent (Catppuccin Latte yellow) via the daemon. */
-#custom-vibewatch.attention {
+/* 0.12, matching `cat_row_step` in the Latte palette: on a light ground a little
+ * black goes a long way, and the dark sheet's 0.45 would read as a hole. Keep the
+ * two numbers together — the pill's state and a panel card are one surface, so
+ * they have to dig by the identical fraction. */
+#custom-vibewatch-state {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 7px;
+  padding: 0 7px;
+  margin: 2px 2px;
+}
+/* Attention on the recess, not the whole pill: a group emits no class of its
+ * own, and the state is the thing actually waiting on you. */
+#custom-vibewatch-state.attention {
   color: #1e1e2e;
   background: @accent;
 }

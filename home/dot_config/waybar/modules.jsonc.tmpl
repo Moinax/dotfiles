@@ -212,11 +212,40 @@
     "tooltip": true,
   },
 {{ if .install_vibewatch }}
-  // AI agent monitor (vibewatch) — push-based continuous subscriber.
-  "custom/vibewatch": {
-    "exec": "~/.cargo/bin/vibewatch status --watch",
+  // AI agent monitor (vibewatch). Three children rather than one label, because
+  // the state wants its own rounded, darkened chip and waybar can only give a
+  // background to a real widget — the same reason group/stats splits cpu and
+  // memory. Each child needs its own `exec`: one stream cannot feed two widgets,
+  // hence `--part`. Three desktop-level subscribers, not per-pane, so this is
+  // not the fanout the repo rules warn about.
+  // Order is layout: logo+name, then the state chip, then the count.
+  "group/vibewatch": {
+    "orientation": "horizontal",
+    "modules": ["custom/vibewatch-name", "custom/vibewatch-state", "custom/vibewatch-count"],
+  },
+  "custom/vibewatch-name": {
+    "exec": "~/.cargo/bin/vibewatch status --watch --part name",
     "return-type": "json",
     "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    "format": "{}",
+    "tooltip": false,
+  },
+  "custom/vibewatch-state": {
+    "exec": "~/.cargo/bin/vibewatch status --watch --part state",
+    "return-type": "json",
+    "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    "format": "{}",
+    "tooltip": false,
+  },
+  "custom/vibewatch-count": {
+    "exec": "~/.cargo/bin/vibewatch status --watch --part count",
+    "return-type": "json",
+    "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    // The badge is empty whenever one agent is alive. waybar's own answer to
+    // that is better than any CSS: it drops the widget instead of leaving its
+    // padding behind. (GTK has no `:empty`, and reaching for it takes the whole
+    // bar down — it fails to parse and waybar exits.)
+    "hide-empty-text": true,
     "format": "{}",
     "tooltip": false,
   },
