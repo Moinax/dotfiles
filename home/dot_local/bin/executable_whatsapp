@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Launch WhatsApp in the shared Qt WebEngine chat shell."""
+
+# The exec bit comes from chezmoi's executable_ prefix at apply time.
+# ruff: noqa: EXE001
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from chat_shell import ChatApp, run
+
+CONFIG = ChatApp(
+    app_id="whatsapp",
+    title="WhatsApp",
+    url="https://web.whatsapp.com/",
+    domains=("whatsapp.com", "whatsapp.net"),
+    notification_origins=("https://web.whatsapp.com",),
+    debug_variable="WHATSAPP_DEBUG",
+    allow_media_capture=True,
+    # The regular favicon is too small for notifications.
+    fixed_icon_size=192,
+)
+
+
+if __name__ == "__main__":
+    sys.exit(run(CONFIG))

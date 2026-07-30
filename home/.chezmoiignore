@@ -109,7 +109,10 @@ Wallpapers/**
 {{- if not .install_productivity }}
 .local/share/applications/google-chrome.desktop
 .local/share/applications/messenger.desktop
+.local/share/applications/whatsapp.desktop
 .local/bin/messenger
+.local/bin/whatsapp
+.local/lib/chat_shell.py
 {{- end }}
 
 # ssh-agent runs via OpenSSH's systemd `ssh-agent.socket` user unit

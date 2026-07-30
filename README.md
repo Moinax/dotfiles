@@ -49,7 +49,7 @@ The interactive installer will:
 | **Development** | `neovim`, Cursor, Zed, the [`herdr`](https://github.com/ogulcancelik/herdr) multiplexer, Git tooling (`gh`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam, Heroic and Discord with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
-| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), chat apps (Slack, Telegram, ZapZap for WhatsApp, plus a `messenger` app shell), browsers (Zen, Chrome, Helium), archive tools, and themes/icons |
+| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), chat apps (Slack, Telegram, plus dedicated Messenger and WhatsApp app shells), browsers (Zen, Chrome, Helium), archive tools, and themes/icons |
 | **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation, backed by either local `whisper-cpp` models or Groq's cloud API, with an on-screen overlay showing the live microphone level |
 | **Security** | ClamAV antivirus with its `clamtk` GUI |
 | **Biometric** | `fprintd` fingerprint authentication |
