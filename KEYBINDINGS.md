@@ -31,7 +31,8 @@
 | Calculator (kcalc) | `Mod+Alt+C` | Full calculator app |
 | Theme selector | `Mod+R` | rofi-theme-selector |
 | Toggle monitor layout | `Mod+M` | |
-| Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only) |
+| Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level, a microphone picker and validate/cancel buttons, so a dictation can also be finished with the pointer |
+| Cancel dictation (discard) | `Mod+Shift+D` | `hyprvoice cancel` — drops the recording with no transcription, the keyboard twin of the overlay's ✕ |
 
 ## 2. Window Management
 

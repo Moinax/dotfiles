@@ -53,8 +53,33 @@ backends = ["wtype", "clipboard"]  # wtype auto-types; clipboard (copy-only) is 
                                  # which shadows it in the service PATH. Keep that wrapper.
 wtype_timeout = "5s"
 clipboard_timeout = "3s"
+ydotool_timeout = "5s"           # Unused (ydotool is not a backend above), but
+                                 # the daemon validates every timeout at boot and
+                                 # logs "invalid injection.ydotool_timeout: 0s"
+                                 # when it is absent. Set so real warnings stand out.
 
 # ── Notifications ───────────────────────────────────────────────
 [notifications]
-enabled = true
-type = "desktop"
+# `type` is what actually silences hyprvoice — "desktop", "log" or "none".
+# `enabled = false` is IGNORED by hyprvoice v1.0.2: verified on the D-Bus
+# Notify calls, with a freshly booted daemon, still firing "Recording Started".
+# It is left set only to state the intent should upstream ever honour it; do not
+# take it for the mechanism. Use "log" instead of "none" to keep the events in
+# ~/.local/state/hyprvoice.log without popups.
+#
+# Silenced because the hyprvoice-widget.py overlay reports the same state live
+# (level, elapsed, transcribing, muted mic), so the start/stop pair was pure
+# duplication. Failures are not lost — the daemon log kept by
+# toggle-dictation.sh records every one.
+#
+# Notifications are per-event if only errors are ever wanted back: set
+# type = "desktop" again, then blank the chatty ones under
+# [notifications.messages.<event>] (title/body). Events: recording_started,
+# recording_aborted, transcribing, llm_processing, post_processing,
+# injection_aborted, transcriber_error, operation_cancelled, config_reloaded,
+# general.
+#
+# NB: a config hot-reload does not rebuild the notifier — it only restarts the
+# pipeline. Changing anything here needs `hyprvoice stop` and a fresh daemon.
+enabled = false
+type = "none"

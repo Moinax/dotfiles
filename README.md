@@ -50,7 +50,7 @@ The interactive installer will:
 | **Gaming** | Steam, Heroic and Discord with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
 | **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), chat apps (Slack, Telegram, ZapZap for WhatsApp, plus a `messenger` app shell), browsers (Zen, Chrome, Helium), archive tools, and themes/icons |
-| **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation, backed by either local `whisper-cpp` models or Groq's cloud API |
+| **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation, backed by either local `whisper-cpp` models or Groq's cloud API, with an on-screen overlay showing the live microphone level |
 | **Security** | ClamAV antivirus with its `clamtk` GUI |
 | **Biometric** | `fprintd` fingerprint authentication |
 
@@ -208,7 +208,7 @@ After running the installer:
 - **Multiplexer**: herdr (Zellij is retired — nothing here configures it any more)
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, rofi, swaync, wlogout
-- **AI**: hyprvoice dictation, local `whisper-cpp` or Groq (switch with `dots whisper`)
+- **AI**: hyprvoice dictation, local `whisper-cpp` or Groq (switch with `dots whisper`); recording shows an overlay with the live mic level, a microphone picker, and validate/cancel buttons
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (flat Catppuccin-matched theme, dark/light switched), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
 

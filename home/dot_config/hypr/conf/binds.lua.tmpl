@@ -32,6 +32,11 @@ hl.bind(mod .. " + ALT + H",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-hd
 {{- end }}
 {{- if .install_ai }}
 hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh"))                                -- Toggle dictation
+-- Discard, the keyboard twin of the overlay's ✕. Safe to leave always live:
+-- cancelling while idle is a no-op the daemon just logs and ignores. It cannot
+-- live in the overlay itself — a layer surface that takes keyboard focus becomes
+-- hyprvoice's injection target, so the dictation would land in the pill.
+hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("hyprvoice cancel"))                                                       -- Cancel dictation (discard)
 {{- end }}
 
 -- ── 2. Window Management ──────────────────────────────────────────

@@ -50,6 +50,7 @@ LICENSE
 .config/hyprvoice
 .config/hyprvoice/**
 .local/bin/toggle-dictation.sh
+.local/bin/hyprvoice-widget.py
 {{- end }}
 
 # vibewatch drop-in + enable symlink only when vibewatch is installed
