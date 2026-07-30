@@ -14,6 +14,18 @@
 #     or that has gained new commits since its PR was merged.
 set -euo pipefail
 
+assume_yes=false
+case "${1:-}" in
+  -y|--yes)
+    assume_yes=true
+    shift
+    ;;
+esac
+if (( $# > 0 )); then
+  echo "usage: wtclean [-y|--yes]" >&2
+  exit 2
+fi
+
 # Self-heal stale worktrees: if a worktree's directory has vanished (e.g. the
 # repo or a parent folder was moved/deleted), git flags it as "prunable" with
 # no main_state, so the merge filters below skip it entirely. Prune those admin
@@ -86,8 +98,10 @@ fi
 echo "Worktrees to remove:"
 echo "$branches" | sed 's/^/  - /'
 echo
-read -r -p "Remove all? [y/N] " reply
-[[ "$reply" =~ ^[Yy]$ ]] || exit 0
+if [[ "$assume_yes" != true ]]; then
+  read -r -p "Remove all? [y/N] " reply
+  [[ "$reply" =~ ^[Yy]$ ]] || exit 0
+fi
 
 # Remove each worktree on its own so one stuck worktree can't abort the rest.
 # Graph-merged branches: wt deletes the branch automatically. Squash-merged

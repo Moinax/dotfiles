@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Clean merged worktrees and dead local branches in every main repository
+# under DEV_PROJECTS_ROOT (~/Projects by default).
+set -uo pipefail
+
+assume_yes=false
+case "${1:-}" in
+  -y|--yes)
+    assume_yes=true
+    shift
+    ;;
+esac
+if (( $# > 0 )); then
+  echo "usage: dev-clean [-y|--yes]" >&2
+  exit 2
+fi
+
+for command in dev-projects wtclean; do
+  command -v "$command" >/dev/null 2>&1 || {
+    echo "dev-clean: '$command' not found" >&2
+    exit 1
+  }
+done
+
+root=$(dev-projects root)
+repos=()
+while IFS= read -r entry; do
+  repo=$(dev-projects resolve "$entry")
+  # Keep this command scoped to the project tree and skip linked worktrees
+  # (.git is a file there, whereas it is a directory in the main checkout).
+  [[ "$repo" == "$root"/* && -d "$repo/.git" ]] && repos+=("$repo")
+done < <(dev-projects list --main-only)
+
+if (( ${#repos[@]} == 0 )); then
+  echo "No Git repositories found under $root."
+  exit 0
+fi
+
+echo "Repositories to clean:"
+printf '  - %s\n' "${repos[@]}"
+echo
+if [[ "$assume_yes" != true ]]; then
+  read -r -p "Clean all? [y/N] " reply
+  [[ "$reply" =~ ^[Yy]$ ]] || exit 0
+fi
+
+failures=0
+for repo in "${repos[@]}"; do
+  echo
+  echo "==> ${repo#"$root"/}"
+
+  # Refresh remote state before worktree merge detection. git cleanup fetches
+  # again internally, but retaining that command as-is keeps dev-clean aligned
+  # with the standalone gcl behaviour.
+  if ! git -C "$repo" fetch -p; then
+    echo "warning: fetch failed; cleaning from existing local state" >&2
+    failures=$((failures + 1))
+  fi
+  if ! (cd "$repo" && wtclean --yes); then
+    echo "warning: worktree cleanup failed in $repo" >&2
+    failures=$((failures + 1))
+  fi
+  if ! git -C "$repo" cleanup; then
+    echo "warning: branch cleanup failed in $repo" >&2
+    failures=$((failures + 1))
+  fi
+done
+
+echo
+if (( failures > 0 )); then
+  echo "Cleanup completed with $failures warning(s)." >&2
+  exit 1
+fi
+echo "All project repositories are clean."

@@ -121,17 +121,6 @@ repo_secret_files() {
         | grep -vE "$EXCLUDE_RE" | grep -E "$INCLUDE_RE" | sort || true
 }
 
-# Warn about work that a manifest-based backup cannot save.
-check_repo_safety() {
-    local repo="$1" rel="$2"
-    if [ -n "$(git -C "$repo" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-        print_warning "$rel has uncommitted changes (not part of the backup)"
-    fi
-    if [ -n "$(git -C "$repo" log --branches --not --remotes --oneline 2>/dev/null | head -1)" ]; then
-        print_warning "$rel has unpushed commits (not part of the backup)"
-    fi
-}
-
 # ── Create ───────────────────────────────────────────────────────────────────
 
 do_create() {
@@ -166,8 +155,6 @@ do_create() {
         fi
         printf '%s\t%s\t%s\n' "$rel" "$remote" "$branch" >> "$stage/manifest/repos.tsv"
         repo_count=$((repo_count + 1))
-
-        check_repo_safety "$repo" "$rel"
 
         local f
         while IFS= read -r f; do
@@ -362,8 +349,56 @@ do_restore() {
     # kept unless --force, so a restore never silently clobbers newer state.
     restore_tree "$stage/projects" "$PROJECTS_DIR" "$force"
 
+    offer_remove_unlisted_repos "$stage/manifest/repos.tsv"
+
     print_success "Restore complete"
     print_info "Repos are fresh clones — reinstall dependencies per project (npm install, uv sync, ...)"
+}
+
+offer_remove_unlisted_repos() {
+    local manifest="$1" rel repo removed=0
+    local -A listed=()
+    local -a unlisted=()
+
+    while IFS=$'\t' read -r rel _; do
+        [ -n "$rel" ] && listed["$rel"]=1
+    done < "$manifest"
+
+    while IFS= read -r repo; do
+        rel="${repo#"$PROJECTS_DIR"/}"
+        [ -n "${listed[$rel]+x}" ] || unlisted+=("$repo")
+    done < <(find_repos)
+
+    [ ${#unlisted[@]} -gt 0 ] || return 0
+
+    print_warning "Repositories present locally but absent from the backup:"
+    printf '  %s\n' "${unlisted[@]#"$PROJECTS_DIR"/}"
+
+    if [ ! -t 0 ]; then
+        print_info "Non-interactive restore — keeping these repositories"
+        return 0
+    fi
+    if ! command_exists gio; then
+        print_warning "gio is not available — keeping these repositories"
+        return 0
+    fi
+
+    if command_exists gum; then
+        gum confirm "Move these repositories to the trash?" || return 0
+    else
+        local reply
+        read -r -p "Move these repositories to the trash? [y/N] " reply
+        [[ "$reply" =~ ^[Yy]$ ]] || return 0
+    fi
+
+    for repo in "${unlisted[@]}"; do
+        if gio trash -- "$repo"; then
+            removed=$((removed + 1))
+        else
+            print_error "Could not move ${repo#"$PROJECTS_DIR"/} to the trash"
+        fi
+    done
+    print_info "$removed repositories moved to the trash"
 }
 
 restore_tree() {
