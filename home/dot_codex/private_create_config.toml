@@ -4,6 +4,12 @@
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 
+# Keep herdr's tab, pane and sidebar task name in sync with vibewatch after
+# each Codex turn. Machine-local `notify` is intentionally global: Codex
+# ignores it in project config. The run_onchange merge applies this line to an
+# existing config.toml without replacing Codex's own trust/feature state.
+notify = ["{{ .chezmoi.homeDir }}/.local/bin/herdr-agent-title", "codex-notify"]
+
 # Closest native Codex equivalent to the ccstatusline layout. Codex currently
 # supports built-in single-line items, not an external command renderer.
 [tui]

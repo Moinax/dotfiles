@@ -57,6 +57,20 @@ fi
 session="${session//[^[:alnum:]_.-]/_}"
 h() { herdr --session "$session" "$@"; }
 
+# Register linked checkouts through Herdr's worktree API rather than as plain
+# workspaces. WorkTrunk still owns creation/hooks; this call adds the native
+# parent/child provenance used by the sidebar and `worktree remove`.
+linked_worktree_main() {
+  local common git_dir main
+  git_dir="$(git -C "$dir" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || return 1
+  common="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+  [[ "$git_dir" != "$common" ]] || return 1
+  main="$(git -C "$dir" worktree list --porcelain 2>/dev/null \
+    | awk '$1 == "worktree" { print substr($0, 10); exit }')"
+  [[ -n "$main" && -d "$main" ]] || return 1
+  printf '%s\n' "$main"
+}
+
 # --- server ---------------------------------------------------------------
 # The CLI does not auto-start the server, so bring it up headless if needed.
 # The boot-and-poll dance is owned by herdr-clients (shared with the desktop
@@ -75,17 +89,42 @@ existing="$(h workspace list \
   | jq -r --arg l "$name" '.result.workspaces[]? | select(.label == $l) | .workspace_id' \
   | head -n1)"
 if [[ -n "$existing" ]]; then
-  h workspace focus "$existing" >/dev/null
-  show_client
-  exit 0
-fi
+  # `worktree open` reuses an already-open checkout and upgrades its
+  # provenance in place, preserving every tab, pane and running agent.
+  if main_dir="$(linked_worktree_main)"; then
+    h worktree open --cwd "$main_dir" --path "$dir" --label "$name" --focus >/dev/null
+  else
+    h workspace focus "$existing" >/dev/null
+  fi
 
-# --- create path ----------------------------------------------------------
-ws_json="$(h workspace create --cwd "$dir" --label "$name" --no-focus)"
-ws="$(jq -r '.result.workspace.workspace_id' <<<"$ws_json")"
-p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
-t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
-[[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
+  # Native worktree grouping may have created a minimal parent workspace for
+  # a main checkout that was not open yet. A normal dev workspace always has
+  # more than its single initial tab/pane; hydrate only that unmistakable
+  # placeholder on first `dev`, while ordinary reattaches remain untouched.
+  tabs_json="$(h tab list --workspace "$existing")"
+  panes_json="$(h pane list --workspace "$existing")"
+  tab_count="$(jq '.result.tabs | length' <<<"$tabs_json")"
+  pane_count="$(jq '.result.panes | length' <<<"$panes_json")"
+  if [[ "$tab_count" -ne 1 || "$pane_count" -ne 1 ]]; then
+    show_client
+    exit 0
+  fi
+  ws="$existing"
+  t_agent="$(jq -r '.result.tabs[0].tab_id' <<<"$tabs_json")"
+  p_agent="$(jq -r '.result.panes[0].pane_id' <<<"$panes_json")"
+else
+  # --- create path --------------------------------------------------------
+  if main_dir="$(linked_worktree_main)"; then
+    ws_json="$(h worktree open --cwd "$main_dir" --path "$dir" \
+      --label "$name" --no-focus)"
+  else
+    ws_json="$(h workspace create --cwd "$dir" --label "$name" --no-focus)"
+  fi
+  ws="$(jq -r '.result.workspace.workspace_id' <<<"$ws_json")"
+  p_agent="$(jq -r '.result.root_pane.pane_id' <<<"$ws_json")"
+  t_agent="$(jq -r '.result.tab.tab_id' <<<"$ws_json")"
+  [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
+fi
 
 # The workspace keeps the project name (revive-panes and the reattach path
 # above both match on it), but the agent tab can say what this run is for when

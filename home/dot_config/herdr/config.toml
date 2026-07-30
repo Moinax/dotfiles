@@ -45,20 +45,12 @@ close_tab = ["prefix+shift+x", "ctrl+alt+w"]
 next_tab = ["prefix+n", "ctrl+alt+n"]
 previous_tab = ["prefix+p", "ctrl+alt+p"]
 
-# Close the active space. ctrl+alt+d joins the ctrl+alt cluster above and
-# mirrors the "d" of the prefix+shift+d default (kept alongside); plain
-# ctrl+w is off-limits for the same reason as close_tab above.
-close_workspace = ["prefix+shift+d", "ctrl+alt+d"]
-
-# Fuzzy project picker (fd over ~/Projects → tv) that opens the picked
-# project's dev environment via `dev` — the in-herdr rofi-dev.
-[[keys.command]]
-key = ["prefix+o", "ctrl+alt+o"]
-type = "popup"
-command = "dev-pick"
-width = "70%"
-height = "60%"
-description = "Open project (dev picker)"
+# X closes a Herdr context: without Shift it only closes the active space;
+# Ctrl+Shift+X removes a linked worktree checkout too (with Herdr's native
+# dirty-tree guard and confirmation). D is reserved for detaching the current
+# session, matching Mod+Alt+D's detach-all at the compositor layer.
+close_workspace = ["prefix+shift+d", "ctrl+alt+x"]
+remove_worktree = "ctrl+shift+x"
 
 # Pick an agent provider (herdr-nav's shared list), name it, and open it as an
 # extra agent tab in the focused workspace. The tab clones the dev-herdr
@@ -84,6 +76,14 @@ key = "ctrl+alt+q"
 type = "shell"
 command = "herdr-nav quit"
 description = "Stop session & close window (kills agents)"
+
+# Detach only this session's client; its server and agents keep running.
+# This is the session-scoped counterpart of Hyprland's Mod+Alt+D detach-all.
+[[keys.command]]
+key = "ctrl+alt+d"
+type = "shell"
+command = "herdr-nav detach"
+description = "Detach current session (keeps agents)"
 
 # Active code review: a "review" tab running tuicr on the focused pane's
 # working tree. The passive live diff stays in the agent tab's hunk pane;

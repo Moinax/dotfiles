@@ -246,24 +246,24 @@ case "${1:-}" in
     fi
     exec tuicr
     ;;
-  quit)
-    # Stop the current session — detach its client window, then stop its
-    # server (kills the agents; session.json survives). The session name
-    # comes from the inherited socket path: named sessions live in
-    # ~/.config/herdr/sessions/<name>/herdr.sock, the default session's
-    # socket sits directly in ~/.config/herdr.
+  detach|quit)
+    # Resolve the current session from the inherited socket path: named
+    # sessions live in ~/.config/herdr/sessions/<name>/herdr.sock, while the
+    # default session's socket sits directly in ~/.config/herdr.
     session="default"
     sessions_dir="$HOME/.config/herdr/sessions"
     if [[ "${HERDR_SOCKET_PATH:-}" == "$sessions_dir"/?*/* ]]; then
       session="${HERDR_SOCKET_PATH#"$sessions_dir/"}"
       session="${session%%/*}"
     fi
-    # herdr-clients stop tears down this very process's ancestors (the
-    # client window, then the server that ran this shell bind) — detach
-    # fully so the stop sequence survives its own teardown.
-    setsid -f herdr-clients stop "$session" >/dev/null 2>&1 </dev/null
+    # Both operations tear down this process's client-window ancestors; quit
+    # also stops the server that ran this shell bind. Fully detach the helper
+    # so the sequence survives its own teardown.
+    action="$1"
+    [[ "$action" == quit ]] && action=stop
+    setsid -f herdr-clients "$action" "$session" >/dev/null 2>&1 </dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | files | git | review | review-run | quit)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | files | git | review | review-run | detach | quit)"
     ;;
 esac

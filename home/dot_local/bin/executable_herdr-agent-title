@@ -7,6 +7,8 @@
 #
 # Usage: herdr-agent-title sync              Claude Code hook (Stop /
 #                                            SessionStart); hook JSON on stdin
+#        herdr-agent-title codex-notify JSON Codex `notify` callback; payload
+#                                            is the first argv as documented
 #        herdr-agent-title seed [-s SESSION] PANE KIND NAME
 #                                            record the launch label so the
 #                                            hook knows what it may replace
@@ -60,7 +62,7 @@
 # is kept to the turns that need it.
 set -euo pipefail
 
-usage="usage: herdr-agent-title sync | seed [-s SESSION] PANE KIND NAME"
+usage="usage: herdr-agent-title sync | codex-notify JSON | seed [-s SESSION] PANE KIND NAME"
 
 cache_root="${XDG_RUNTIME_DIR:-/tmp}/herdr-agent-title"
 
@@ -104,6 +106,11 @@ tab_label() { # $1: tab id
   h tab get "$1" 2>/dev/null | jq -r '.result.tab.label // empty' 2>/dev/null
 }
 
+# The pane's persisted label, distinct from its dynamic terminal title.
+pane_label() { # $1: pane id
+  h pane get "$1" 2>/dev/null | jq -r '.result.pane.label // empty' 2>/dev/null
+}
+
 # Display-only metadata: the $task sidebar token and the pane title. The
 # semantic agent state stays herdr's own integration's business.
 #
@@ -113,6 +120,7 @@ tab_label() { # $1: tab id
 #
 # vibewatch is told too, for the same reason — see tell_vibewatch.
 report_metadata() { # $1: name
+  h pane rename "$HERDR_PANE_ID" "$1" >/dev/null 2>&1 || true
   h pane report-metadata "$HERDR_PANE_ID" \
     --source dots:agent-title --title "$1" --token "task=$1" \
     >/dev/null 2>&1 || true
@@ -174,6 +182,16 @@ claude_title() { # $1: transcript
           | map(select(length > 0)) | first // empty' 2>/dev/null )
 }
 
+# Codex keeps the thread title in the durable index used by its resume picker.
+# Read only that stable field; the rollout format is explicitly unstable and
+# this hook does not need its path.
+codex_title() { # $1: session id
+  [[ "$1" =~ ^[[:alnum:]_-]+$ ]] || return 1
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  sqlite3 "$HOME/.codex/state_5.sqlite" \
+    "select title from threads where id = '$1' limit 1" 2>/dev/null
+}
+
 # The opening prompt. A few user records, not just the first: a session opened
 # with a slash command leads with a <local-command-caveat> block. Only records
 # with a promptId count — that is what a typed prompt has and a tool result or
@@ -212,7 +230,7 @@ case "${1:-sync}" in
     write_cache "$(cache_path "$session" "$pane")" "$kind" "$name"
     ;;
 
-  sync)
+  sync|codex-notify)
     # Outside a herdr pane there is nothing to label. This is also the fast
     # exit for every agent the hook fires in that herdr never spawned.
     [[ "${HERDR_ENV:-}" == 1 && -n "${HERDR_PANE_ID:-}" && -n "${HERDR_SOCKET_PATH:-}" ]] \
@@ -229,14 +247,26 @@ case "${1:-sync}" in
       IFS=$'\t' read -r kind applied seen <"$cache" || true
     fi
 
-    # All three payload fields in one jq: the hook JSON is a handful of lines
-    # and this runs at every turn end, on every pane. The session id is what
-    # vibewatch keys its own sessions on, so it is how the name reaches the
-    # panel and the bar (see report_metadata).
-    IFS=$'\t' read -r transcript event session_id \
-      < <(jq -r '[.transcript_path // "", .hook_event_name // "",
-                  .session_id // ""] | @tsv' 2>/dev/null) || true
-    [[ -n "$transcript" && -r "$transcript" ]] || exit 0
+    if [[ "$1" == codex-notify ]]; then
+      payload="${2:-}"
+      session_id="$(jq -r 'select(.type == "agent-turn-complete")
+                              | .["thread-id"] // empty' <<<"$payload" 2>/dev/null)" || session_id=""
+      [[ -n "$session_id" ]] || exit 0
+      title="$(codex_title "$session_id")" || title=""
+      # Cache records are one-line TSV. Codex titles are opening prompts and
+      # may be paragraphs; only their first line can be banked and compared
+      # without turning the rest into bogus cache records on the next sync.
+      title="${title%%$'\n'*}"
+      event=Stop
+    else
+      # All three payload fields in one jq: the hook JSON is a handful of
+      # lines and this runs at every turn end, on every pane.
+      IFS=$'\t' read -r transcript event session_id \
+        < <(jq -r '[.transcript_path // "", .hook_event_name // "",
+                    .session_id // ""] | @tsv' 2>/dev/null) || true
+      [[ -n "$transcript" && -r "$transcript" ]] || exit 0
+      title="$(claude_title "$transcript")" || title=""
+    fi
 
     if [[ -z "$kind" && -n "${HERDR_TAB_ID:-}" ]]; then
       # No entry: this pane predates the cache, or the machine rebooted (pane
@@ -253,8 +283,6 @@ case "${1:-sync}" in
     # slug is what SEEN banks and what `moved` compares, so it stays raw here
     # and the herdr-task-name spawn that reads it back as words waits until
     # past the pin gate — a held pin is the common case and never needs them.
-    title="$(claude_title "$transcript")" || title=""
-
     # Has the agent's own title moved since this pane was pinned (see header)?
     moved=0
     [[ -n "$title" && -n "$seen" && "$title" != "$seen" ]] && moved=1
@@ -266,9 +294,10 @@ case "${1:-sync}" in
       # check below, so a tab renamed by hand while pinned leaves $applied
       # stale — and pushing that outwards would actively overwrite the user's
       # name with the one they replaced.
-      pinned=""
+      pinned=""; pane_live=""
       [[ -n "${HERDR_TAB_ID:-}" ]] && { pinned="$(tab_label "$HERDR_TAB_ID")" || pinned=""; }
       [[ -n "$pinned" ]] || pinned="$applied"
+      pane_live="$(pane_label "$HERDR_PANE_ID")" || pane_live=""
 
       # A label that has drifted from the last reported name is a hand rename,
       # and this path is the only one that can see it: the `live != applied`
@@ -282,7 +311,8 @@ case "${1:-sync}" in
       # when its stamp says this daemon has not already been told (see
       # tell_vibewatch) — `report_metadata` covers it on the arm above, hence the
       # elif rather than both.
-      if [[ -n "$pinned" ]] && [[ "$pinned" != "$applied" || "$event" == SessionStart ]]; then
+      if [[ -n "$pinned" ]] \
+         && [[ "$pinned" != "$applied" || "$pane_live" != "$pinned" || "$event" == SessionStart ]]; then
         report_metadata "$pinned"
       elif [[ -n "$pinned" && "$vibewatch_sock" -nt "$vibewatch_stamp" ]]; then
         tell_vibewatch "$pinned"
@@ -314,7 +344,14 @@ case "${1:-sync}" in
     # guesses is an invariant, and it should read as one.
     if [[ "$kind" != set && "$kind" != pin ]] \
        && [[ -z "$name" || ( "$kind" == seed && "$name" == "$applied" ) ]]; then
-      first="$(first_prompt "$transcript")" || first=""
+      if [[ "$1" == codex-notify ]]; then
+        # The Codex thread title is derived from its opening prompt. If the
+        # index did not have one yet, the notification payload is the only
+        # stable interface left; use its first input message as the seed.
+        first="$(jq -r '.["input-messages"][0] // empty' <<<"$payload" 2>/dev/null)" || first=""
+      else
+        first="$(first_prompt "$transcript")" || first=""
+      fi
       [[ -n "$first" ]] && name="$("$task_name" "$first" 2>/dev/null || true)"
     fi
     [[ -n "$name" ]] || exit 0

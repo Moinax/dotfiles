@@ -14,6 +14,7 @@
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
 #        herdr-clients revive-panes SESSION   rerun utility/agent pane commands in restored panes left as bare shells
 #        herdr-clients migrate-layout [SESSION ...]  reconcile persisted workspaces with the current dev-herdr layout (default: every session)
+#        herdr-clients migrate-worktrees [SESSION ...]  attach existing linked-checkout spaces to native Herdr worktree groups
 #        herdr-clients reload-config [SESSION ...]   reload config.toml in running servers (default: every running one)
 set -euo pipefail
 
@@ -430,6 +431,75 @@ migrate_layout_sessions() {
   [[ ${#FAILED_SESSIONS[@]} -eq 0 ]]
 }
 
+# Upgrade plain workspaces rooted in linked Git checkouts to Herdr's native
+# worktree provenance. `worktree open` deliberately reuses an existing
+# workspace for the same checkout, so tabs, panes and agents stay untouched.
+# It also marks (or, when absent, creates) the main checkout as the parent.
+migrate_worktrees() {
+  local session="$1" panes ws label cwd checkout git_dir common main out
+  panes="$(herdr --session "$session" pane list 2>/dev/null \
+    | jq -c '.result.panes // []')" || return 0
+
+  while IFS=$'\t' read -r ws label; do
+    cwd="$(jq -r --arg w "$ws" \
+      '[.[] | select(.workspace_id == $w) | .cwd // .foreground_cwd // empty][0] // empty' \
+      <<<"$panes")"
+    [[ -n "$cwd" && -d "$cwd" ]] \
+      || cwd="$(workspace_cwd "$session" "$ws" "$label" 2>/dev/null || true)"
+    [[ -n "$cwd" && -d "$cwd" ]] || {
+      echo "$session: cannot resolve cwd for workspace '$label' ($ws) — skipping worktree migration" >&2
+      continue
+    }
+
+    checkout="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" || continue
+    git_dir="$(git -C "$checkout" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || continue
+    common="$(git -C "$checkout" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
+    [[ "$git_dir" != "$common" ]] || continue
+    main="$(git -C "$checkout" worktree list --porcelain 2>/dev/null \
+      | awk '$1 == "worktree" { print substr($0, 10); exit }')"
+    [[ -n "$main" && -d "$main" ]] || {
+      echo "$session: cannot find main checkout for '$label' ($checkout) — skipping" >&2
+      continue
+    }
+
+    if out="$(herdr --session "$session" worktree open --cwd "$main" \
+        --path "$checkout" --label "$label" --no-focus 2>&1)"; then
+      already="$(jq -r '.result.already_open // false' <<<"$out" 2>/dev/null || echo false)"
+      echo "$session: grouped workspace '$label' under $(basename "$main") (reused=$already)"
+    else
+      echo "$session: failed to migrate workspace '$label': $out" >&2
+    fi
+  done < <(herdr --session "$session" workspace list 2>/dev/null \
+    | jq -r '.result.workspaces[]? | [.workspace_id, .label // ""] | @tsv')
+}
+
+migrate_worktree_sessions() {
+  local -a sessions=() known=()
+  local session
+  mapfile -t known < <(herdr session list --json 2>/dev/null \
+    | jq -r '.sessions[]? | .name')
+  if [[ $# -gt 0 ]]; then
+    for session in "$@"; do
+      if in_list "$session" "${known[@]}"; then
+        sessions+=("$session")
+      else
+        echo "herdr-clients: unknown session '$session' — skipping" >&2
+      fi
+    done
+  else
+    sessions=("${known[@]}")
+  fi
+  [[ ${#sessions[@]} -eq 0 ]] && return 0
+  boot_servers "${sessions[@]}"
+  for session in "${sessions[@]}"; do
+    in_list "$session" "${FAILED_SESSIONS[@]}" \
+      && { echo "herdr-clients: server for '$session' did not start" >&2; continue; }
+    migrate_worktrees "$session"
+  done
+  [[ ${#BOOTED_SESSIONS[@]} -gt 0 ]] && stop_sessions "${BOOTED_SESSIONS[@]}"
+  [[ ${#FAILED_SESSIONS[@]} -eq 0 ]]
+}
+
 # Reload config.toml in the given sessions' running servers (default: every
 # running one). A server reads config.toml only at boot and at reload-config,
 # so a config change (e.g. a new keybinding) silently skips every session but
@@ -624,11 +694,15 @@ case "${1:-}" in
     shift
     migrate_layout_sessions "$@"
     ;;
+  migrate-worktrees)
+    shift
+    migrate_worktree_sessions "$@"
+    ;;
   reload-config)
     shift
     reload_config_sessions "$@"
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes | migrate-layout | reload-config)"
+    die "unknown command: ${1:-<none>} (expected: show|open | detach | stop | list | ensure-server | open-all | detach-all | stop-all | revive-panes | migrate-layout | migrate-worktrees | reload-config)"
     ;;
 esac

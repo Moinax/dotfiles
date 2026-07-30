@@ -35,9 +35,10 @@ h() {
   if [[ -n "$session" ]]; then herdr --session "$session" "$@"; else herdr "$@"; fi
 }
 
-# Label the agent pane with its provider (claude, claudex, codex, opencode),
-# like the dev/logs/review panes are labeled.
-h pane rename "$p_agent" "$provider" >/dev/null
+# The task is the pane's identity too. Keeping only the provider here made a
+# task-named tab/sidebar still read "codex" in the pane header until forever,
+# since the provider itself has no reason to rename the pane.
+h pane rename "$p_agent" "$label" >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
 # the full width), then hunk right of the agent.
