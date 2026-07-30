@@ -12,8 +12,16 @@ if ! command -v hyprvoice &>/dev/null; then
     exit 1
 fi
 
+# One `hyprvoice status`, reused below: it answers both questions this script
+# has — is the daemon up, and is it idle — and nothing else can toggle it in
+# between. Asking twice spent two extra forks (status is 3-6ms measured, plus a
+# grep each) on a keypress whose whole job is to feel instant.
+# `|| true` because a missing binary is the one failure a command substitution
+# would let `set -e` turn into a silent exit; the guard above already covers it.
+status=$(hyprvoice status 2>/dev/null || true)
+
 # Ensure the daemon is running (hyprvoice status always exits 0, check output instead)
-if ! hyprvoice status 2>/dev/null | grep -q "status="; then
+if [[ "$status" != *status=* ]]; then
     # Keep the daemon's output: it is the only place a failed transcription
     # says *why* (bad API key, provider error, injection backend refusing).
     # Sent to /dev/null before, which made every failure look identical —
@@ -25,17 +33,18 @@ if ! hyprvoice status 2>/dev/null | grep -q "status="; then
     # Wait up to 5s for daemon to be ready
     for _ in $(seq 1 10); do
         sleep 0.5
-        hyprvoice status 2>/dev/null | grep -q "status=" && break
+        status=$(hyprvoice status 2>/dev/null || true)
+        [[ "$status" == *status=* ]] && break
     done
 fi
 
 # Which way this keypress goes, decided *before* toggling: idle means it starts
 # a dictation, anything else means it ends one.
 starting=no
-# An `if`, not `grep … && starting=yes`: under `set -e` a bare and-list whose
+# An `if`, not `[[ … ]] && starting=yes`: under `set -e` a bare and-list whose
 # left side fails is the shape that quietly skips the rest of a script, and the
 # failing case here is the *stop* press — the one that must still toggle.
-if hyprvoice status 2>/dev/null | grep -q "status=idle"; then
+if [[ "$status" == *status=idle* ]]; then
     starting=yes
 fi
 

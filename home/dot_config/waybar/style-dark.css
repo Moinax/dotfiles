@@ -46,8 +46,10 @@ tooltip label {
  * reads as one set of chips. #window has no rule of its own — it matches
  * `.module` like every other module and inherits this (verified on screen). */
 /* `#stats` and `#vibewatch` are named because a `group/` does not match
- * `.module` — a group is a box, not a module, so it needs the chip spelled out
- * or its children would each carry one and the bar would grow extra pills. */
+ * `.module` — a group is a box, not a module, so it needs this spelled out or
+ * its children would each carry one and the bar would grow extra pills.
+ * `#vibewatch` joins for the geometry only: it replaces this background further
+ * down with vibewatch's own, so `@chip` is not what tunes that pill. */
 #stats,
 #vibewatch,
 .module {
@@ -216,9 +218,6 @@ tooltip label {
 #vibewatch {
   background: rgba(50, 51, 67, 0.667);
   border: 1px solid rgba(88, 91, 112, 0.25);
-  transition:
-    color 0.25s ease-in-out,
-    background 0.25s ease-in-out;
 }
 /* The group is the pill. Its children must not each be one too, or the widget
  * reads as three separate chips — same reason #cpu and #memory go transparent
@@ -238,12 +237,19 @@ tooltip label {
  * Keep the two numbers together.
  *
  * 0.45 rather than the 0.26 this started at: 0.26 gave 14 points of luminance
- * against the pill, which reads as a smudge rather than as depth. */
+ * against the pill, which reads as a smudge rather than as depth.
+ *
+ * The transition lives here, not on `#vibewatch`: the group's own background is
+ * a constant, and `.attention` below is the only state-driven colour change in
+ * the widget. On the group it animated nothing. */
 #custom-vibewatch-state {
   background: rgba(0, 0, 0, 0.45);
   border-radius: 7px;
   padding: 0 7px;
   margin: 2px 2px;
+  transition:
+    color 0.25s ease-in-out,
+    background 0.25s ease-in-out;
 }
 /* Attention: the magenta of workspaces.active, caffeine.activated and
  * notification, but on the recess rather than the whole pill. A `group/` emits

@@ -48,7 +48,8 @@ tooltip label {
  * distance (~44) lands at a = 0.237, which is why these round to the same
  * 0.22 the dark sheet uses rather than the 0.14/0.15 they sat at before. */
 /* `#stats` and `#vibewatch` are named because a `group/` does not match
- * `.module` — see the twin note in style-dark.css. */
+ * `.module` — see the twin note in style-dark.css, including why `#vibewatch`
+ * takes the geometry from here and replaces the background below. */
 #stats,
 #vibewatch,
 .module {
@@ -193,9 +194,6 @@ tooltip label {
 #vibewatch {
   background: rgba(189, 194, 206, 0.667);
   border: 1px solid rgba(172, 176, 190, 0.25);
-  transition:
-    color 0.25s ease-in-out,
-    background 0.25s ease-in-out;
 }
 /* The group is the pill; its children must not each be one too. */
 #custom-vibewatch-name,
@@ -210,12 +208,18 @@ tooltip label {
 /* 0.12, matching `cat_row_step` in the Latte palette: on a light ground a little
  * black goes a long way, and the dark sheet's 0.45 would read as a hole. Keep the
  * two numbers together — the pill's state and a panel card are one surface, so
- * they have to dig by the identical fraction. */
+ * they have to dig by the identical fraction.
+ *
+ * The transition sits here rather than on the group, for the reason spelled out
+ * in style-dark.css: `.attention` below is the only colour that ever moves. */
 #custom-vibewatch-state {
   background: rgba(0, 0, 0, 0.12);
   border-radius: 7px;
   padding: 0 7px;
   margin: 2px 2px;
+  transition:
+    color 0.25s ease-in-out,
+    background 0.25s ease-in-out;
 }
 /* Attention on the recess, not the whole pill: a group emits no class of its
  * own, and the state is the thing actually waiting on you. */

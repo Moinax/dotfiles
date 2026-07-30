@@ -12,6 +12,8 @@ descriptions:
   hyprvoice-bin: Speech-to-text dictation tool (AUR)
   whisper.cpp: Local speech recognition engine
   vibewatch: AI agent status bar & overlay for Hyprland (built from source via cargo)
+  python-gobject: Python GTK bindings (dictation overlay)
+  gtk4-layer-shell: Layer-shell surfaces for GTK4 (dictation overlay)
 
 # Tools installed via custom commands (not available in package managers).
 # These appear in the package selector alongside distro packages.
@@ -38,6 +40,17 @@ packages:
   arch:
     # Dictation (speech-to-text)
     - hyprvoice-bin
+    # Runtime deps of the dictation overlay (hyprvoice-widget.py), declared here
+    # rather than inherited: gtk4-layer-shell was only ever listed as a *build*
+    # prereq of vibewatch's custom_install, so an AI-group install that skips
+    # vibewatch got no GTK4 layer-shell stack, and python-gobject was in no
+    # package file at all. Both failures are silent — toggle-dictation.sh
+    # launches the widget with `setsid -f … >/dev/null 2>&1 || true`, so a
+    # missing `import gi` never surfaces, and a missing libgtk4-layer-shell.so
+    # makes the overlay a focus-stealing toplevel instead of a layer surface.
+    # (gtk4 itself comes in as a dependency of gtk4-layer-shell.)
+    - python-gobject
+    - gtk4-layer-shell
     # NOTE: whisper.cpp (the local engine) is intentionally NOT listed here.
     # On NVIDIA systems paru resolves it to whisper.cpp-cuda, which pulls the
     # full CUDA toolkit and compiles ggml-cuda-git — a long, heavy build that is

@@ -100,28 +100,40 @@ WAVE_MIN = 140  # floor for the waveform; hexpand gives it whatever is left
 RATE = 16000
 BAR_BYTES = RATE * BAR_MS // 1000 * 2
 
+
 # Both palettes live here rather than in style-{dark,light}.css: the waveform is
 # Cairo-drawn, so its colours must be Python either way, and splitting one
 # palette across two files is how a widget quietly stops matching itself. The
 # overlay is short-lived and reads the scheme once at startup, so it has no need
 # for swayosd's live-switching setup.
-DARK = {
-    "bg": (0.118, 0.118, 0.180, 0.94),  # Catppuccin Mocha base
-    "rim": (0.804, 0.839, 0.957, 0.10),
-    "ink": (0.804, 0.839, 0.957, 1.0),  # text
-    "dim": (0.651, 0.678, 0.784, 1.0),  # timer
-    "accent": (0.796, 0.651, 0.969, 1.0),  # mauve
-    "alert": (0.953, 0.545, 0.659, 1.0),  # red
-    "ok": (0.651, 0.890, 0.631, 1.0),  # green
+#
+# Written as hex and converted here, not as float triples: #1e1e2e appears in
+# eleven other files (waybar, swaync, swayosd, wlogout, rofi, yazi, theme.lua),
+# and a flavour tweak has to be able to find this one by grepping for the same
+# string as the rest. Cairo wants 0..1 floats, so the conversion happens once at
+# import rather than being baked into the source.
+def rgba(colour: str, alpha: float = 1.0) -> tuple[float, float, float, float]:
+    r, g, b = (int(colour[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+    return r, g, b, alpha
+
+
+DARK = {  # Catppuccin Mocha
+    "bg": rgba("#1e1e2e", 0.94),  # base
+    "rim": rgba("#cdd6f4", 0.10),
+    "ink": rgba("#cdd6f4"),  # text
+    "dim": rgba("#a6adc8"),  # timer
+    "accent": rgba("#cba6f7"),  # mauve
+    "alert": rgba("#f38ba8"),  # red
+    "ok": rgba("#a6e3a1"),  # green
 }
-LIGHT = {
-    "bg": (0.937, 0.945, 0.961, 0.96),  # Catppuccin Latte base
-    "rim": (0.298, 0.310, 0.412, 0.12),
-    "ink": (0.298, 0.310, 0.412, 1.0),
-    "dim": (0.424, 0.435, 0.522, 1.0),
-    "accent": (0.533, 0.224, 0.937, 1.0),
-    "alert": (0.824, 0.059, 0.224, 1.0),
-    "ok": (0.251, 0.627, 0.170, 1.0),
+LIGHT = {  # Catppuccin Latte
+    "bg": rgba("#eff1f5", 0.96),  # base
+    "rim": rgba("#4c4f69", 0.12),
+    "ink": rgba("#4c4f69"),
+    "dim": rgba("#6c6f85"),
+    "accent": rgba("#8839ef"),
+    "alert": rgba("#d20f39"),
+    "ok": rgba("#40a02b"),
 }
 
 CSS = """
@@ -273,7 +285,7 @@ def capture_active() -> bool:
                 children += (task / "children").read_text().split()
             except OSError:
                 continue
-    except (OSError, ValueError):
+    except OSError:
         return False
     for child in children:
         try:
@@ -299,6 +311,19 @@ def run_pactl(args: list[str]) -> str | None:
     return done.stdout
 
 
+def pactl_json(args: list[str]) -> list:
+    """`pactl -f json …`, or an empty list on any failure.
+
+    One place answers "did pactl run, and was the output parseable" — the three
+    callers below would otherwise each carry the same pair of early returns.
+    """
+    raw = run_pactl(["-f", "json", *args])
+    try:
+        return json.loads(raw) if raw else []
+    except ValueError:
+        return []
+
+
 def pinned_device() -> str | None:
     """hyprvoice's `[recording] device`, when it names one.
 
@@ -314,26 +339,35 @@ def pinned_device() -> str | None:
     return device or None
 
 
-def list_inputs() -> tuple[list[tuple[str, str]], str]:
-    """Capture devices (monitors excluded) and the current default's name."""
-    default = (run_pactl(["get-default-source"]) or "").strip()
-    raw = run_pactl(["-f", "json", "list", "sources"])
-    if not raw:
-        return [], default
-    try:
-        sources = json.loads(raw)
-    except ValueError:
-        return [], default
+def default_source() -> str:
+    """The name PipeWire hands to a client that asks for no device in particular."""
+    return (run_pactl(["get-default-source"]) or "").strip()
+
+
+def capture_inputs(sources: list) -> list[tuple[str, str]]:
+    """(name, description) of every capture device in a dump, monitors excluded.
+
+    Takes the parsed dump rather than fetching it, like find_source below: the
+    caller needs that same `list sources` output for the tick column anyway, and
+    re-fetching it per question is how raising one pill cost four pactl execs.
+    """
     inputs = []
     for source in sources:
         name = source.get("name") or ""
         if name and not name.endswith(".monitor"):
             inputs.append((name, source.get("description") or name))
-    return inputs, default
+    return inputs
 
 
-def ensure_audible(name: str) -> None:
-    """Unmute `name` and lift a zeroed level, so it can actually be heard.
+def find_source(sources: list, name: str) -> dict | None:
+    for source in sources:
+        if source.get("name") == name:
+            return source
+    return None
+
+
+def ensure_audible(source: dict) -> None:
+    """Unmute `source` and lift a zeroed level, so it can actually be heard.
 
     A source muted in the mixer records perfect silence while every status the
     OS reports still looks healthy — the same dead end as a hardware-muted
@@ -341,22 +375,19 @@ def ensure_audible(name: str) -> None:
     a device (including at startup): reaching for Mod+D is an unambiguous
     request for the microphone to work, and the alternative is a recording that
     silently transcribes to nothing.
+
+    Both fixes are conditional on what the dump already says, so the common case
+    — a healthy microphone — spends no pactl exec at all.
     """
-    run_pactl(["set-source-mute", name, "0"])
-    raw = run_pactl(["-f", "json", "list", "sources"])
-    if not raw:
+    name = source.get("name")
+    if not name:
         return
-    try:
-        sources = json.loads(raw)
-    except ValueError:
-        return
-    for source in sources:
-        if source.get("name") != name:
-            continue
-        levels = (source.get("volume") or {}).values()
-        # Only rescue a fully closed channel; any audible level is the user's.
-        if levels and all(c.get("value_percent") == "0%" for c in levels):
-            run_pactl(["set-source-volume", name, "100%"])
+    if source.get("mute"):
+        run_pactl(["set-source-mute", name, "0"])
+    levels = (source.get("volume") or {}).values()
+    # Only rescue a fully closed channel; any audible level is the user's.
+    if levels and all(c.get("value_percent") == "0%" for c in levels):
+        run_pactl(["set-source-volume", name, "100%"])
 
 
 def short_name(description: str) -> str:
@@ -365,16 +396,6 @@ def short_name(description: str) -> str:
         if description.endswith(suffix):
             return description[: -len(suffix)]
     return description
-
-
-def current_source() -> tuple[str, str]:
-    """(name, description) of the device dictation will actually record from."""
-    inputs, default = list_inputs()
-    target = pinned_device() or default
-    for name, description in inputs:
-        if name == target:
-            return name, description
-    return target, target or "microphone inconnu"
 
 
 def select_input(name: str) -> None:
@@ -387,14 +408,7 @@ def select_input(name: str) -> None:
     else holds the microphone, a browser call included.
     """
     run_pactl(["set-default-source", name])
-    raw = run_pactl(["-f", "json", "list", "source-outputs"])
-    if not raw:
-        return
-    try:
-        streams = json.loads(raw)
-    except ValueError:
-        return
-    for stream in streams:
+    for stream in pactl_json(["list", "source-outputs"]):
         # pw-record sets no application.process.id, so the stream is claimed by
         # application.name — the only field that identifies it here.
         if stream.get("properties", {}).get("application.name") == "pw-record":
@@ -457,14 +471,13 @@ class LevelMeter:
 
     def _level(self, window: bytes) -> float:
         samples = struct.unpack(f"<{len(window) // 2}h", window)
-        peak = max(samples, default=0)
-        trough = min(samples, default=0)
-        if peak or trough:
-            self.heard_signal = True
         total = sum(float(s) * s for s in samples)
         rms = math.sqrt(total / len(samples)) if samples else 0.0
         if rms <= 0:
             return 0.0
+        # rms > 0 is exactly "some sample was non-zero", so the guard above
+        # doubles as the aliveness test — no separate peak/trough pass needed.
+        self.heard_signal = True
         # Speech spans a wide amplitude range, so map dB rather than raw
         # amplitude — otherwise normal talking barely lifts the bars.
         db = 20.0 * math.log10(rms / 32768.0)
@@ -483,11 +496,12 @@ class Overlay:
     def __init__(self, app):
         self.palette = DARK if prefers_dark() else LIGHT
         self.levels = deque([0.0] * BARS, maxlen=BARS)
-        self.level_now = 0.0
         self.phase = "listening"  # listening | transcribing
         self.started_us = GLib.get_monotonic_time()
-        self.silent_since = self.started_us
-        self.clock = 0.0
+        # When this *device* started being listened to, which the picker resets
+        # and the dictation timer does not — the two questions came apart the
+        # moment a mic could be swapped mid-sentence.
+        self.device_since = self.started_us
 
         self.window = Gtk.ApplicationWindow(application=app)
         self.window.add_css_class("hv")
@@ -506,9 +520,6 @@ class Overlay:
             self.window.get_display(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-        # Two rows: the device name sits alone on a thin top line, out of the
-        # controls' way, so it can be spelled out in full and the waveform keeps
-        # the whole width.
         # Two rows: the device name sits alone on a thin top line, out of the
         # controls' way, so it can be spelled out in full and the waveform keeps
         # the whole width.
@@ -564,11 +575,13 @@ class Overlay:
         controls.append(self.state)
 
         self.accept = self.button("✓", "ok", self.on_accept, "Valider la dictée")
-        self.reject = self.button("✕", "no", self.on_reject, "Annuler la dictée")
         controls.append(self.accept)
-        controls.append(self.reject)
+        controls.append(self.button("✕", "no", self.on_reject, "Annuler la dictée"))
 
-        self.meter = LevelMeter(self.push_level)
+        # The deque is the only thing a column has to reach, so the meter writes
+        # straight into it: a push_level of our own held level_now as a second
+        # copy of levels[-1], which the picker's reset then failed to clear.
+        self.meter = LevelMeter(self.levels.append)
         self.meter.start()
         self.window.present()
 
@@ -584,17 +597,12 @@ class Overlay:
         btn.connect("clicked", handler)
         return btn
 
-    def push_level(self, level: float) -> None:
-        self.levels.append(level)
-        self.level_now = level
-        if self.meter.heard_signal:
-            self.silent_since = None
-
     # ── microphone picker ──────────────────────────────────────────────────
     def on_picker_opened(self, button, _param) -> None:
         if not button.get_active():
             return
-        inputs, default = list_inputs()
+        inputs = capture_inputs(pactl_json(["list", "sources"]))
+        default = default_source()
         menu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         if not inputs:
             empty = Gtk.Label(label="aucun microphone détecté")
@@ -620,12 +628,22 @@ class Overlay:
         self.picker.get_popover().set_child(menu)
 
     def refresh_source(self) -> None:
-        """Label the live device, and make sure it is actually audible."""
-        name, description = current_source()
+        """Label the live device, and make sure it is actually audible.
+
+        One `list sources` dump answers both halves — which device is live and
+        whether it is muted or zeroed — where asking each question for itself
+        fetched the same 20KB of JSON twice. Four pactl execs down to two, and
+        none at all spent mutating a healthy microphone: 14ms → 7ms measured, on
+        the keypress whose whole job is to put a pill on screen quickly.
+        """
+        sources = pactl_json(["list", "sources"])
+        target = self.pinned or default_source()
+        entry = find_source(sources, target)
+        description = (entry or {}).get("description") or target or "microphone inconnu"
         self.source.set_text(short_name(description))
         self.source.set_tooltip_text(description)
-        if name:
-            ensure_audible(name)
+        if entry is not None:
+            ensure_audible(entry)
 
     def on_pick_input(self, _row, name: str) -> None:
         select_input(name)
@@ -635,7 +653,7 @@ class Overlay:
         # old one's verdict, so a working mic stays flagged "micro muet" (and,
         # worse, a dead one inherits a clean bill of health).
         self.meter.heard_signal = False
-        self.silent_since = GLib.get_monotonic_time()
+        self.device_since = GLib.get_monotonic_time()
         self.levels.extend([0.0] * BARS)
 
     # ── controls ───────────────────────────────────────────────────────────
@@ -681,13 +699,12 @@ class Overlay:
         return True
 
     def on_frame(self) -> bool:
-        self.clock += FRAME_MS / 1000.0
         if self.phase == "listening":
             if self.muted():
                 self.state.set_text("micro muet")
                 self.state.add_css_class("alert")
             else:
-                elapsed = (GLib.get_monotonic_time() - self.started_us) // 1_000_000
+                elapsed = int(self.elapsed_s())
                 self.state.set_text(f"{elapsed // 60}:{elapsed % 60:02d}")
                 self.state.remove_css_class("alert")
         self.mic.queue_draw()
@@ -695,22 +712,31 @@ class Overlay:
         return True
 
     # ── drawing ────────────────────────────────────────────────────────────
-    def muted(self) -> bool:
-        """No non-zero sample for long enough to mean the source is dead.
+    def elapsed_s(self) -> float:
+        """Seconds since the dictation opened, for the timer and the animations.
 
-        Not merely "quiet": push_level clears the timer on the first non-zero
-        sample, so a silent room still counts as a working microphone. This
-        catches the case a level meter exists for — a hardware-muted headset,
-        which the OS still reports as unmuted and recording happily.
+        Monotonic, not a counter accumulating FRAME_MS: a hand-integrated clock
+        drifts from wall time every time a frame runs late, which left the
+        displayed timer and the ripple phase on two different clocks.
+        """
+        return (GLib.get_monotonic_time() - self.started_us) / 1e6
+
+    def muted(self) -> bool:
+        """No non-zero sample since this device came up — i.e. the source is dead.
+
+        Not merely "quiet": one non-zero sample anywhere sets heard_signal for
+        good, so a silent room still counts as a working microphone. This catches
+        the case a level meter exists for — a hardware-muted headset, which the
+        OS still reports as unmuted and recording happily.
         """
         return (
             self.phase == "listening"
-            and self.silent_since is not None
-            and GLib.get_monotonic_time() - self.silent_since > SILENT_AFTER_S * 1e6
+            and not self.meter.heard_signal
+            and GLib.get_monotonic_time() - self.device_since > SILENT_AFTER_S * 1e6
         )
 
-    def wave_colour(self) -> tuple:
-        return self.palette["alert"] if self.muted() else self.palette["accent"]
+    def wave_colour(self) -> tuple[float, float, float]:
+        return (self.palette["alert"] if self.muted() else self.palette["accent"])[:3]
 
     def draw_mic(self, _area, cr, width, height) -> None:
         # Everything below is in units of the canvas, not fixed pixels: the glyph
@@ -718,15 +744,15 @@ class Overlay:
         # smaller one, clipped square against its own edges.
         cx, cy = width / 2, height / 2
         u = min(width, height) / 32.0
-        r, g, b, _ = self.wave_colour()
+        r, g, b = self.wave_colour()
 
         # The "ondulation": rings breathing outward, their reach tied to the
         # live level so a quiet room stays visibly calm.
         if self.phase == "listening":
-            drive = 0.25 + 0.75 * self.level_now
+            drive = 0.25 + 0.75 * self.levels[-1]
             near, far = 8.0 * u, min(width, height) / 2 - 1.0
             for k in range(3):
-                t = (self.clock / 1.7 + k / 3.0) % 1.0
+                t = (self.elapsed_s() / 1.7 + k / 3.0) % 1.0
                 cr.set_source_rgba(r, g, b, (1.0 - t) * 0.42 * drive)
                 cr.set_line_width(1.2 * u)
                 cr.arc(cx, cy, near + (far - near) * t, 0, 2 * math.pi)
@@ -760,7 +786,7 @@ class Overlay:
             cr.stroke()
 
     def draw_wave(self, _area, cr, width, height) -> None:
-        r, g, b, _ = self.wave_colour()
+        r, g, b = self.wave_colour()
         cy = height / 2
         slot = width / BARS
         bar_w = max(2.0, slot * 0.46)
@@ -773,7 +799,7 @@ class Overlay:
             else:
                 # A travelling swell stands in for the frozen waveform while
                 # the API call is out, so the pill still reads as busy.
-                head = (self.clock * 1.5) % 1.0 * (BARS + 12) - 6
+                head = (self.elapsed_s() * 1.5) % 1.0 * (BARS + 12) - 6
                 level = 0.10 + 0.42 * math.exp(-(((i - head) / 4.0) ** 2))
             bar_h = max(1.5, level * (height - 8))
             x = slot * (i + 0.5)

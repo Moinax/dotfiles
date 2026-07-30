@@ -30,10 +30,13 @@ else
     text=$*
 fi
 
-# Inspect the focused window once.
+# Inspect the focused window once — and parse it once: two `jq` runs over the
+# same object cost a second fork to answer half a question, and on the kitty path
+# below (which exits) $class is never read at all.
 info=$(hyprctl activewindow -j 2>/dev/null)
-class=$(printf '%s' "$info" | jq -r '.class // empty' 2>/dev/null)
-pid=$(printf '%s' "$info"  | jq -r '.pid // empty'  2>/dev/null)
+IFS='	' read -r class pid <<EOF
+$(printf '%s' "$info" | jq -r '[.class // "", .pid // ""] | @tsv' 2>/dev/null)
+EOF
 
 # kitty: a paste shortcut would be consumed by whatever runs inside (herdr
 # rebinds keys of its own), so use kitty's remote control (allow_remote_control
@@ -43,18 +46,19 @@ pid=$(printf '%s' "$info"  | jq -r '.pid // empty'  2>/dev/null)
 # `--bracketed-paste auto` wraps the text in ESC[200~ …201~ when the program
 # has bracketed paste on (herdr does, and forwards the paste to its focused
 # pane), so multi-line text arrives as one block instead of a line per Enter.
-if [ -S "/tmp/kitty-$pid" ]; then
-    if printf '%s' "$text" | kitty @ --to "unix:/tmp/kitty-$pid" \
-        send-text --stdin --bracketed-paste auto 2>/dev/null; then
-        exit 0
-    fi
+if [ -S "/tmp/kitty-$pid" ] && printf '%s' "$text" | kitty @ \
+    --to "unix:/tmp/kitty-$pid" send-text --stdin --bracketed-paste auto 2>/dev/null; then
+    exit 0
 fi
 
 # Everything else: copy + paste (reliable here — same path as the emoji picker).
 # `-k v` sends the V *key* (not the character, which mistypes under Shift).
 printf '%s' "$text" | wl-copy
+# `*[Tt]erm*` is the catch-all and subsumes the wezterm/Terminal spellings this
+# used to list beside it (verified against both sets); only the classes with no
+# "term" in them need naming.
 case "$class" in
-    foot | Alacritty | kitty | herdr* | *[Ww]ezterm* | *[Tt]erm* | *[Tt]erminal*)
+    foot | Alacritty | kitty | herdr* | *[Tt]erm*)
         exec /usr/bin/wtype -M ctrl -M shift -k v -m shift -m ctrl
         ;;
     *)

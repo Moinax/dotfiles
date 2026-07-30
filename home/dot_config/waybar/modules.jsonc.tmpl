@@ -212,35 +212,51 @@
     "tooltip": true,
   },
 {{ if .install_vibewatch }}
+{{- $vw := "~/.cargo/bin/vibewatch" }}
   // AI agent monitor (vibewatch). Three children rather than one label, because
   // the state wants its own rounded, darkened chip and waybar can only give a
   // background to a real widget — the same reason group/stats splits cpu and
   // memory. Each child needs its own `exec`: one stream cannot feed two widgets,
-  // hence `--part`. Three desktop-level subscribers, not per-pane, so this is
-  // not the fanout the repo rules warn about.
+  // hence `--part`.
+  //
+  // The absolute path is a local, not repeated: `~/.cargo/bin` is on PATH for
+  // interactive zsh/fish (dot_zshenv.tmpl) but never for the graphical session,
+  // so every exec here has to spell it out — and six copies of a path is six
+  // places to miss when a `cargo install --root` moves it.
+  //
+  // Cost, measured, because a `--watch` exec is a resident process and this is
+  // three of them: config-hyprland defines two bars over three monitors, so the
+  // bar count multiplies the part count — 3 instances × 3 parts = 9 subscribers,
+  // ~50MB PSS / ~273MB RSS in total (verified with pgrep + smaps_rollup), up
+  // from 3 and ~16MB when this was one label. CPU is genuinely nil (0.03s over
+  // 9 minutes each), but the daemon now fans every agent state change out to 9
+  // pipes. If that ever needs cutting, the state is the only part that truly
+  // needs its own widget — name and count could share one stream with the badge
+  // appended as Pango, which is a change to vibewatch's `--part` contract and
+  // not something this file can do alone.
   // Order is layout: logo+name, then the state chip, then the count.
   "group/vibewatch": {
     "orientation": "horizontal",
     "modules": ["custom/vibewatch-name", "custom/vibewatch-state", "custom/vibewatch-count"],
   },
   "custom/vibewatch-name": {
-    "exec": "~/.cargo/bin/vibewatch status --watch --part name",
+    "exec": "{{ $vw }} status --watch --part name",
     "return-type": "json",
-    "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    "on-click": "{{ $vw }} toggle-panel",
     "format": "{}",
     "tooltip": false,
   },
   "custom/vibewatch-state": {
-    "exec": "~/.cargo/bin/vibewatch status --watch --part state",
+    "exec": "{{ $vw }} status --watch --part state",
     "return-type": "json",
-    "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    "on-click": "{{ $vw }} toggle-panel",
     "format": "{}",
     "tooltip": false,
   },
   "custom/vibewatch-count": {
-    "exec": "~/.cargo/bin/vibewatch status --watch --part count",
+    "exec": "{{ $vw }} status --watch --part count",
     "return-type": "json",
-    "on-click": "~/.cargo/bin/vibewatch toggle-panel",
+    "on-click": "{{ $vw }} toggle-panel",
     // The badge is empty whenever one agent is alive. waybar's own answer to
     // that is better than any CSS: it drops the widget instead of leaving its
     // padding behind. (GTK has no `:empty`, and reaching for it takes the whole
