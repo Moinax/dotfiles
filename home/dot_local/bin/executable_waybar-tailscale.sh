@@ -2,8 +2,10 @@
 
 # Waybar custom module: Tailscale VPN status (JSON output)
 
-ICON_ON=$(printf '\U000f05a2')
-ICON_OFF=$(printf '\U000f05a3')
+# A shield makes the VPN state legible at a glance; the former network-strength
+# glyphs were too abstract and nearly indistinguishable at Waybar size.
+ICON_ON=$(printf '\U000f0565')  # shield-check
+ICON_OFF=$(printf '\U000f099e') # shield-off
 
 if tailscale status &>/dev/null; then
     # Extract hostname and IP from first line of tailscale status

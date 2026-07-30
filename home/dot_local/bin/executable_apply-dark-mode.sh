@@ -169,9 +169,11 @@ if [ -f "$WLOGOUT_SRC" ]; then
     cp "$WLOGOUT_SRC" "$HOME/.config/wlogout/style.css"
 fi
 
-# Waybar needs nothing here: it discovers the appearance via the portal
-# color-scheme (set through gsettings above) and loads style-dark.css /
-# style-light.css itself, live-switching when the scheme flips.
+# Waybar discovers the appearance via the portal color-scheme (set through
+# gsettings above) and live-switches its stylesheet. The icon is a separate
+# custom module with `interval: once`, though, so non-click callers such as the
+# Mod+N keybind must explicitly ask it to rerun.
+pkill -RTMIN+8 -x waybar 2>/dev/null || true
 
 # ---------- Compositor group tabs ----------
 # Group tabs are the one compositor colour that differs between modes (they

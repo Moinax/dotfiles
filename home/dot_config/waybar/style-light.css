@@ -6,7 +6,7 @@
 /* The chip and accent alphas below also feed the group-tab colour solve in
  * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
  * stops matching the pill it mirrors. */
-@define-color chip rgba(100, 100, 255, 0.22);
+@define-color chip rgba(100, 100, 255, 0.30);
 @define-color accent rgba(170, 40, 170, 0.45);
 
 * {
@@ -45,8 +45,8 @@ tooltip label {
  * contrast-matched to them. Indigo over this near-white bar shifts mostly R
  * and G downward, where the dark bar's shift is almost all in B, so equal
  * alpha does not mean equal separation. Matching dark's chip-vs-bar RGB
- * distance (~44) lands at a = 0.237, which is why these round to the same
- * 0.22 the dark sheet uses rather than the 0.14/0.15 they sat at before. */
+ * distance (~44) originally landed near a = 0.22. Both themes now use 0.30
+ * to reduce how strongly the wallpaper changes a pill across the bar. */
 /* `#stats` and `#vibewatch` are named because a `group/` does not match
  * `.module` — see the twin note in style-dark.css, including why `#vibewatch`
  * takes the geometry from here and replaces the background below. */
@@ -106,24 +106,47 @@ tooltip label {
 #workspaces button {
   font-size: 17px;
 }
-#custom-tailscale.connected { color: #40a02b; }
+#custom-tailscale.connected {
+  background: @accent;
+  color: #1e1e2e;
+  /* shield-check's visible mass sits one pixel right of its glyph box */
+  padding-left: 11px;
+  padding-right: 13px;
+}
 #custom-headset-battery.good { color: #40a02b; }
 #custom-headset-battery.warning { color: #df8e1d; }
 #custom-headset-battery.critical { color: #d20f39; }
 #custom-headset-battery.charging { color: #1e66f5; }
 #custom-headset-battery.disconnected { font-size: 0; padding: 0; margin: 0; }
+/* Match the narrow glyphs to Caffeine without forcing GTK label widths. */
 #custom-caffeine {
   padding-right: 16px;
 }
-#custom-exit {
+#custom-tailscale {
+  padding-left: 12px;
   padding-right: 12px;
+}
+#custom-tailscale.disconnected {
+  /* shield-off's slash shifts its visible mass roughly two pixels right */
+  padding-left: 10px;
+  padding-right: 14px;
+}
+#custom-exit {
+  /* The power glyph carries its visible mass two pixels right. */
+  padding-left: 10px;
+  padding-right: 14px;
 }
 #custom-caffeine.activated {
   background: @accent;
   color: #1e1e2e;
 }
 #custom-dark-mode.light { color: #4c4f69; padding-right: 16px; }
-#custom-dark-mode.dark { color: #7287fd; }
+#custom-dark-mode.dark {
+  color: #7287fd;
+  /* Keep the Octicons moon at the same 34px geometry in either stylesheet. */
+  padding-left: 9px;
+  padding-right: 15px;
+}
 #custom-hdr.hdr { color: #40a02b; }
 #custom-hdr.sdr { color: #9ca0b0; }
 #custom-exit {
@@ -179,9 +202,10 @@ tooltip label {
  * style-dark.css has the derivation), the panel's Latte ground of #ccd0da at 0.95
  * solves to 0.667C + 0.333*(0.85*#eff1f5) = 0.95*#ccd0da, so C = (189,194,206).
  *
- * At the neighbours' 0.22 this needed a colour of (312,314,320) — past white — so
- * it sat at pure white and landed ~12 short of the panel. Measured on screen at
- * 0.667, the pill now sits 1.4 luminance points off the panel's ground.
+ * At the neighbours' 0.30 a colour can match one chosen backdrop, but its 10.5%
+ * wallpaper passthrough still differs from the panel's 5%, so it drifts as the
+ * wallpaper changes. At 0.667 both admit the same amount of wallpaper; measured
+ * on screen, the pill then sits 1.4 luminance points off the panel's ground.
  *
  * The rim is `alpha(@cat_border, 0.25)` from the Latte palette, the same rule the
  * dark sheet follows and the same treatment the panel gives its own edge. It comes

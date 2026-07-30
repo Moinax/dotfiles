@@ -30,23 +30,23 @@ end
 --     1 - a' = (1 - a) * (1 - 0.85)      and      a' * C' = a*C + 0.85*(1-a)*Cb
 -- so the tab admits the same fraction of wallpaper the pill does and adds the
 -- same colour on top. That is also why an exactly-matching tab still lands near
--- 0xe0 opacity off a pill of only 22%/35%: the bar it stands in for is itself
+-- 0xe0 opacity off a pill of only 30%/35%: the bar it stands in for is itself
 -- 85% opaque. Re-solve (do not eyeball) if the waybar alphas move.
 local groupbar = {
-    -- a = 0.35 / 0.22 of rgb(255,100,255) / rgb(100,100,255) over rgba(30,30,46,0.85)
+    -- a = 0.35 / 0.30 of rgb(255,100,255) / rgb(100,100,255) over rgba(30,30,46,0.85)
     dark = {
         active   = "rgba(75397fe6)",
-        inactive = "rgba(2f2f62e1)",
+        inactive = "rgba(353574e4)",
         -- Matches `#workspaces button.active { color: white }` and the `*` rule.
         text     = "rgba(ffffffff)",
         text_dim = "rgba(cdd6f4ff)",
     },
-    -- a = 0.45 / 0.22 over rgba(239,241,245,0.85). C for the active state is
+    -- a = 0.45 / 0.30 over rgba(239,241,245,0.85). C for the active state is
     -- rgb(170,40,170) here, not dark's rgb(255,100,255) — see style-light.css
     -- for why that tint had to change rather than just its alpha.
     light = {
         active   = "rgba(cd8ed0ea)",
-        inactive = "rgba(cccef7e1)",
+        inactive = "rgba(c0c2f8e4)",
         -- Latte: #1e1e2e is style-light.css's active-pill text, #4c4f69 its `*`.
         text     = "rgba(1e1e2eff)",
         text_dim = "rgba(4c4f69ff)",

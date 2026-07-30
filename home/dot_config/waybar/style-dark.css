@@ -9,7 +9,7 @@
 /* The chip and accent alphas below also feed the group-tab colour solve in
  * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
  * stops matching the pill it mirrors. */
-@define-color chip rgba(100, 100, 255, 0.22);
+@define-color chip rgba(100, 100, 255, 0.30);
 @define-color accent rgba(255, 100, 255, 0.35);
 
 * {
@@ -79,8 +79,6 @@ tooltip label {
   padding: 2px 2px;
   background: transparent;
 }
-/* 0.22 rather than the old 0.3: the number to beat is the 0.51 the pill
- * effectively rendered at with the container layer, so this is ~43% of it. */
 #workspaces button {
   background: @chip;
   min-width: 24px;
@@ -109,24 +107,48 @@ tooltip label {
 #workspaces button {
   font-size: 17px;
 }
-#custom-tailscale.connected { color: #a6e3a1; }
+#custom-tailscale.connected {
+  background: @accent;
+  color: white;
+  /* shield-check's visible mass sits one pixel right of its glyph box */
+  padding-left: 11px;
+  padding-right: 13px;
+}
 #custom-headset-battery.good { color: #a6e3a1; }
 #custom-headset-battery.warning { color: #f9e2af; }
 #custom-headset-battery.critical { color: #f38ba8; }
 #custom-headset-battery.charging { color: #89b4fa; }
 #custom-headset-battery.disconnected { font-size: 0; padding: 0; margin: 0; }
+/* These glyphs are narrower than the theme icon. Keep their pills aligned
+ * with Caffeine, our visual reference, without changing its label geometry. */
 #custom-caffeine {
   padding-right: 16px;
 }
-#custom-exit {
+#custom-tailscale {
+  padding-left: 12px;
   padding-right: 12px;
+}
+#custom-tailscale.disconnected {
+  /* shield-off's slash shifts its visible mass roughly two pixels right */
+  padding-left: 10px;
+  padding-right: 14px;
+}
+#custom-exit {
+  /* The power glyph carries its visible mass two pixels right. */
+  padding-left: 10px;
+  padding-right: 14px;
 }
 #custom-caffeine.activated {
   background: @accent;
   color: white;
 }
 #custom-dark-mode.light { color: #f9e2af; }
-#custom-dark-mode.dark { color: #b4befe; }
+#custom-dark-mode.dark {
+  color: #b4befe;
+  /* Octicons moon has a narrow advance and carries its visible mass right. */
+  padding-left: 9px;
+  padding-right: 15px;
+}
 #custom-hdr.hdr { color: #a6e3a1; }
 #custom-hdr.sdr { color: #6c7086; }
 #custom-exit {
@@ -179,8 +201,8 @@ tooltip label {
  * vibewatch's overlay, so the pill and the window it opens are one material.
  *
  * Both numbers are solved, not picked, and the alpha is the important one. A
- * chip at the neighbours' 0.22 covers only 0.22 + 0.78*0.85 = 88% of the
- * wallpaper, where the panel covers 95%; that 7% gap lets the desktop tint the
+ * chip at the neighbours' 0.30 covers only 0.30 + 0.70*0.85 = 89.5% of the
+ * wallpaper, where the panel covers 95%; that 5.5% gap lets the desktop tint the
  * pill, so it read lighter and teal-ish over a colourful wallpaper no matter
  * what colour was chosen. Matching on one wallpaper is all a colour can buy.
  *
@@ -190,7 +212,7 @@ tooltip label {
  * the panel's own #2c2d3d, lifted just enough to cover the bar's darker base
  * showing through the remaining third.
  *
- * This is the one module that deliberately breaks the shared 0.22: being the
+ * This is the one module that deliberately breaks the shared 0.30: being the
  * same material as the window it opens was worth more than matching its
  * neighbours' transparency. Re-solve if the panel's ground or alpha moves — it
  * has already moved twice (#313244 at 0.92, then #2c2d3d at 0.95).
