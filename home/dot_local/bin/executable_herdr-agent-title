@@ -45,12 +45,17 @@
 # hand-named tab can be renamed once after a reboot if the agent's own title
 # has moved on since; renaming it again re-pins it.
 #
+# The settled name goes to three places, always the same one: the tab label, the
+# sidebar `$task` token, and vibewatch — whose panel and waybar pill would
+# otherwise keep showing Claude's own title after a hand rename.
+#
 # Nothing here is fatal and every herdr call goes through `h`, which time-boxes
-# it: a wedged server must never cost a turn. Cost is ~10ms per turn end on a
-# typical transcript and ~20ms on a multi-MB one, and only on a pane that hosts
+# it: a wedged server must never cost a turn. Cost is ~15ms per turn end on a
+# typical transcript and ~25ms on a multi-MB one, and only on a pane that hosts
 # an agent inside herdr. A pin pays the transcript read like every other pane —
-# that is where a `/rename` shows up — but stops there, skipping the name
-# formatting, the guess and the label adoption below.
+# that is where a `/rename` shows up — plus a label read and one
+# `vibewatch rename` spawn, but stops there, skipping the name formatting, the
+# guess and the label adoption below.
 set -euo pipefail
 
 usage="usage: herdr-agent-title sync | seed [-s SESSION] PANE KIND NAME"
@@ -96,10 +101,35 @@ tab_label() { # $1: tab id
 # Always the same name the tab label is getting, which is why every caller
 # below settles the label question first: a sidebar row reading one name beside
 # a tab reading another is worse than either name alone.
+#
+# vibewatch is told too, for the same reason: its panel and its waybar pill name
+# sessions off Claude's own title, so a tab renamed by hand used to leave them
+# both showing the old one — the tab said "vibewatch ui" while the bar still read
+# "vibewatch on idle". It holds the name until that title moves, which is this
+# script's own rule for a pin, so the three stay in step by construction.
 report_metadata() { # $1: name
   h pane report-metadata "$HERDR_PANE_ID" \
     --source dots:agent-title --title "$1" --token "task=$1" \
     >/dev/null 2>&1 || true
+  tell_vibewatch "$1"
+}
+
+# vibewatch's panel and its waybar pill name sessions off Claude's own title, so
+# a tab renamed by hand used to leave both showing the old one — the tab read
+# "vibewatch ui" while the bar still said "vibewatch on idle". It holds the name
+# until that title moves, which is this script's own rule for a pin, so the tab,
+# the sidebar and the bar stay in step by construction.
+#
+# Told unconditionally on the held-pin path too, not just when a name is settled:
+# vibewatch keeps the override in memory, so its own restart drops it, and out
+# here there is no way to notice that happened. Idempotent, so re-sending costs
+# nothing but the spawn (~4ms, measured) — the one thing the pin fast path did
+# not previously pay. Time-boxed like every herdr call here, and skipped outright
+# when vibewatch is not installed: a name must never cost a turn.
+tell_vibewatch() { # $1: name
+  [[ -n "${session_id:-}" && -n "${1:-}" ]] || return 0
+  command -v vibewatch >/dev/null 2>&1 || return 0
+  timeout 2 vibewatch rename "$session_id" "$1" >/dev/null 2>&1 || true
 }
 
 # Both readers below run in a subshell with pipefail off on purpose: their
@@ -179,11 +209,13 @@ case "${1:-sync}" in
       IFS=$'\t' read -r kind applied seen <"$cache" || true
     fi
 
-    # Both payload fields in one jq: the hook JSON is a handful of lines and
-    # this runs at every turn end, on every pane.
-    IFS=$'\t' read -r transcript event \
-      < <(jq -r '[.transcript_path // "", .hook_event_name // ""] | @tsv' \
-            2>/dev/null) || true
+    # All three payload fields in one jq: the hook JSON is a handful of lines
+    # and this runs at every turn end, on every pane. The session id is what
+    # vibewatch keys its own sessions on, so it is how the name reaches the
+    # panel and the bar (see report_metadata).
+    IFS=$'\t' read -r transcript event session_id \
+      < <(jq -r '[.transcript_path // "", .hook_event_name // "",
+                  .session_id // ""] | @tsv' 2>/dev/null) || true
     [[ -n "$transcript" && -r "$transcript" ]] || exit 0
 
     if [[ -z "$kind" && -n "${HERDR_TAB_ID:-}" ]]; then
@@ -210,14 +242,37 @@ case "${1:-sync}" in
     # A pin holds the name the user chose against the guess, not against the
     # agent's own account of the work — so it stops here unless the title moved.
     if [[ "$kind" == pin && "$moved" == 0 ]]; then
-      # Pinned at launch: herdr-agent-layout has no title to record, there is
-      # none yet. Bank what the title says now, so the change that frees the pin
-      # is the next one rather than everything it has missed.
-      [[ -n "$title" && -z "$seen" ]] && write_cache "$cache" pin "$applied" "$title"
-      # A server restart drops reported metadata while keeping labels, so a held
-      # pin re-reports its own name for the same reason the `set` path below
-      # does — the sidebar has to agree with the label the tab is showing.
-      [[ "$event" == SessionStart && -n "$applied" ]] && report_metadata "$applied"
+      # The label, not $applied. This path exits before the `live != applied`
+      # check below, so a tab renamed by hand while pinned leaves $applied
+      # stale — and pushing that outwards would actively overwrite the user's
+      # name with the one they replaced.
+      pinned="$(tab_label "${HERDR_TAB_ID:-}")" || pinned=""
+      [[ -n "$pinned" ]] || pinned="$applied"
+
+      # A label that has drifted from the last reported name is a hand rename,
+      # and this path is the only one that can see it: the `live != applied`
+      # check further down is past the gate we are about to exit through. The
+      # pane title and the sidebar token have to follow it too — a pane header
+      # reading the name the user just replaced is the same defect as a stale
+      # bar, one surface over.
+      #
+      # A server restart drops reported metadata while keeping labels, hence the
+      # SessionStart arm as well. Otherwise only vibewatch is pinged, every turn:
+      # it holds the name in memory only, so its own restart drops it and nothing
+      # out here can tell when that happened. `report_metadata` covers it too,
+      # hence the else rather than both.
+      if [[ -n "$pinned" ]] && [[ "$pinned" != "$applied" || "$event" == SessionStart ]]; then
+        report_metadata "$pinned"
+      else
+        tell_vibewatch "$pinned"
+      fi
+
+      # Banked only now: the entry records what has been reported, so writing it
+      # before the report above would erase the very drift that triggers it and
+      # leave the stale name in place for good.
+      banked="${seen:-$title}"
+      [[ "$pinned" != "$applied" || "$banked" != "$seen" ]] \
+        && write_cache "$cache" pin "$pinned" "$banked"
       exit 0
     fi
 
@@ -243,18 +298,21 @@ case "${1:-sync}" in
     fi
     [[ -n "$name" ]] || exit 0
 
-    # A server restart wipes reported metadata (herdr only persists labels),
-    # so SessionStart re-reports even when the name has not moved.
-    [[ "$name" == "$applied" && "$kind" == set && "$event" != SessionStart ]] && exit 0
-
     # Whether the tab is still ours to name, settled before anything is
-    # reported: a label that has drifted from what we last applied was typed by
-    # the user, and their name has to reach the sidebar too, not just survive on
-    # the tab.
+    # reported — and before the no-op exit below, which would otherwise hide a
+    # hand rename entirely: a label that has drifted from what we last applied
+    # was typed by the user, and their name has to reach the sidebar and
+    # vibewatch too, not just survive on the tab.
     live=""
     if [[ -n "${HERDR_TAB_ID:-}" && ( "$kind" == set || "$kind" == pin ) ]]; then
       live="$(tab_label "$HERDR_TAB_ID")" || live=""
     fi
+
+    # Nothing to do: the name has not moved, and neither has the label. A server
+    # restart wipes reported metadata (herdr only persists labels), so
+    # SessionStart re-reports even then.
+    [[ "$name" == "$applied" && "$kind" == set && "$event" != SessionStart \
+       && ( -z "$live" || "$live" == "$applied" ) ]] && exit 0
     if [[ -n "$live" && "$live" != "$applied" ]]; then
       # Renamed by hand since our last write — hand the tab back, and report the
       # name it is actually wearing. The title goes in as SEEN, spending the
