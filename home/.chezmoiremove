@@ -48,3 +48,11 @@
 .config/fish/functions/zd.fish
 .config/fish/functions/zk.fish
 .config/fish/functions/_zj_pick.fish
+
+# claudex retired — Claude Code on a ChatGPT subscription is no longer used, so
+# the wrapper, its systemd unit and the curl-installed proxy binary all go.
+# Credentials (~/.config/claude-code-proxy) and logs (~/.local/state/...) are
+# left alone: not created here, and one holds a ChatGPT token.
+.local/bin/claudex
+.config/systemd/user/claude-code-proxy.service
+.local/bin/claude-code-proxy

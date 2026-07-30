@@ -25,9 +25,6 @@ if command -q herdr
     alias hss "herdr-session stop" # stop the server (kills its agents)
     alias hsl "herdr-session list" # persisted sessions, * = running
 end
-
-# Dev environment on the ChatGPT-backed claude (claudex / claude-code-proxy)
-alias devx "dev -p claudex"
 {{- if ne .install_purpose "terminal" }}
 
 # Auto-copy terminfo to remote servers via kitten ssh

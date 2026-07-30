@@ -10,7 +10,7 @@
 #        herdr-nav agent-tab [PROV [NAME]]
 #                                   add another agent tab to the focused
 #                                   workspace; PROV overrides the inherited
-#                                   provider (e.g. claudex for a GPT tab), NAME
+#                                   provider (e.g. codex for a GPT tab), NAME
 #                                   labels the tab and the agent
 #        herdr-nav files|git|review focus this workspace's tool tab — yazi,
 #                                   lazygit, tuicr — creating it on the focused
@@ -103,7 +103,7 @@ tool_tab() {
 # Known agent providers — one list serves the agent-picker menu, agent-tab's
 # fail-fast check, and its tab-family regex; the per-provider CLI shape still
 # lives in dev-agent-argv.
-providers="claude claudex codex opencode"
+providers="claude codex opencode"
 
 case "${1:-}" in
   tab)
@@ -178,7 +178,7 @@ case "${1:-}" in
     # contiguous and lands before the shared utility tabs (nvim); with no
     # agent tab, insert at the front.
     # The number is still needed for an unnamed tab, and it is per provider —
-    # "claude", "claude 2", "claudex" — so it comes from the labels that still
+    # "claude", "claude 2", "codex" — so it comes from the labels that still
     # look like that. Renamed tabs drop out of the family and free their
     # number, which is fine: it is a placeholder, not an identity.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \

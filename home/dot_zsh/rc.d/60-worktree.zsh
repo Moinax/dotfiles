@@ -7,8 +7,8 @@ fi
 # Only the `wt switch` calls live here (they need shell integration); the
 # launch half is wtstart-launch, shared with the fish function.
 #   -n <name>  append " - <name>" after the "<project>.<branch>" title
-#   -s         auto-run `/start <branch>` in the agent pane on launch (claude/claudex)
-#   -p <prov>  AI agent provider: claude (default), claudex, codex, opencode
+#   -s         auto-run `/start <branch>` in the agent pane on launch (claude only)
+#   -p <prov>  AI agent provider: claude (default), codex, opencode
 wtstart() {
   local -a pass=()
   while [[ "$1" == -* ]]; do

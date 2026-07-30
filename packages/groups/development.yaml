@@ -45,7 +45,6 @@ descriptions:
   herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
-  claude-code-proxy: Anthropic-compatible proxy — Claude Code on a ChatGPT subscription (claudex)
   ccstatusline: Claude Code status line with flat Catppuccin-matched theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
@@ -97,13 +96,6 @@ custom_install:
     version: gh extension list 2>/dev/null | awk -F'\t' '$2 == "dlvhdr/gh-dash" { print $3 }'
     source: dlvhdr/gh-dash
     update: gh extension upgrade dash
-  # Backs the `claudex` wrapper / dev -p claudex (Claude Code on the ChatGPT
-  # subscription). One-time auth after install: claude-code-proxy codex auth login
-  - name: claude-code-proxy
-    check: command -v claude-code-proxy
-    install: mkdir -p ~/.local/bin && curl -fsSL "https://github.com/raine/claude-code-proxy/releases/latest/download/claude-code-proxy-linux-amd64.tar.gz" | tar xz -C ~/.local/bin claude-code-proxy
-    binary: claude-code-proxy
-    source: raine/claude-code-proxy
 
 packages:
   arch:

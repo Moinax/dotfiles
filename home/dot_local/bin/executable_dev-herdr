@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
 #   agent tab (labeled by task when a prompt came with it, else by provider:
-#                  "claude", "claudex", ...):
+#                  "claude", "codex", ...):
 #                  agent (top-left) + hunk review (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
 #   tab "nvim":    full-window nvim
