@@ -28,7 +28,7 @@ end
 {{- if ne .install_purpose "terminal" }}
 
 # Auto-copy terminfo to remote servers via kitten ssh
-if command -q kitten
+if test -n "$KITTY_WINDOW_ID"; and command -q kitten
     alias ssh "kitten ssh"
 end
 {{- end }}

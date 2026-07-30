@@ -31,7 +31,7 @@ alias big="sudo du -sh *(D) | sort -rh | head -n 10"
 
 {{- if ne .install_purpose "terminal" }}
 # Auto-copy terminfo to remote servers via kitten ssh
-if command -v kitten &> /dev/null; then
+if [[ -n "${KITTY_WINDOW_ID:-}" ]] && command -v kitten &> /dev/null; then
   alias ssh="kitten ssh"
 fi
 {{- end }}
