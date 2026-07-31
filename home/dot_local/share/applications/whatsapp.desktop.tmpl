@@ -7,8 +7,8 @@ Exec={{ .chezmoi.homeDir }}/.local/bin/whatsapp
 StartupNotify=true
 StartupWMClass=whatsapp
 Terminal=false
-# WhatsApp Web's official high-resolution touch icon. Its regular favicon is
-# too small for desktop notifications and becomes visibly blurred when scaled.
-Icon={{ .chezmoi.homeDir }}/.local/share/icons/hicolor/192x192/apps/whatsapp.png
+# A high-resolution icon shared by the launcher, tray and notifications. The
+# regular favicon is too small and becomes visibly blurred when scaled.
+Icon={{ .chezmoi.homeDir }}/.local/share/icons/hicolor/512x512/apps/whatsapp.png
 Type=Application
 Categories=Network;InstantMessaging;

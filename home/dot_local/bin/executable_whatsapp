@@ -20,7 +20,7 @@ CONFIG = ChatApp(
     debug_variable="WHATSAPP_DEBUG",
     allow_media_capture=True,
     # The regular favicon is too small for notifications.
-    fixed_icon_size=192,
+    fixed_icon_size=512,
 )
 
 

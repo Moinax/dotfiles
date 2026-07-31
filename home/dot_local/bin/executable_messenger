@@ -47,6 +47,8 @@ CONFIG = ChatApp(
         "https://www.facebook.com",
     ),
     debug_variable="MESSENGER_DEBUG",
+    # The regular favicon is too small for notifications.
+    fixed_icon_size=512,
     rewrite_navigation=rewrite_facebook_navigation,
 )
 
