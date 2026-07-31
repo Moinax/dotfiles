@@ -37,13 +37,31 @@ switch_tab = ["prefix+1..9", "alt+1..9"]
 # direct bindings swallow the key from every pane, and ctrl+t is the
 # television file picker in the shells while ctrl+w is shell delete-word
 # and nvim's window prefix. ctrl+alt matches the agent-tab cluster below.
-# ctrl+tab/ctrl+shift+tab cycle tabs too, but they have no legacy terminal
-# encoding and herdr 0.7.4 never receives them — kitty translates them to
-# ctrl+alt+n/p (see kitty.conf), which is what's actually bound here.
+# Cycling sits on the browser chords themselves. They have no legacy terminal
+# encoding — a modified tab collides with a bare one — but herdr's client pushes
+# the kitty keyboard protocol (\e[>7u), so kitty escapes them as CSI 9;5u / 9;6u
+# and herdr receives them disambiguated. Until 0.7.5 it did not, and the
+# workaround was to bind ctrl+alt+n/p here and have kitty translate; that
+# indirection is gone. kitty still has to hand the chords over, since its own
+# next_tab/previous_tab defaults sit on them — see kitty.conf.
 new_tab = ["prefix+c", "ctrl+alt+t"]
 close_tab = ["prefix+shift+x", "ctrl+alt+w"]
-next_tab = ["prefix+n", "ctrl+alt+n"]
-previous_tab = ["prefix+p", "ctrl+alt+p"]
+next_tab = ["prefix+n", "ctrl+tab"]
+previous_tab = ["prefix+p", "ctrl+shift+tab"]
+
+# Renaming the tab is the action that names an agent session everywhere: the
+# sidebar's row 2 renders this very label, and herdr-agent-title picks the drift
+# up at the next turn end to push it to the pane border and to vibewatch — where
+# it also *pins* the name, so Claude's own title stops replacing it. Worth a
+# direct chord and not just the prefix.
+# ctrl+shift+t rather than the ctrl+alt+* tab family above because ctrl+alt+t is
+# already new_tab and browser muscle memory puts rename on shift. It needs two
+# halves: kitty's own new_tab sits on kitty_mod+t (= this chord) and would
+# swallow it, so kitty.conf hands it to the application — and herdr only sees
+# ctrl+shift+letter at all because its client pushes the kitty keyboard protocol
+# (\e[>7u, verified on 0.7.5), which is what disambiguates it from ctrl+t.
+# Unrelated to kitty's ctrl+shift+alt+t, which renames a *kitty* tab.
+rename_tab = ["prefix+shift+t", "ctrl+shift+t"]
 
 # X closes a Herdr context: without Shift it only closes the active space;
 # Ctrl+Shift+X removes a linked worktree checkout too (with Herdr's native
