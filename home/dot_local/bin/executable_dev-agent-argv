@@ -10,12 +10,23 @@
 #                                           so no name and no auto-prompt)
 #
 # Usage:   dev-agent-argv [-q] PROVIDER NAME [PROMPT]
+#          dev-agent-argv --providers
 # Output:  one argv token per line (first line = command, rest = args), for
 #          callers that need the tokens split. With -q, one
 #          %q-quoted line ready for a shell / herdr `pane run` — the join is
 #          owned here so the spawn (herdr-agent-layout) and the revive
 #          (herdr-clients) can never drift in how they quote a prompt.
+#          --providers lists the known providers, one per line.
 set -euo pipefail
+
+# The provider list, owned here next to the launch shapes: the callers that
+# have to *recognize* a provider off a pane label (herdr-clients revive-panes
+# and migrate-layout, herdr-nav agent-tab) must never drift from the ones that
+# can actually be launched. A new provider is one entry here and one case arm
+# below — the two sit in the same file precisely so neither can be forgotten.
+# Mirrors herdr-pane-cmd --util-tabs.
+providers=(claude codex opencode)
+[[ "${1:-}" == --providers ]] && { printf '%s\n' "${providers[@]}"; exit 0; }
 
 quoted=0
 [[ "${1:-}" == -q ]] && { quoted=1; shift; }
@@ -36,7 +47,8 @@ case "$provider" in
     set -- opencode
     ;;
   *)
-    echo "dev-agent-argv: unknown provider '$provider' (want: claude|codex|opencode)" >&2
+    IFS='|'  # joins the list below; nothing after this runs
+    echo "dev-agent-argv: unknown provider '$provider' (want: ${providers[*]})" >&2
     exit 1
     ;;
 esac

@@ -16,10 +16,12 @@ while [[ "${1:-}" == -* ]]; do
       [[ -z "${2:-}" || "$2" == -* ]] && { echo "dev: -n requires a name" >&2; exit 1; }
       name_override="$2"; shift 2 ;;
     -p)
-      case "${2:-}" in
-        claude|codex|opencode) provider="$2"; shift 2 ;;
-        *) echo "dev: -p must be claude|codex|opencode" >&2; exit 1 ;;
-      esac ;;
+      # Validated by dev-agent-argv, which owns the provider list and prints
+      # its own "unknown provider (want: …)" message. Checking here rather than
+      # letting it fail later matters because dev-herdr does not validate -p:
+      # without this a typo boots a session whose agent pane is broken.
+      dev-agent-argv "${2:-}" >/dev/null || exit 1
+      provider="$2"; shift 2 ;;
     --) shift; break ;;
     *) echo "dev: unknown option $1" >&2; exit 1 ;;
   esac

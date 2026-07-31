@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Record what a herdr pane is FOR, in a slot herdr does not own and the user
+# cannot edit by accident. The single source of truth for herdr-clients
+# revive-panes, which has to rebuild a dead pane's command after a server
+# restart.
+#
+# Why this file exists at all. herdr persists exactly three fields per pane to
+# session.json: cwd, label and agent_session. The label looks like the place for
+# a pane's identity and was used as such for a long time — but it is a *display*
+# name, and it is user-editable from the UI (`keys.rename_pane`, default
+# prefix+shift+p, plus "Rename pane" / "Clear pane name" in the pane menu). Two
+# commits also re-purposed it for the task name (ca57584, f213ae7). Every one of
+# those changes silently turned an agent pane into a bare shell at the next
+# restart, because revive-panes could no longer tell what belonged there. The
+# alternatives inside herdr do not work either: reported metadata (title and
+# tokens) is wiped by a restart, and `pane split --env` is neither persisted nor
+# readable back. So the fact lives out here.
+#
+# Pane ids are the key because they are stable across restarts — verified by
+# booting one session twice and diffing `pane list`: byte-identical ids. (They
+# are only unique per session, hence one file per session.)
+#
+# Roles:
+#   agent:<provider>  an agent pane; the provider is the durable half, since
+#                     herdr's own `.agent` is live detection only and its
+#                     agent_session exists only for agents it managed to record
+#   shell             known to have nothing to run — the dev/logs panes. This is
+#                     the whole point of storing roles for every pane and not
+#                     just the interesting ones: it lets revive-panes tell "this
+#                     pane is meant to be a bare shell" from "I do not recognise
+#                     this pane", which used to be the same silent `continue`.
+#   <label>           a utility pane, resolved through herdr-pane-cmd (review,
+#                     nvim, files, git, tuicr)
+#
+# Roles are validated on the way in, against the same two owners revive-panes
+# resolves them through, so a typo fails at the call site instead of becoming a
+# pane that silently never comes back.
+#
+# Usage: herdr-pane-role set   [-s SESSION] PANE=ROLE [PANE=ROLE ...]
+#        herdr-pane-role get   [-s SESSION] PANE
+#        herdr-pane-role list  [-s SESSION]
+#        herdr-pane-role prune [-s SESSION] PANE [PANE ...]
+#
+# Without -s the session is the one inherited via HERDR_SOCKET_PATH (the same
+# derivation herdr-agent-title makes for its own per-pane cache), so a call from
+# inside a pane needs no argument.
+set -euo pipefail
+
+usage="usage: herdr-pane-role set|get|list|prune [-s SESSION] [ARGS...]"
+die() { echo "herdr-pane-role: $*" >&2; exit 1; }
+
+cmd="${1:-}"; shift || true
+[[ "$cmd" == set || "$cmd" == get || "$cmd" == list || "$cmd" == prune ]] \
+  || { echo "$usage" >&2; exit 2; }
+
+# Named sessions live in ~/.config/herdr/sessions/<name>/herdr.sock; the default
+# one sits directly in ~/.config/herdr. Same rule as herdr-agent-title's
+# session_from_socket and herdr-nav's quit.
+session=""
+if [[ "${1:-}" == -s ]]; then
+  session="${2:?$usage}"; shift 2
+else
+  dir="$HOME/.config/herdr/sessions" sock="${HERDR_SOCKET_PATH:-}"
+  if [[ "$sock" == "$dir"/?*/* ]]; then
+    sock="${sock#"$dir/"}"; session="${sock%%/*}"
+  else
+    session=default
+  fi
+fi
+
+root="${XDG_STATE_HOME:-$HOME/.local/state}/dots/herdr-roles"
+file="$root/${session//[![:alnum:]._-]/_}.tsv"
+
+load() { # fills the `roles` associative array; missing file is simply empty
+  local p r
+  [[ -r "$file" ]] || return 0
+  while IFS=$'\t' read -r p r; do
+    [[ -n "$p" && -n "$r" ]] && roles["$p"]="$r"
+  done <"$file"
+}
+
+# Rewrite under an exclusive lock: `set` and `prune` are read-modify-write, and
+# two panes can be created at once (dev-herdr building a workspace while
+# herdr-nav adds an agent tab). Sorted so the file stays diffable. Nothing
+# long-lived is spawned here, so fd 9 dies with this process.
+save() {  # callers hold the lock and have already made $root
+  local p tmp
+  tmp="$file.$$"
+  for p in "${!roles[@]}"; do printf '%s\t%s\n' "$p" "${roles[$p]}"; done \
+    | sort >"$tmp"
+  mv -f "$tmp" "$file"
+}
+
+declare -A roles=()
+
+# Enter the read-modify-write critical section: `set` and `prune` both need the
+# lock held across the read. mkdir before the redirect — a redirect onto a
+# missing dir is fatal.
+lock_and_load() {
+  mkdir -p "$root"
+  exec 9>"$root/.lock"
+  flock -w 10 9 || die "timed out waiting for the role file lock"
+  load
+}
+
+case "$cmd" in
+  list)
+    # Nothing recorded yet is not an error — a caller reading this under `set
+    # -e` must not die on a session that has never had a role written.
+    [[ -r "$file" ]] && cat "$file"
+    exit 0
+    ;;
+
+  get)
+    pane="${1:?$usage}"
+    load
+    [[ -n "${roles[$pane]:-}" ]] || exit 1
+    printf '%s\n' "${roles[$pane]}"
+    ;;
+
+  set)
+    [[ $# -gt 0 ]] || { echo "$usage" >&2; exit 2; }
+    # Validate everything before taking the lock, asking each owner once rather
+    # than per pair: an agent tab sets five roles in one call, and revive-panes
+    # backfills dozens of panes over two or three distinct roles.
+    providers=""
+    declare -A checked=()
+    for pair in "$@"; do
+      [[ "$pair" == *=* ]] || die "expected PANE=ROLE, got '$pair'"
+      role="${pair#*=}"
+      [[ -n "$role" ]] || die "expected PANE=ROLE, got '$pair'"
+      [[ -n "${checked[$role]:-}" ]] && continue
+      checked["$role"]=1
+      case "$role" in
+        shell) ;;
+        agent:*)
+          [[ -n "$providers" ]] || providers=" $(dev-agent-argv --providers | tr '\n' ' ')"
+          [[ "$providers" == *" ${role#agent:} "* ]] \
+            || die "unknown provider in role '$role'" ;;
+        *)
+          herdr-pane-cmd "$role" >/dev/null 2>&1 \
+            || die "role '$role' is neither 'shell', 'agent:<provider>', nor a herdr-pane-cmd label" ;;
+      esac
+    done
+    lock_and_load
+    for pair in "$@"; do roles["${pair%%=*}"]="${pair#*=}"; done
+    save
+    ;;
+
+  prune)
+    # Drop entries for panes that no longer exist. The caller passes the live
+    # pane ids; an empty list is treated as "could not enumerate" and does
+    # nothing, so a failed `pane list` upstream can never wipe the file.
+    [[ $# -gt 0 ]] || exit 0
+    lock_and_load
+    [[ ${#roles[@]} -eq 0 ]] && exit 0
+    declare -A live=()
+    for pane in "$@"; do live["$pane"]=1; done
+    for pane in "${!roles[@]}"; do
+      [[ -n "${live[$pane]:-}" ]] || unset 'roles[$pane]'
+    done
+    save
+    ;;
+esac

@@ -9,7 +9,7 @@
 #        herdr-clients stop SESSION           detach, then stop the session's server (kills its agents)
 #        herdr-clients list                   persisted sessions, one NAME<TAB>RUNNING<TAB>ATTACHED line each (1/0 flags)
 #        herdr-clients ensure-server SESSION  boot the session's server if down, wait for it
-#        herdr-clients open-all               open a client window for every persisted session
+#        herdr-clients open-all               open a client window for every persisted session that holds a workspace
 #        herdr-clients detach-all             close every client window (servers/agents keep running)
 #        herdr-clients stop-all               detach-all, then stop every running server (kills agents)
 #        herdr-clients revive-panes SESSION   rerun utility/agent pane commands in restored panes left as bare shells
@@ -141,11 +141,14 @@ list_sessions() {
 # claude shim rescues ids whose transcript was never persisted), so those
 # panes MUST be left alone — racing herdr's replay lands our command as typed
 # text inside the resumed agent's chat (observed: "claude -n dotfiles" posted
-# as a message). Rerun the rest ourselves: herdr-pane-cmd maps the utility
-# labels (review/nvim), dev-agent-argv -q the provider labels for agent panes
-# herdr has no recorded session for — a fresh conversation, not a resume.
-# Only panes whose foreground process is still a plain shell are touched, so
-# this is idempotent and safe on a session that never went down.
+# as a message). Rerun the rest ourselves, from the role herdr-pane-role
+# recorded when the pane was created: herdr-pane-cmd resolves a utility role to
+# its command, dev-agent-argv an agent role to a fresh conversation (not a
+# resume — herdr owns those). The role, not the pane label, is what makes this
+# survive: labels are display names the user can rename or clear from the UI,
+# and keying off them is what silently turned agent panes into bare shells
+# twice. Only panes whose foreground process is still a plain shell are
+# touched, so this is idempotent and safe on a session that never went down.
 # Classify a pane's foreground state: "starting" (no foreground process yet),
 # "shell" (a single plain shell), "busy" (anything else). Fails when the pane
 # can't be inspected.
@@ -175,49 +178,147 @@ revive_pane_cmd() {
   done
 }
 
+# Work out a role for a pane that has none recorded — one that predates
+# herdr-pane-role, or whose entry was lost. This is the old label-matching
+# ladder, kept only as a bootstrap: whatever it decides is written back, so any
+# given pane is inferred at most once and every later boot reads the file.
+# `slot`/`util` come from the tab shape rather than the label, which is what
+# lets it still name an agent pane whose label was renamed or cleared.
+# Prints nothing (and returns 1) for a pane it cannot place — a pane the user
+# split themselves, which has nothing for us to run.
+#
+# The two vocabularies it tests against stay owned by dev-agent-argv and
+# herdr-pane-cmd; asking them is a subprocess, so the answers are memoized for
+# the run. infer_role runs once per unrecorded pane (~120 across a full
+# desktop) over a handful of distinct labels, and a pane it cannot place
+# records nothing — so that pane re-pays its lookups at every boot, forever.
+declare -A KNOWN_LABEL=()
+label_known() { # $1: owning command, $2: label
+  local key="$1/$2"
+  [[ -n "$2" ]] || return 1
+  if [[ -z "${KNOWN_LABEL[$key]:-}" ]]; then
+    if "$1" "$2" >/dev/null 2>&1; then KNOWN_LABEL[$key]=1; else KNOWN_LABEL[$key]=0; fi
+  fi
+  [[ "${KNOWN_LABEL[$key]}" == 1 ]]
+}
+is_provider()   { label_known dev-agent-argv "$1"; }
+is_util_label() { label_known herdr-pane-cmd "$1"; }
+
+infer_role() { # $1: label, $2: detected agent, $3: is-agent-slot, $4: tab label, $5: single-pane tab
+  local label="$1" agent="$2" slot="$3" tab_label="$4" single="$5"
+  if [[ "$slot" == 1 ]]; then
+    # Structure already says this is the agent slot, so the label only gets to
+    # say *which* provider, and only if it still names one. Otherwise herdr's
+    # live detection, else the same default herdr-nav's agent-tab falls back to:
+    # a wrong provider is one relaunch away from right, a pane left unplaced is
+    # a bare shell on every boot. Deliberately ahead of the label rules — a pane
+    # hand-renamed to "review" is still the agent slot.
+    if is_provider "$label"; then
+      printf 'agent:%s\n' "$label"
+    else
+      printf 'agent:%s\n' "${agent:-claude}"
+    fi
+  elif is_util_label "$label"; then
+    printf '%s\n' "$label"                     # utility pane, label intact
+  elif is_provider "$label"; then
+    printf 'agent:%s\n' "$label"               # agent pane outside a full agent tab
+  elif [[ "$slot" == 0 ]]; then
+    printf 'shell\n'                           # dev/logs, or a sibling renamed
+  elif [[ "$single" == 1 ]] && is_util_label "$tab_label"; then
+    printf '%s\n' "$tab_label"                 # utility tab whose root pane was never labeled
+  else
+    return 1
+  fi
+}
+
 revive_panes() {
-  local session="$1" panes tabs workspaces pane label ws_label tab_label name cmd
+  local session="$1" panes tabs workspaces
+  local pane label ws_label tab_label agent has_session slot single role name cmd
+  local -a learned=() live=()
+  local -A roles=()
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
     | jq -c '.result.tabs // []')" || return 0
   workspaces="$(herdr --session "$session" workspace list 2>/dev/null \
     | jq -c '.result.workspaces // []')" || return 0
-  # Panes are matched by label: herdr-pane-cmd owns the utility label→command
-  # map; provider labels (agent panes, labeled by herdr-agent-layout) rebuild
-  # their launch command via dev-agent-argv -q, which exits 1 for anything
-  # else — dev/logs panes match neither and stay bare shells. Agent panes
-  # with a recorded agent_session are excluded up front: herdr resumes those
-  # itself (see the note above), so only agents herdr never registered get
-  # the fresh-conversation fallback. The agent's display name is the tab
-  # label when that says something — tabs carry task names now
-  # ("fix-flaky-updater-tests"), and a fresh conversation in that tab is still
-  # about that task — and the workspace label otherwise, matching how
-  # dev-herdr launched it. "Says something" means anything but the generated
-  # "<provider>[ N]" placeholder.
-  # Workspaces created before dev-herdr labeled utility-tab
-  # root panes fall back to the tab label for single-pane tabs (a split tab
-  # is user-customized — leave it alone). Panes revive concurrently: each
-  # waits up to ~3s for its shell, so serial cost would grow with pane count.
-  while IFS=$'\t' read -r pane label ws_label tab_label; do
-    [[ -n "$pane" && -n "$label" ]] || continue
-    name="$ws_label"
-    [[ -n "$tab_label" && ! "$tab_label" =~ ^"$label"( [0-9]+)?$ ]] && name="$tab_label"
-    cmd="$(herdr-pane-cmd "$label")" \
-      || cmd="$(dev-agent-argv -q "$label" "$name" 2>/dev/null)" \
-      || continue
+
+  # What each pane is for comes from herdr-pane-role, not from its label: the
+  # label is a display name the user can rename or clear from the UI, and using
+  # it as the machine slot is what silently turned agent panes into bare shells
+  # twice. One read for the whole session.
+  while IFS=$'\t' read -r pane role; do
+    [[ -n "$pane" ]] && roles["$pane"]="$role"
+  done < <(herdr-pane-role list -s "$session")
+
+  # Agent panes with a recorded agent_session are skipped: herdr resumes those
+  # itself (see the note above), so only agents it never registered get a fresh
+  # conversation. The agent's display name is the tab label when that says
+  # something — tabs carry task names ("fix-flaky-updater-tests"), and a fresh
+  # conversation in that tab is still about that task — and the workspace label
+  # otherwise, matching how dev-herdr launched it. "Says something" means
+  # anything but the generated "<provider>[ N]" placeholder.
+  # Panes revive concurrently: each waits up to ~3s for its shell, so serial
+  # cost would grow with pane count.
+  # Fields are \x1f-separated, NOT tab: tab is an IFS *whitespace* character, so
+  # bash collapses a run of them into one delimiter and an empty middle field
+  # (a pane with no detected agent, a workspace with no label) silently shifts
+  # every later field left — has_session was reading `single` and utility panes
+  # were being skipped as if herdr were resuming them. A non-whitespace
+  # separator preserves empty fields; jq strips control characters from the
+  # values so none of them can contain one.
+  while IFS=$'\x1f' read -r pane label ws_label tab_label agent has_session slot single; do
+    [[ -n "$pane" ]] || continue
+    live+=("$pane")   # every pane, session or not — this is what prune keeps
+    role="${roles[$pane]:-}"
+    if [[ -z "$role" ]]; then
+      role="$(infer_role "$label" "$agent" "$slot" "$tab_label" "$single")" || role=""
+      [[ -n "$role" ]] && learned+=("$pane=$role")
+    fi
+    [[ "$has_session" == 1 ]] && continue
+    case "$role" in
+      # "shell" is dev/logs and is the reason roles are recorded for every pane
+      # and not just the interesting ones: a pane meant to be bare is now
+      # distinguishable from one we failed to place, which used to be the same
+      # silent skip. "" is the latter — a pane the user made, nothing to run.
+      shell | "") continue ;;
+      agent:*)
+        name="$ws_label"
+        [[ -n "$tab_label" && ! "$tab_label" =~ ^"${role#agent:}"( [0-9]+)?$ ]] \
+          && name="$tab_label"
+        cmd="$(dev-agent-argv -q "${role#agent:}" "$name")" || continue ;;
+      *) cmd="$(herdr-pane-cmd "$role")" \
+           || { echo "$session: pane $pane has role '$role', which resolves to no command" >&2
+                continue ;} ;;
+    esac
     revive_pane_cmd "$session" "$pane" "$cmd" &
   done < <(jq -rn --argjson panes "$panes" --argjson tabs "$tabs" \
                --argjson workspaces "$workspaces" '
     ($workspaces | map({(.workspace_id): .label}) | add // {}) as $ws_label
     | ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
-    | ($panes | map(select(.label) | select(.agent_session == null)
-                    | [.pane_id, .label, ($ws_label[.workspace_id] // ""),
-                       ($tab_label[.tab_id] // "")])),
-      ($panes | group_by(.tab_id)
-              | map(select(length == 1) | .[0] | select(.label == null)
-                    | [.pane_id, ($tab_label[.tab_id] // "")]))
-    | .[] | @tsv')
+    | ["review", "dev", "logs"] as $sibs
+    # The agent-tab shape, for infer_role only: a tab carrying
+    # herdr-agent-layout siblings plus exactly one other pane. That one pane is
+    # the agent slot (1), its siblings are not (0); panes of any other tab get
+    # "" and fall through to the label rules.
+    | ($panes | group_by(.tab_id) | map(
+        (map(.label // "")) as $ls
+        | (map(select(IN(.label // ""; $sibs[]) | not))) as $rest
+        | if (($sibs - $ls) | length) == 0 and ($rest | length) == 1
+          then map({(.pane_id): (if .pane_id == $rest[0].pane_id then 1 else 0 end)})
+          else [] end) | flatten | add // {}) as $slot
+    | $panes | group_by(.tab_id)[] | (length == 1) as $single | .[]
+    | [.pane_id, (.label // ""), ($ws_label[.workspace_id] // ""),
+       ($tab_label[.tab_id] // ""), (.agent // ""),
+       (if .agent_session then 1 else 0 end),
+       ($slot[.pane_id] // ""), (if $single then 1 else 0 end)]
+    | map(tostring | gsub("[[:cntrl:]]"; " ")) | join("\u001f")')
+
+  # Bank what was inferred, then drop entries for panes that no longer exist.
+  # Both after the loop so a single call covers the whole session, and after
+  # `live` is complete so prune can never see a partial list.
+  [[ ${#learned[@]} -gt 0 ]] && herdr-pane-role set -s "$session" "${learned[@]}"
+  [[ ${#live[@]} -gt 0 ]] && herdr-pane-role prune -s "$session" "${live[@]}"
   # Reaps only the revive jobs: long-lived spawns (launch_client's kitty,
   # ensure_servers' server) go through spawn_detached, so they are never this
   # shell's children and cannot turn this wait into a forever-block.
@@ -305,16 +406,24 @@ in_list() {
   [[ $# -gt 0 ]] && printf '%s\n' "$@" | grep -qxF "$needle"
 }
 
-# Resolve a workspace's project directory for a new utility tab: grouped
-# sessions map to <projects root>/<session>/<workspace label> (mirroring
-# dev-herdr's session derivation); otherwise fall back to a live pane's
-# foreground cwd — right after a headless boot the pane shells may still be
-# initializing, hence the retry. Fails when neither resolves.
+# Resolve a workspace's project directory for a new utility tab. First guess:
+# read the label back as a project entry, grouped ("<session>/<label>") then
+# bare ("<label>", which is where a project pinned into a session it does not
+# live under — dotfiles in labs — actually sits). Both candidates go through
+# dev-projects, which owns that mapping, and a candidate counts only if the
+# forward mapping agrees it belongs to this session: the label is cosmetic, so
+# a directory that merely happens to share its name must not be believed.
+# Otherwise fall back to a live pane's foreground cwd — right after a headless
+# boot the pane shells may still be initializing, hence the retry. Fails when
+# neither resolves.
 workspace_cwd() { # $1: session, $2: workspace_id, $3: workspace label
-  local root dir pane i
-  root="$(dev-projects root 2>/dev/null || echo "$HOME/Projects")"
-  dir="$root/$1/$3"
-  [[ -n "$3" && -d "$dir" ]] && { echo "$dir"; return 0; }
+  local dir pane i
+  if [[ -n "$3" ]]; then
+    for dir in "$(dev-projects resolve "$1/$3")" "$(dev-projects resolve "$3")"; do
+      [[ -d "$dir" ]] || continue
+      [[ "$(dev-projects session "$dir")" == "$1" ]] && { echo "$dir"; return 0; }
+    done
+  fi
   local -a ws_panes=()
   mapfile -t ws_panes < <(herdr --session "$1" pane list 2>/dev/null \
     | jq -r --arg w "$2" '.result.panes[]? | select(.workspace_id == $w) | .pane_id')
@@ -353,9 +462,14 @@ workspace_cwd() { # $1: session, $2: workspace_id, $3: workspace label
 #   - a workspace missing a utility tab gets it, with a labeled bare-shell
 #     root pane (dev-herdr util_tab's create→label sequence, minus the
 #     command — revive-panes launches that)
+# Nothing here repairs an agent pane's label any more: what a pane is FOR lives
+# in herdr-pane-role, so the label is free to say whatever you renamed it to.
+# Every pass that changes what a pane *is* sets its role too, because the role
+# bootstrap in revive_panes trusts the label — running these two in the other
+# order would otherwise teach it a stale label as a permanent role.
 migrate_layout() {
   local session="$1" tabs panes pane label ws util cwd
-  local -a util_tabs=()
+  local -a util_tabs=() new_roles=()
   mapfile -t util_tabs < <(herdr-pane-cmd --util-tabs)
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
     | jq -c '.result.tabs // []')" || return 0
@@ -364,6 +478,7 @@ migrate_layout() {
 
   while read -r pane; do
     herdr --session "$session" pane rename "$pane" review >/dev/null
+    new_roles+=("$pane=review")
     echo "$session: relabeled pane $pane git -> review"
   done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" '
     ($tabs | map({(.tab_id): .label}) | add // {}) as $tl
@@ -371,6 +486,7 @@ migrate_layout() {
 
   while IFS=$'\t' read -r pane label; do
     herdr --session "$session" pane rename "$pane" "$label" >/dev/null
+    new_roles+=("$pane=$label")
     echo "$session: labeled $label root pane $pane"
   done < <(jq -rn --argjson tabs "$tabs" --argjson panes "$panes" \
                --arg utils "${util_tabs[*]}" '
@@ -392,10 +508,19 @@ migrate_layout() {
           --label "$util" --cwd "$cwd" --no-focus \
         | jq -r '.result.root_pane.pane_id')"
       herdr --session "$session" pane rename "$pane" "$util" >/dev/null
+      new_roles+=("$pane=$util")
       echo "$session: added $util tab to workspace '$label' (cwd $cwd)"
     done
   done < <(herdr --session "$session" workspace list 2>/dev/null \
     | jq -r '.result.workspaces[]? | [.workspace_id, .label // ""] | @tsv')
+
+  # One call for the whole pass, like herdr-agent-layout's: `set` is a
+  # read-modify-write of the entire file under a lock, so per-pane calls make
+  # it quadratic. Still before revive-panes ever runs (migrate_layout_sessions
+  # boots without it), which is what the ordering rule above requires.
+  if [[ ${#new_roles[@]} -gt 0 ]]; then
+    herdr-pane-role set -s "$session" "${new_roles[@]}"
+  fi
 }
 
 # Migrate the given sessions (default: every persisted one). Down sessions
@@ -548,16 +673,49 @@ wait_for_window() {
   return 1
 }
 
+# Does a session hold anything worth reopening? Reads the persisted state
+# rather than asking the CLI, because a stopped server answers no call and
+# whether to boot it is the whole question. Named sessions keep their state in
+# sessions/<name>/, the default one directly in ~/.config/herdr (same
+# derivation as herdr-nav quit and herdr-agent-title).
+#
+# The test is structural, never the workspace label (`custom_name`): labels are
+# cosmetic and user-editable, so keying on one would mean clearing a workspace
+# name silently drops its session from every later open-all and cold boot —
+# the exact failure the pane roles exist to prevent, one object up. What a
+# fresh server opens with is one workspace of one tab of one pane; any
+# workspace `dev` has ever touched has more (four panes in its agent tab, plus
+# the utility tabs). Growth past that shape is the durable fact.
+has_workspaces() {
+  local state="$HOME/.config/herdr/sessions/$1/session.json"
+  [[ "$1" == default ]] && state="$HOME/.config/herdr/session.json"
+  [[ -f "$state" ]] || return 1
+  jq -e 'any(.workspaces[]?;
+             (.tabs | length) > 1 or ((.tabs[0].panes? // []) | length) > 1)' \
+    "$state" >/dev/null 2>&1
+}
+
 open_all() {
   local -a names=() to_open=()
-  local session class failed classes
+  local session class failed classes running attached
   # Start from ALL persisted sessions (not just running ones): a reboot kills
   # the detached servers (setsid background procs, not services), so after a
   # boot nothing is running and a running-only list would find nothing to
   # revive — the whole point of the keybind is to reopen every session at any
   # moment, including a cold boot with zero servers alive.
-  mapfile -t names < <(herdr session list --json 2>/dev/null \
-    | jq -r '.sessions[]? | .name')
+  # …but skip the ones with nothing in them: herdr keeps a session in the list
+  # once it has existed, so a group emptied by moving its last project away
+  # ("default", after dotfiles joined labs) would otherwise cost a booted
+  # server plus an empty client window at every open-all and every cold boot.
+  # It comes back on its own the moment a project lands there again. Running
+  # sessions are never dropped — their server is already paid for, and one
+  # legitimately sits empty between two `dev` calls.
+  # (list_sessions' third column is ignored: it samples the windows now, and
+  # what matters here is which ones exist *after* the servers are up.)
+  while IFS=$'\t' read -r session running attached; do
+    [[ "$running" == 1 ]] || has_workspaces "$session" || continue
+    names+=("$session")
+  done < <(list_sessions)
   [[ ${#names[@]} -eq 0 ]] && return 0
   failed="$(ensure_servers "${names[@]}")" || true
   # One hyprctl call for the whole loop (same one-call-then-grep pattern as

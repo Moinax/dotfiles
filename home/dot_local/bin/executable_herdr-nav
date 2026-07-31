@@ -94,16 +94,19 @@ tool_tab() {
   [[ -n "$p_new" && "$p_new" != null ]] ||
     die "tab create returned no pane id: $tab_json"
   herdr pane rename "$p_new" "$pane_label" >/dev/null
+  # The label is what the border shows; the role is what revive-panes reads
+  # after a restart (herdr-pane-role owns why they cannot be the same field).
+  herdr-pane-role set "$p_new=$pane_label"
   herdr pane run "$p_new" "$(herdr-pane-cmd "$pane_label")" >/dev/null
   # --no-focus above, then focus explicitly: same order as dev-herdr, so the
   # pane is labeled and running before it is looked at.
   herdr tab focus "$t_new" >/dev/null
 }
 
-# Known agent providers — one list serves the agent-picker menu, agent-tab's
-# fail-fast check, and its tab-family regex; the per-provider CLI shape still
-# lives in dev-agent-argv.
-providers="claude codex opencode"
+# The provider list is dev-agent-argv's, and both places that need it now go
+# to it directly: the picker feeds `--providers` straight into tv, and agent-tab
+# validates by asking it to resolve the provider. Nothing here has to hold the
+# list, so nothing can hold a stale copy of it.
 
 case "${1:-}" in
   tab)
@@ -125,7 +128,7 @@ case "${1:-}" in
     ;;
   agent-picker)
     command -v tv >/dev/null 2>&1 || die "agent-picker: television is not installed"
-    provider="$(tv --source-command "printf '%s\\n' $providers" \
+    provider="$(tv --source-command "dev-agent-argv --providers" \
       --no-status-bar --input-header "New agent" < /dev/tty)" || exit 0
     [[ -n "$provider" ]] || exit 0
     # A name for the tab, nothing else — it is not typed into the agent (a
@@ -152,16 +155,29 @@ case "${1:-}" in
     # apart. NAME labels the tab and names the agent; it is never typed into
     # the agent, which starts on an empty prompt like any other tab.
     provider_override="${2:-}"; name="${3:-}"
-    [[ -z "$provider_override" || " $providers " == *" $provider_override "* ]] \
-      || die "agent-tab: unknown provider '$provider_override'"
+    # Validated by asking dev-agent-argv to resolve it — it owns the list and
+    # prints its own "unknown provider (want: …)" message. Fail fast: dev-herdr
+    # does not check, so a typo would boot a broken agent pane.
+    [[ -z "$provider_override" ]] || dev-agent-argv "$provider_override" >/dev/null || exit 1
     # Workspace id + label in one `workspace list` call.
     IFS=$'\t' read -r ws ws_label < <(herdr workspace list \
       | jq -re '.result.workspaces[] | select(.focused) | [.workspace_id, .label] | @tsv') \
       || die "no focused workspace"
     panes="$(herdr pane list --workspace "$ws")"
-    src="$(jq -c '[.result.panes[] | select((.agent // "") != "")][0] // empty' <<<"$panes")"
+    # Which panes are agent panes, and which provider each runs, comes from
+    # herdr-pane-role (that script owns why the pane label cannot answer it) with
+    # herdr's live `.agent` preferred when there is one. Reading the roles also
+    # means an agent pane whose agent is not currently running still counts —
+    # `.agent` alone used to make a whole workspace of stopped agents look
+    # agent-less, silently defaulting the new tab to claude.
+    roles="$(herdr-pane-role list | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')"
+    src="$(jq -c --argjson roles "$roles" '[.result.panes[]
+             | select(((.agent // "") != "")
+                      or (($roles[.pane_id] // "") | startswith("agent:")))][0] // empty' \
+           <<<"$panes")"
     if [[ -n "$src" ]]; then
-      provider="$(jq -r '.agent' <<<"$src")"
+      provider="$(jq -r --argjson roles "$roles" \
+        '.agent // ($roles[.pane_id] | ltrimstr("agent:"))' <<<"$src")"
       dir="$(jq -r '.cwd' <<<"$src")"
     else
       provider="claude"
@@ -170,22 +186,21 @@ case "${1:-}" in
     fi
     [[ -n "$provider_override" ]] && provider="$provider_override"
     # Where to insert, and what to call it. Agent tabs are found through their
-    # panes — a pane herdr detected an agent in, or one labeled with a
-    # provider (herdr-agent-layout labels the agent pane, and revive-panes
-    # needs that label to stay a provider name). Tab labels cannot answer
-    # this any more: they carry task names now, not "claude 2".
+    # panes — the same role-or-live-agent test as above, never through a label.
+    # Tab labels cannot answer this either: they carry task names now, not
+    # "claude 2".
     # Insert right after the last agent tab so the agent block stays
     # contiguous and lands before the shared utility tabs (nvim); with no
     # agent tab, insert at the front.
     # The number is still needed for an unnamed tab, and it is per provider —
-    # "claude", "claude 2", "codex" — so it comes from the labels that still
+    # "claude", "claude 2", "codex" — so it comes from the tab labels that still
     # look like that. Renamed tabs drop out of the family and free their
     # number, which is fine: it is a placeholder, not an identity.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
-      | jq -r --arg base "$provider" --arg provs "$providers" --argjson panes "$panes" '
-          ($provs | split(" ")) as $ps
-          | [$panes.result.panes[]?
-             | select(((.agent // "") != "") or IN(.label; $ps[]))
+      | jq -r --arg base "$provider" --argjson roles "$roles" --argjson panes "$panes" '
+          [$panes.result.panes[]?
+             | select(((.agent // "") != "")
+                      or (($roles[.pane_id] // "") | startswith("agent:")))
              | .tab_id] as $agent_tabs
           | ([.result.tabs[].label | capture("^\($base)(?: (?<n>[0-9]+))?$")
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Single source of truth for the dev project tree: the root directory and the
-# "directories up to two levels deep" listing convention. The pickers
-# (dev-pick, rofi-dev) list it; dev-herdr derives its session groups from it.
+# Single source of truth for the dev project tree: the root directory, the
+# "directories up to two levels deep" listing convention, and the directory →
+# Herdr session mapping. The pickers (dev-pick, rofi-dev) list it; dev-herdr
+# asks it which session group a directory belongs to.
 # Override the root with DEV_PROJECTS_ROOT.
 #
 # Usage: dev-projects root                 print the projects root directory
@@ -10,6 +11,7 @@
 #                                          (detected structurally: a worktree
 #                                          has a .git *file*, a repo a .git dir)
 #        dev-projects resolve ENTRY        print the absolute path for an entry
+#        dev-projects session DIR          print the Herdr session for a directory
 set -euo pipefail
 
 root="${DEV_PROJECTS_ROOT:-$HOME/Projects}"
@@ -21,6 +23,15 @@ declare -A extras=(
   [dotfiles]="$HOME/dotfiles"
 )
 extras_order=(dotfiles)
+
+# Herdr session for a pinned entry, overriding the path rule in `session`
+# below (which would file every out-of-root project under "default"). Lets a
+# project sit next to the group it is worked on with, wherever it lives on
+# disk: ~/dotfiles is hacked on alongside ~/Projects/labs/*, so it joins that
+# session instead of sitting alone in "default".
+declare -A extras_session=(
+  [dotfiles]="labs"
+)
 
 case "${1:-}" in
   root)
@@ -44,8 +55,36 @@ case "${1:-}" in
     [[ -z "$entry" ]] && { echo "dev-projects: resolve requires an entry" >&2; exit 1; }
     echo "${extras[$entry]:-$root/$entry}"
     ;;
+  session)
+    # A pinned entry's own session wins; otherwise the session is the first
+    # path component under the root (labs, mbrella, o27, ...), and anything
+    # else — including projects sitting directly in the root — is "default",
+    # herdr's reserved alias for the unnamed session.
+    # The name printed is always usable as-is: a path component may hold
+    # characters a session name may not, and legalizing it here rather than in
+    # each caller is what keeps two callers from deriving two different
+    # sessions for one directory.
+    dir="${2:-}"
+    [[ -z "$dir" ]] && { echo "dev-projects: session requires a directory" >&2; exit 1; }
+    dir="$(cd "$dir" 2>/dev/null && pwd)" \
+      || { echo "dev-projects: no such directory: ${2}" >&2; exit 1; }
+    session=""
+    # Subdirectories match too, so a pane opened deeper in the tree lands in
+    # the same session as the project root.
+    for entry in "${!extras_session[@]}"; do
+      path="${extras[$entry]}"
+      [[ "$dir" == "$path" || "$dir" == "$path"/* ]] && { session="${extras_session[$entry]}"; break; }
+    done
+    if [[ -z "$session" ]]; then
+      case "$dir" in
+        "$root"/*/*) session="${dir#"$root/"}"; session="${session%%/*}" ;;
+        *) session="default" ;;
+      esac
+    fi
+    echo "${session//[^[:alnum:]_.-]/_}"
+    ;;
   *)
-    echo "dev-projects: unknown command '${1:-}' (expected: root | list | resolve)" >&2
+    echo "dev-projects: unknown command '${1:-}' (expected: root | list | resolve | session)" >&2
     exit 1
     ;;
 esac

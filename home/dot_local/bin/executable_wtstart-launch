@@ -18,10 +18,10 @@ while [[ $# -gt 0 ]]; do
     -b) branch="$2"; shift 2 ;;
     -n) name_override="$2"; shift 2 ;;
     -p)
-      case "$2" in
-        claude|codex|opencode) provider="$2"; shift 2 ;;
-        *) echo "wtstart: -p must be claude|codex|opencode" >&2; exit 1 ;;
-      esac ;;
+      # Validated by dev-agent-argv, which owns the provider list and prints its
+      # own "unknown provider (want: …)" message — see the same check in `dev`.
+      dev-agent-argv "${2:-}" >/dev/null || exit 1
+      provider="$2"; shift 2 ;;
     -s) send_start=true; shift ;;
     --new) is_new=true; shift ;;
     *) echo "wtstart-launch: unknown option $1" >&2; exit 1 ;;
