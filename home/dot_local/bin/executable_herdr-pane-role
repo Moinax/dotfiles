@@ -37,8 +37,8 @@
 # pane that silently never comes back.
 #
 # Usage: herdr-pane-role set   [-s SESSION] PANE=ROLE [PANE=ROLE ...]
-#        herdr-pane-role get   [-s SESSION] PANE
-#        herdr-pane-role list  [-s SESSION]
+#        herdr-pane-role list  [-s SESSION] [--json]  one PANE<TAB>ROLE line each,
+#                                                     or a {pane: role} object
 #        herdr-pane-role prune [-s SESSION] PANE [PANE ...]
 #
 # Without -s the session is the one inherited via HERDR_SOCKET_PATH (the same
@@ -46,11 +46,11 @@
 # inside a pane needs no argument.
 set -euo pipefail
 
-usage="usage: herdr-pane-role set|get|list|prune [-s SESSION] [ARGS...]"
+usage="usage: herdr-pane-role set|list|prune [-s SESSION] [ARGS...]"
 die() { echo "herdr-pane-role: $*" >&2; exit 1; }
 
 cmd="${1:-}"; shift || true
-[[ "$cmd" == set || "$cmd" == get || "$cmd" == list || "$cmd" == prune ]] \
+[[ "$cmd" == set || "$cmd" == list || "$cmd" == prune ]] \
   || { echo "$usage" >&2; exit 2; }
 
 # Named sessions live in ~/.config/herdr/sessions/<name>/herdr.sock; the default
@@ -71,14 +71,6 @@ fi
 root="${XDG_STATE_HOME:-$HOME/.local/state}/dots/herdr-roles"
 file="$root/${session//[![:alnum:]._-]/_}.tsv"
 
-load() { # fills the `roles` associative array; missing file is simply empty
-  local p r
-  [[ -r "$file" ]] || return 0
-  while IFS=$'\t' read -r p r; do
-    [[ -n "$p" && -n "$r" ]] && roles["$p"]="$r"
-  done <"$file"
-}
-
 # Rewrite under an exclusive lock: `set` and `prune` are read-modify-write, and
 # two panes can be created at once (dev-herdr building a workspace while
 # herdr-nav adds an agent tab). Sorted so the file stays diffable. Nothing
@@ -97,33 +89,40 @@ declare -A roles=()
 # lock held across the read. mkdir before the redirect — a redirect onto a
 # missing dir is fatal.
 lock_and_load() {
+  local p r
   mkdir -p "$root"
   exec 9>"$root/.lock"
   flock -w 10 9 || die "timed out waiting for the role file lock"
-  load
+  [[ -r "$file" ]] || return 0
+  while IFS=$'\t' read -r p r; do
+    [[ -n "$p" && -n "$r" ]] && roles["$p"]="$r"
+  done <"$file"
 }
 
 case "$cmd" in
   list)
     # Nothing recorded yet is not an error — a caller reading this under `set
     # -e` must not die on a session that has never had a role written.
-    [[ -r "$file" ]] && cat "$file"
+    # --json emits {pane: role}, so a jq consumer never has to know the storage
+    # format; the plain form stays for the bash reader in revive-panes.
+    if [[ "${1:-}" == --json ]]; then
+      # The `|| true` is load-bearing: `pipefail` would otherwise make a missing
+      # file fail the pipeline, and `set -e` would exit before the `exit 0` below.
+      { [[ -r "$file" ]] && cat "$file" || true; } \
+        | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}'
+    else
+      [[ -r "$file" ]] && cat "$file"
+    fi
     exit 0
-    ;;
-
-  get)
-    pane="${1:?$usage}"
-    load
-    [[ -n "${roles[$pane]:-}" ]] || exit 1
-    printf '%s\n' "${roles[$pane]}"
     ;;
 
   set)
     [[ $# -gt 0 ]] || { echo "$usage" >&2; exit 2; }
-    # Validate everything before taking the lock, asking each owner once rather
-    # than per pair: an agent tab sets five roles in one call, and revive-panes
-    # backfills dozens of panes over two or three distinct roles.
-    providers=""
+    # Validate before taking the lock, once per distinct role rather than per
+    # pair: an agent tab sets four roles in one call, and revive-panes backfills
+    # dozens of panes over two or three distinct roles. Both vocabularies are
+    # checked the same way — ask the owner to resolve it and watch the exit
+    # status — so neither is restated here.
     declare -A checked=()
     for pair in "$@"; do
       [[ "$pair" == *=* ]] || die "expected PANE=ROLE, got '$pair'"
@@ -134,8 +133,7 @@ case "$cmd" in
       case "$role" in
         shell) ;;
         agent:*)
-          [[ -n "$providers" ]] || providers=" $(dev-agent-argv --providers | tr '\n' ' ')"
-          [[ "$providers" == *" ${role#agent:} "* ]] \
+          dev-agent-argv "${role#agent:}" >/dev/null 2>&1 \
             || die "unknown provider in role '$role'" ;;
         *)
           herdr-pane-cmd "$role" >/dev/null 2>&1 \

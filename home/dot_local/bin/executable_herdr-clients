@@ -188,35 +188,34 @@ revive_pane_cmd() {
 # split themselves, which has nothing for us to run.
 #
 # The two vocabularies it tests against stay owned by dev-agent-argv and
-# herdr-pane-cmd; asking them is a subprocess, so the answers are memoized for
-# the run. infer_role runs once per unrecorded pane (~120 across a full
-# desktop) over a handful of distinct labels, and a pane it cannot place
-# records nothing — so that pane re-pays its lookups at every boot, forever.
-declare -A KNOWN_LABEL=()
-label_known() { # $1: owning command, $2: label
-  local key="$1/$2"
-  [[ -n "$2" ]] || return 1
-  if [[ -z "${KNOWN_LABEL[$key]:-}" ]]; then
-    if "$1" "$2" >/dev/null 2>&1; then KNOWN_LABEL[$key]=1; else KNOWN_LABEL[$key]=0; fi
-  fi
-  [[ "${KNOWN_LABEL[$key]}" == 1 ]]
-}
-is_provider()   { label_known dev-agent-argv "$1"; }
-is_util_label() { label_known herdr-pane-cmd "$1"; }
+# herdr-pane-cmd — asked, never restated here. Each ask is a subprocess, which
+# is affordable because this is a bootstrap: it runs once per pane that has no
+# role yet, the answer is banked, and later boots read the file instead. The
+# empty-label guard is what keeps a pane the user split (no label, nothing to
+# run) from paying anything at all.
+is_provider()   { [[ -n "$1" ]] && dev-agent-argv "$1" >/dev/null 2>&1; }
+is_util_label() { [[ -n "$1" ]] && herdr-pane-cmd "$1" >/dev/null 2>&1; }
 
+# Exit 0 with a role to record, 2 with a role to use for this boot but NOT
+# record, 1 for a pane it cannot place.
 infer_role() { # $1: label, $2: detected agent, $3: is-agent-slot, $4: tab label, $5: single-pane tab
   local label="$1" agent="$2" slot="$3" tab_label="$4" single="$5"
   if [[ "$slot" == 1 ]]; then
     # Structure already says this is the agent slot, so the label only gets to
-    # say *which* provider, and only if it still names one. Otherwise herdr's
-    # live detection, else the same default herdr-nav's agent-tab falls back to:
-    # a wrong provider is one relaunch away from right, a pane left unplaced is
-    # a bare shell on every boot. Deliberately ahead of the label rules — a pane
-    # hand-renamed to "review" is still the agent slot.
+    # say *which* provider, and only if it still names one. Deliberately ahead of
+    # the label rules — a pane hand-renamed to "review" is still the agent slot.
     if is_provider "$label"; then
-      printf 'agent:%s\n' "$label"
+      printf 'agent:%s\n' "$label"       # the label still names one
+    elif [[ -n "$agent" ]]; then
+      printf 'agent:%s\n' "$agent"       # herdr has a live detection
     else
-      printf 'agent:%s\n' "${agent:-claude}"
+      # Neither: a default, not evidence. Reached when the label no longer names
+      # a provider and herdr has detected nothing yet — normal on a cold boot,
+      # before resumed agents are up. Good enough to relaunch with now, too weak
+      # to write down: nothing ever re-infers a pane that already has a role, so
+      # banking it would silently make a codex pane a claude one for good.
+      printf 'agent:claude\n'
+      return 2
     fi
   elif is_util_label "$label"; then
     printf '%s\n' "$label"                     # utility pane, label intact
@@ -233,7 +232,7 @@ infer_role() { # $1: label, $2: detected agent, $3: is-agent-slot, $4: tab label
 
 revive_panes() {
   local session="$1" panes tabs workspaces
-  local pane label ws_label tab_label agent has_session slot single role name cmd
+  local pane label ws_label tab_label agent has_session slot single role rc name cmd
   local -a learned=() live=()
   local -A roles=()
   panes="$(herdr --session "$session" pane list 2>/dev/null \
@@ -272,8 +271,15 @@ revive_panes() {
     live+=("$pane")   # every pane, session or not — this is what prune keeps
     role="${roles[$pane]:-}"
     if [[ -z "$role" ]]; then
-      role="$(infer_role "$label" "$agent" "$slot" "$tab_label" "$single")" || role=""
-      [[ -n "$role" ]] && learned+=("$pane=$role")
+      # 0 = record it, 2 = use it this boot but leave the pane un-roled so a
+      # later boot can do better, anything else = could not place the pane.
+      # The `|| rc=$?` is also what keeps a non-zero status from tripping `set -e`.
+      role="$(infer_role "$label" "$agent" "$slot" "$tab_label" "$single")" && rc=0 || rc=$?
+      case $rc in
+        0) learned+=("$pane=$role") ;;
+        2) ;;
+        *) role="" ;;
+      esac
     fi
     [[ "$has_session" == 1 ]] && continue
     case "$role" in
@@ -296,22 +302,23 @@ revive_panes() {
                --argjson workspaces "$workspaces" '
     ($workspaces | map({(.workspace_id): .label}) | add // {}) as $ws_label
     | ($tabs | map({(.tab_id): .label}) | add // {}) as $tab_label
+    # The sibling labels herdr-agent-layout gives an agent tab. Its rename calls
+    # are their only writer, so this literal has to track them.
     | ["review", "dev", "logs"] as $sibs
-    # The agent-tab shape, for infer_role only: a tab carrying
-    # herdr-agent-layout siblings plus exactly one other pane. That one pane is
-    # the agent slot (1), its siblings are not (0); panes of any other tab get
-    # "" and fall through to the label rules.
-    | ($panes | group_by(.tab_id) | map(
-        (map(.label // "")) as $ls
-        | (map(select(IN(.label // ""; $sibs[]) | not))) as $rest
-        | if (($sibs - $ls) | length) == 0 and ($rest | length) == 1
-          then map({(.pane_id): (if .pane_id == $rest[0].pane_id then 1 else 0 end)})
-          else [] end) | flatten | add // {}) as $slot
-    | $panes | group_by(.tab_id)[] | (length == 1) as $single | .[]
+    | $panes | group_by(.tab_id)[]
+    | (length == 1) as $single
+    # The agent-tab shape, for infer_role only: a tab carrying the siblings plus
+    # exactly one other pane, which is then the agent slot. Panes of any other
+    # tab get "" for `slot` and fall through to the label rules in infer_role.
+    | (map(select(IN(.label // ""; $sibs[]) | not))) as $rest
+    | (if (($sibs - map(.label // "")) | length) == 0 and ($rest | length) == 1
+       then $rest[0].pane_id else null end) as $agent_pane
+    | .[]
     | [.pane_id, (.label // ""), ($ws_label[.workspace_id] // ""),
        ($tab_label[.tab_id] // ""), (.agent // ""),
        (if .agent_session then 1 else 0 end),
-       ($slot[.pane_id] // ""), (if $single then 1 else 0 end)]
+       (if $agent_pane == null then "" elif .pane_id == $agent_pane then 1 else 0 end),
+       (if $single then 1 else 0 end)]
     | map(tostring | gsub("[[:cntrl:]]"; " ")) | join("\u001f")')
 
   # Bank what was inferred, then drop entries for panes that no longer exist.

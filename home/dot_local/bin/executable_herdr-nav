@@ -170,11 +170,13 @@ case "${1:-}" in
     # means an agent pane whose agent is not currently running still counts —
     # `.agent` alone used to make a whole workspace of stopped agents look
     # agent-less, silently defaulting the new tab to claude.
-    roles="$(herdr-pane-role list | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')"
-    src="$(jq -c --argjson roles "$roles" '[.result.panes[]
-             | select(((.agent // "") != "")
-                      or (($roles[.pane_id] // "") | startswith("agent:")))][0] // empty' \
-           <<<"$panes")"
+    roles="$(herdr-pane-role list --json)"
+    # "Is this pane an agent pane?", written once and shared by both queries
+    # below: the two answers it feeds — which provider this workspace runs, and
+    # where the agent block ends — must never drift apart.
+    is_agent='((.agent // "") != "") or (($roles[.pane_id] // "") | startswith("agent:"))'
+    src="$(jq -c --argjson roles "$roles" \
+             '[.result.panes[] | select('"$is_agent"')][0] // empty' <<<"$panes")"
     if [[ -n "$src" ]]; then
       provider="$(jq -r --argjson roles "$roles" \
         '.agent // ($roles[.pane_id] | ltrimstr("agent:"))' <<<"$src")"
@@ -198,10 +200,7 @@ case "${1:-}" in
     # number, which is fine: it is a placeholder, not an identity.
     read -r num insert_index < <(herdr tab list --workspace "$ws" \
       | jq -r --arg base "$provider" --argjson roles "$roles" --argjson panes "$panes" '
-          [$panes.result.panes[]?
-             | select(((.agent // "") != "")
-                      or (($roles[.pane_id] // "") | startswith("agent:")))
-             | .tab_id] as $agent_tabs
+          [$panes.result.panes[]? | select('"$is_agent"') | .tab_id] as $agent_tabs
           | ([.result.tabs[].label | capture("^\($base)(?: (?<n>[0-9]+))?$")
               | ((.n // "1") | tonumber)] | (max // 0) + 1) as $num
           | ([.result.tabs | to_entries[]

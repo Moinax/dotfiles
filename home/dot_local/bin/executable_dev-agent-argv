@@ -47,7 +47,6 @@ case "$provider" in
     set -- opencode
     ;;
   *)
-    IFS='|'  # joins the list below; nothing after this runs
     echo "dev-agent-argv: unknown provider '$provider' (want: ${providers[*]})" >&2
     exit 1
     ;;
