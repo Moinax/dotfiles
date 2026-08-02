@@ -12,6 +12,7 @@ GROUPS_DIR="$PACKAGES_DIR/groups"
 source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
 source "$DOTFILES_DIR/install/lib/services.sh"
+source "$DOTFILES_DIR/install/lib/post-apply.sh"
 
 install_interrupt_trap
 
@@ -50,32 +51,6 @@ update_chezmoi_flag() {
 }
 
 # ── Package list helpers ─────────────────────────────────────────────────────
-
-# Build a list of packages for a group on the current distro,
-# filtered by install purpose (desktop/terminal).
-# Outputs one package name per line.
-get_group_packages() {
-    local file="$1"
-    local all_packages
-    all_packages=$({ parse_packages "$file" "$DISTRO_FAMILY"; parse_custom_install_names "$file"; } \
-        | grep -v "^$" || true)
-
-    if [ -z "$all_packages" ]; then
-        return
-    fi
-
-    # Filter desktop_only packages when in terminal mode
-    if install_purpose_is terminal; then
-        local desktop_only_list
-        desktop_only_list=$(parse_desktop_only "$file")
-        if [ -n "$desktop_only_list" ]; then
-            grep -vxFf <(printf '%s\n' "$desktop_only_list") <<< "$all_packages" || true
-            return
-        fi
-    fi
-
-    echo "$all_packages"
-}
 
 # Build a descriptions associative array (pkg -> desc) from a group file
 # Usage: load_descriptions "file.yaml"
@@ -127,23 +102,6 @@ is_group_package_installed() {
     else
         # Strip an AUR-style "repo/" prefix for the system package query
         is_package_installed "${pkg#*/}"
-    fi
-}
-
-# Install one custom_install package via its declared command. A missing
-# "requires" prerequisite or a failed install warns and moves on (returns 0)
-# so callers can keep processing the rest of their list.
-install_custom_pkg() {
-    local file="$1" pkg="$2"
-    local install_cmd requires_cmd
-    install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
-    requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
-    if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
-        print_warning "$requires_cmd not found — skipping $pkg"
-        return 0
-    fi
-    if [ -n "$install_cmd" ]; then
-        install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
     fi
 }
 
@@ -344,16 +302,6 @@ show_remove() {
 }
 
 # ── Unified manage view ──────────────────────────────────────────────────────
-
-# Build an in-memory set of every installed package (one query, not one per
-# package). Populates the global INSTALLED_SET associative array.
-build_installed_index() {
-    declare -gA INSTALLED_SET=()
-    local pkg
-    while IFS= read -r pkg; do
-        [ -n "$pkg" ] && INSTALLED_SET["$pkg"]=1
-    done < <(list_installed_packages)
-}
 
 # Emit "pkg<TAB>true|false" installed-state lines for every package in a group.
 # Uses the batch INSTALLED_SET index (call build_installed_index first) and one
@@ -606,8 +554,7 @@ sync_group_after_change() {
         if gum confirm "All ${name} packages are installed. Enable ${flag} in chezmoi.toml?"; then
             update_chezmoi_flag "$flag" "true"
             if gum confirm "Apply dotfiles now?"; then
-                chezmoi apply --force
-                print_success "Dotfiles applied"
+                apply_dotfiles
             fi
         fi
     elif [ "$any_installed" = false ] && [ "$flag_val" = "true" ]; then
@@ -615,8 +562,7 @@ sync_group_after_change() {
         if gum confirm "No ${name} packages remain installed. Disable ${flag} in chezmoi.toml?"; then
             update_chezmoi_flag "$flag" "false"
             if gum confirm "Apply dotfiles now?"; then
-                chezmoi apply --force
-                print_success "Dotfiles applied"
+                apply_dotfiles
             fi
         fi
     fi
@@ -655,19 +601,6 @@ sync_group_after_change() {
 }
 
 # ── Sync ─────────────────────────────────────────────────────────────────────
-
-# Base packages this machine should have: core (+ aur), plus the desktop
-# sections unless this is a terminal-only install.
-base_desired_packages() {
-    local base_file="$PACKAGES_DIR/$DISTRO_FAMILY/base.yaml"
-    [ -f "$base_file" ] || return 0
-    parse_packages "$base_file" "core"
-    parse_packages "$base_file" "aur"
-    if ! install_purpose_is terminal; then
-        parse_packages "$base_file" "desktop"
-        parse_packages "$base_file" "desktop_aur"
-    fi
-}
 
 # Scan base.yaml + enabled groups for packages missing on this machine.
 # Emits one TSV line per miss: "distro<TAB>pkg" or "custom<TAB>pkg<TAB>file",

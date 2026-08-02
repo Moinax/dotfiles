@@ -4,9 +4,91 @@ paths:
   - tools/backup-projects.sh
   - tools/manage-external-apps.py
   - tools/manage-updates.sh
+  - tools/sync-machine.sh
+  - install/lib/post-apply.sh
 ---
 
 # dots helper internals
+
+## `dots update` — `tools/sync-machine.sh`
+
+The orchestrator, and the command to run day to day. `dots setup` answers "what
+should this machine be?" once and is not built to be re-run — it re-asks every
+question, so a laptop that never wanted the gaming group had to say so again
+every time. This asks the smaller question: what has the repo gained since this
+machine last agreed with it?
+
+Phases: pull → new groups → new packages → `chezmoi apply` → tool refresh
+(`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
+`run_post_apply` → re-stamp the profile.
+
+**The anchor is the whole design.** `SYNCED_COMMIT` in
+`~/.local/state/dotfiles/profile.env` (see `profile_get`/`profile_set` in
+common.sh) records the commit this machine last agreed with, and the delta is
+computed against it. Without an anchor the only question available is "what is
+missing here?" — which cannot tell a package that is new from one the user
+removed on purpose, and therefore re-offers the removed one forever. That is
+also why this does not replace `dots packages sync`: the full "everything
+missing" scan stays, as the explicit catch-up for a machine that has drifted.
+
+The delta is computed by exporting `packages/` at the anchor with `git archive`
+and running the *same enumerators* over both trees, rather than diffing text —
+so reformatting a list, or moving an entry between groups, is not mistaken for
+new packages. Those enumerators are `base_desired_packages` and
+`get_group_packages` in common.sh, the pair `dots packages sync` and the manage
+view also go through, and they take the packages root as an argument precisely
+so one walk can serve both a checkout and an exported older commit. Do not grow
+a second walk here: the first version of this file did, read a
+`packages/base.yaml` that has never existed (the real path is
+`packages/arch/base.yaml`, keyed `core`/`aur`/`desktop`/`desktop_aur`), and
+silently returned nothing for the base half of every delta.
+
+`declared_packages_at` emits `pkg<TAB>group-file`, the file empty for a distro
+package and set for a `custom_install` entry — the two have different install
+paths and different installed-checks, so the caller needs the split anyway, and
+carrying it out of the walk is what avoids re-parsing every group file to
+rebuild it. Group enabledness is always read from this machine's chezmoi data,
+never from the old file, so a group disabled here stays out of both sides.
+
+Two states are deliberately not errors, because both are routine in a repo whose
+history is kept linear by rebasing: **no anchor** (first run after this landed —
+re-anchors silently and points at `dots packages sync` for the catch-up) and
+**an anchor that no longer exists** (rewritten by a rebase — warns, then
+re-anchors). Both skip the delta rather than guessing.
+
+A dirty tree asks before stashing. The dotfiles are reviewed with hunk, which
+watches *unstaged* changes, so autostashing a review in progress out from under
+the user is not an acceptable default.
+
+## `install/lib/post-apply.sh`
+
+What has to happen after any `chezmoi apply` for the running desktop to show it:
+Hyprland reload (its mid-apply autoreload fails on `conf/general.lua` requiring a
+`conf/theme.lua` not yet written), herdr `reload-config`/`migrate-layout`, waybar
+restart. Shared because these used to live in the installer only — the one script
+you stop running once the machine is set up.
+
+`run_post_apply` takes the list of files an update changed and fires only the
+reconciliations that list justifies; called with no arguments (a full install,
+where there is no "before") it runs all of them. Waybar goes last, after the
+caller's tool refresh: the bar's custom modules are long-lived `exec` children
+(`vibewatch status --watch` streams until killed), so a bar restarted before the
+binary underneath it moves keeps running the old one.
+
+**`apply_dotfiles` is the sanctioned apply**, and `chezmoi apply` should not
+appear anywhere else: it is `chezmoi_apply` + `run_post_apply`, so "an apply is
+always reconciled" is an invariant rather than a convention each caller has to
+remember. `dots reconfig` and `dots packages` both used to forget it, and they
+apply at exactly the moment a group flag has just rewritten the bar and the hypr
+tree. The one exception is `dots update`, which calls the two halves itself
+because the tool refresh has to land between them — see the waybar rule above.
+
+The herdr layout trigger matches **any** `executable_herdr-*` / `dev-herdr`
+script, not the three that happen to build panes today. A missed
+`migrate-layout` does not fail; it brings the old layout back at the next server
+restart, hours later, with nothing tying it to the update that caused it. A name
+list would go stale silently, and over-triggering costs one idempotent call that
+the full-install path already makes unconditionally.
 
 ## `dots backup` — `tools/backup-projects.sh`
 

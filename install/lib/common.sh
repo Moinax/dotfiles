@@ -641,6 +641,60 @@ install_purpose_is() {
     [ "$(chezmoi_data_get install_purpose)" = "$1" ]
 }
 
+# ── Machine profile state ────────────────────────────────────────────────────
+#
+# Written at the end of a *successful* setup or sync and nowhere else, which is
+# the whole point: a run that died halfway must not leave the machine looking
+# synced. chezmoi.toml cannot play this role — setup_dotfiles writes it in the
+# middle of the install, so it exists long before the install has worked.
+#
+# SYNCED_COMMIT is the anchor `dots update` diffs against to know what the repo
+# gained since this machine last agreed with it. Without it the only question
+# available is "what is missing?", which cannot tell a new package from one the
+# user removed on purpose — and so re-offers the removed one forever.
+PROFILE_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/profile.env"
+
+profile_get() {
+    [ -f "$PROFILE_STATE" ] || return 0
+    # profile_set is the only writer and always emits KEY='value', so one
+    # pattern reads it — no second pass to peel the quotes back off.
+    sed -n "s/^$1='\(.*\)'$/\1/p" "$PROFILE_STATE" 2>/dev/null | head -1
+}
+
+profile_set() {
+    local key="$1" value="$2"
+    mkdir -p "$(dirname "$PROFILE_STATE")"
+    [ -f "$PROFILE_STATE" ] || : > "$PROFILE_STATE"
+    if grep -q "^${key}=" "$PROFILE_STATE"; then
+        sed -i "s|^${key}=.*|${key}='${value}'|" "$PROFILE_STATE"
+    else
+        printf "%s='%s'\n" "$key" "$value" >> "$PROFILE_STATE"
+    fi
+}
+
+# Has this machine been through the installer? Setup refuses to re-run on one
+# that has, and the package tree seeds its checkboxes from reality rather than
+# offering the whole catalogue again.
+machine_is_managed() {
+    [ -f "$PROFILE_STATE" ] && return 0
+    # Machines set up before the profile file existed: chezmoi.toml is written
+    # by setup_dotfiles and by nothing else, so a [data] block means the
+    # installer got at least that far. Their first `dots update` writes the
+    # real marker.
+    [ -f "$CHEZMOI_CONF" ] && grep -q '^\[data\]' "$CHEZMOI_CONF"
+}
+
+# Stamp the machine profile. One writer for the anchor the whole design rests
+# on: both `dots setup` (at the very end of a run that worked) and `dots update`
+# call this, so the next key added here cannot end up written by one and not the
+# other. Requires $DOTFILES_DIR.
+record_synced_state() {
+    local head
+    head=$(git -C "$DOTFILES_DIR" rev-parse HEAD 2>/dev/null) || head=""
+    [ -n "$head" ] && profile_set SYNCED_COMMIT "$head"
+    profile_set SYNCED_AT "$(date -Is)"
+}
+
 # ── Secrets & config helpers ─────────────────────────────────────────────────
 
 SECRETS_CONF="$HOME/.config/environment.d/secrets.conf"
@@ -656,7 +710,97 @@ set_secret() {
     fi
 }
 
+# ── Package list helpers ─────────────────────────────────────────────────────
+#
+# What a machine is *declared* to want. Every view that answers that question —
+# the manage tree, `dots packages sync`, the `dots update` delta — goes through
+# these two, so "declared" cannot come to mean three different things (it did:
+# the update delta grew its own walk and read a packages/base.yaml that has
+# never existed, silently emptying half its answer).
+
+# Every package a group declares for this machine: distro packages plus
+# custom_install entries, minus the desktop-only ones on a terminal install.
+# One package per line.
+get_group_packages() {
+    local file="$1"
+    local all_packages
+    all_packages=$({ parse_packages "$file" "$DISTRO_FAMILY"; parse_custom_install_names "$file"; } \
+        | grep -v "^$" || true)
+
+    if [ -z "$all_packages" ]; then
+        return
+    fi
+
+    # Filter desktop_only packages when in terminal mode
+    if install_purpose_is terminal; then
+        local desktop_only_list
+        desktop_only_list=$(parse_desktop_only "$file")
+        if [ -n "$desktop_only_list" ]; then
+            grep -vxFf <(printf '%s\n' "$desktop_only_list") <<< "$all_packages" || true
+            return
+        fi
+    fi
+
+    echo "$all_packages"
+}
+
+# Base packages this machine should have: core (+ aur), plus the desktop
+# sections unless this is a terminal-only install. Takes the packages/ directory
+# to read, so the same walk serves the current checkout and a worktree exported
+# at an older commit; defaults to this machine's.
+base_desired_packages() {
+    local base_file="${1:-${PACKAGES_DIR:-}}/$DISTRO_FAMILY/base.yaml"
+    [ -f "$base_file" ] || return 0
+    parse_packages "$base_file" "core"
+    parse_packages "$base_file" "aur"
+    if ! install_purpose_is terminal; then
+        parse_packages "$base_file" "desktop"
+        parse_packages "$base_file" "desktop_aur"
+    fi
+}
+
 # ── Package install helpers ──────────────────────────────────────────────────
+
+# Build an in-memory set of every installed package (one query, not one per
+# package). Populates the global INSTALLED_SET associative array.
+#
+# Shared by `dots packages` (which pre-checks what you have) and by the
+# installer's selection tree (which seeds its checkboxes the same way on a
+# machine that is already set up), so "already installed" cannot come to mean
+# two different things in the two views.
+# shellcheck disable=SC2034  # read by the callers this is declared -g for
+build_installed_index() {
+    declare -gA INSTALLED_SET=()
+    local pkg
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] && INSTALLED_SET["$pkg"]=1
+    done < <(list_installed_packages)
+}
+
+# build_installed_index unless a caller already built it this run. The query is
+# ~0.3s over a few thousand packages, and a single command can want the index
+# from two phases that neither install nor remove anything between them.
+# Anything that *does* change what is installed must call build_installed_index.
+ensure_installed_index() {
+    [ "${#INSTALLED_SET[@]}" -gt 0 ] || build_installed_index
+}
+
+# Install one `custom_install:` entry using the command its yaml declares.
+# A declared `requires:` that is absent is a skip, not a failure: the entry
+# needs a toolchain this machine has not got, and saying so beats a build error.
+install_custom_pkg() {
+    local file="$1" pkg="$2"
+    local install_cmd requires_cmd
+    install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
+    requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
+    if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
+        print_warning "$requires_cmd not found — skipping $pkg"
+        return 0
+    fi
+    if [ -n "$install_cmd" ]; then
+        install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
+    fi
+}
 
 # Install a tool via curl script
 install_curl_tool() {

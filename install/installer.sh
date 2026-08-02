@@ -6,10 +6,37 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Args, before anything else is sourced or detected. Kept to the one flag the
+# installer needs — everything else about a run is asked interactively — and
+# parsed up here so `--help` costs nothing: `dots setup help` delegates straight
+# to it, which is what keeps the help text from being written out twice.
+# Set by --force: re-run the full installer on a machine that is already managed.
+FORCE_SETUP=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --force|-f) FORCE_SETUP=true ;;
+        help|--help|-h)
+            cat <<'EOF'
+Usage: dots setup [--force]
+
+Runs the full interactive installer: picks the groups and packages for this
+machine, installs them, and writes the chezmoi config.
+
+On a machine that is already managed this refuses and points at 'dots update',
+which carries the answers forward instead of re-asking them. --force reinstalls
+from scratch anyway.
+EOF
+            exit 0 ;;
+        *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+    shift
+done
+
 # Source library functions
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/hyprvoice.sh"
+source "$SCRIPT_DIR/lib/post-apply.sh"
 
 # Detect distro
 DISTRO=$(detect_distro)
@@ -90,10 +117,47 @@ select_purpose() {
     esac
 }
 
+# Decide, once per selector, whether the tree seeds from what is installed.
+#
+# A first install pre-checks everything — there is no history to read, and the
+# point is to talk the catalogue down to what you want. A machine that already
+# has a profile is the opposite situation: the tree opens on what is actually
+# installed, so a re-run is a diff against reality instead of the whole
+# catalogue offering itself again. That is what stopped `gaming` from coming
+# back pre-checked on a laptop that has never wanted it.
+#
+# Unchecked, never hidden: setup is the only place that can turn a group back
+# on, so a group or package you passed on has to stay visible and one Space away.
+#
+# Each selector calls this itself rather than sharing one call: the tree builds
+# inside spin_capture's subshell, so its copy of the index dies with it.
+_seed_installed_state() {
+    SEED_FROM_INSTALLED=false
+    machine_is_managed || return 0
+    SEED_FROM_INSTALLED=true
+    build_installed_index
+}
+
+# Whether a package opens the tree checked. Status, not output: both callers
+# consume it immediately, and a command substitution here is a fork per package.
+_pkg_starts_checked() {
+    local group_file="$1" pkg="$2" is_custom="$3"
+    $SEED_FROM_INSTALLED || return 0
+    if [ "$is_custom" = true ]; then
+        is_custom_install_installed "$group_file" "$pkg"
+    else
+        # `${pkg#*/}` drops a repo prefix (aur/foo): the index is keyed on bare
+        # names, the yaml is not always.
+        [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ]
+    fi
+}
+
 # Build JSON array of groups for tree_select.py
 _build_tree_json() {
     local -A pkg_seen=()
     local first_group=true
+
+    _seed_installed_state
 
     printf '['
     for group in "${SELECTED_GROUP_NAMES[@]}"; do
@@ -134,10 +198,11 @@ _build_tree_json() {
             [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
             pkg_seen["$pkg"]="$group"
 
-            local desc name
+            local desc name checked=false
             desc=$(_json_escape "${descs[$pkg]:-}")
             name=$(_json_escape "$pkg")
-            pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
+            _pkg_starts_checked "$group_file" "$pkg" false && checked=true
+            pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\",\"selected\":$checked}")
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
 
         # Include custom_install entries (curl/script-installed tools)
@@ -147,10 +212,11 @@ _build_tree_json() {
             [ -n "${desktop_only_pkgs[$pkg]}" ] && continue
             pkg_seen["$pkg"]="$group"
 
-            local desc name
+            local desc name checked=false
             desc=$(_json_escape "${descs[$pkg]:-}")
             name=$(_json_escape "$pkg")
-            pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\"}")
+            _pkg_starts_checked "$group_file" "$pkg" true && checked=true
+            pkg_json_items+=("{\"name\":\"$name\",\"desc\":\"$desc\",\"selected\":$checked}")
         done < <(parse_custom_install_names "$group_file")
 
         # Emit group JSON object
@@ -213,6 +279,8 @@ _select_packages_gum_fallback() {
     local -A line_to_pkg=()
     local -A line_to_group=()
 
+    _seed_installed_state
+
     for group in "${SELECTED_GROUP_NAMES[@]}"; do
         local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
         [ -f "$group_file" ] || continue
@@ -249,8 +317,11 @@ _select_packages_gum_fallback() {
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && all_group_pkgs+=("$pkg")
         done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
+        # Custom entries are collected into the same list, so remember which
+        # names they were: their installed-state check is a different one.
+        local -A custom_set=()
         while IFS= read -r pkg; do
-            [ -n "$pkg" ] && all_group_pkgs+=("$pkg")
+            [ -n "$pkg" ] && all_group_pkgs+=("$pkg") && custom_set["$pkg"]=1
         done < <(parse_custom_install_names "$group_file")
 
         for pkg in "${all_group_pkgs[@]}"; do
@@ -261,14 +332,16 @@ _select_packages_gum_fallback() {
             pkg_seen["$pkg"]="$group"
 
             local desc="${descs[$pkg]:-}"
-            local display_line
+            local display_line is_custom=false
+            [ -n "${custom_set[$pkg]:-}" ] && is_custom=true
             if [ -n "$desc" ]; then
                 display_line="  $pkg: $desc"
             else
                 display_line="  $pkg"
             fi
             display_lines+=("$display_line")
-            preselected+=("$display_line")
+            _pkg_starts_checked "$group_file" "$pkg" "$is_custom" \
+                && preselected+=("$display_line")
             line_to_pkg["$display_line"]="$pkg"
             line_to_group["$display_line"]="$group"
         done
@@ -282,7 +355,11 @@ _select_packages_gum_fallback() {
     echo ""
     gum style --foreground 212 --bold "Select packages to install:"
     echo ""
-    print_info "All packages are pre-selected. Deselect any you don't want."
+    if $SEED_FROM_INSTALLED; then
+        print_info "What you already have is pre-selected. Check anything you want to add."
+    else
+        print_info "All packages are pre-selected. Deselect any you don't want."
+    fi
     print_info "Type to fuzzy-search, Space to toggle, Enter to confirm."
     echo ""
 
@@ -976,27 +1053,28 @@ setup_dotfiles() {
     
     local source_dir="$DOTFILES_DIR/home"
 
-    # Determine boolean flags for groups
-    local install_hyprland="false"
-    local install_development="false"
-    local install_gaming="false"
-    local install_multimedia="false"
-    local install_productivity="false"
-    local install_ai="false"
-
-    for group in "${SELECTED_GROUP_NAMES[@]}"; do
-        case "$group" in
-            hyprland) install_hyprland="true" ;;
-            development) install_development="true" ;;
-            gaming) install_gaming="true" ;;
-            multimedia) install_multimedia="true" ;;
-            productivity) install_productivity="true" ;;
-            ai) install_ai="true" ;;
-        esac
+    # One flag per group file, generated — never a list kept by hand here.
+    # A hand-kept list is exactly how `biometric` and `security` came to be
+    # installed on a machine whose chezmoi data recorded no flag for either:
+    # they were added to packages/groups/ long after this block was written, so
+    # the installer installed them and then said nothing about them. Every
+    # `group_enabled` caller since — `dots packages sync`, the update delta, the
+    # tool scan — read that silence as "disabled".
+    local -a group_flags=()
+    local group_file group_id enabled
+    for group_file in "$DOTFILES_DIR"/packages/groups/*.yaml; do
+        [ -f "$group_file" ] || continue
+        group_id=$(get_group_id "$group_file")
+        enabled=false
+        group_selected "$group_id" && enabled=true
+        group_flags+=("    $(get_chezmoi_flag "$group_id") = $enabled")
     done
 
     # vibewatch: on by default when the AI group is selected
-    local install_vibewatch="$install_ai"
+    local install_vibewatch="false"
+    if group_selected ai; then
+        install_vibewatch="true"
+    fi
     # If the user customised the AI group's package list, check whether vibewatch was kept
     if [ "${GROUP_PACKAGE_MODE[ai]:-all}" = "custom" ]; then
         case " ${GROUP_CUSTOM_PACKAGE_LIST[ai]:-} " in
@@ -1025,12 +1103,7 @@ sourceDir = "$source_dir"
 
 [data]
     distro = "$DISTRO"
-    install_hyprland = $install_hyprland
-    install_development = $install_development
-    install_gaming = $install_gaming
-    install_multimedia = $install_multimedia
-    install_productivity = $install_productivity
-    install_ai = $install_ai
+$(printf '%s\n' "${group_flags[@]}")
     install_vibewatch = $install_vibewatch
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
@@ -1042,14 +1115,10 @@ EOF
     print_info "Chezmoi config created at $chezmoi_config"
     print_info "Applying dotfiles from $source_dir..."
 
-    # --force: overwrite files already on disk (e.g. rofi themes).
-    if chezmoi apply --force; then
-        print_success "Dotfiles applied successfully"
-    else
-        print_warning "Chezmoi completed with some warnings"
-    fi
-
-    reload_hyprland_after_apply
+    # chezmoi_apply, not apply_dotfiles: main runs run_post_apply itself, after
+    # refresh_preinstalled_tools, so waybar restarts after the binaries its
+    # modules run rather than before.
+    chezmoi_apply
 }
 
 # Offer to move the tools the install phase found already present. Runs after
@@ -1064,45 +1133,6 @@ refresh_preinstalled_tools() {
 
     "$updater" refresh "${PREINSTALLED_TOOLS[@]}" \
         || track_warning "Some tools could not be refreshed — run 'dots update' to retry"
-}
-
-# Waybar, unlike Hyprland, reads config-hyprland and modules.jsonc once at
-# startup — it only live-switches its *stylesheet* on a colour-scheme change.
-# So a running bar keeps the modules it booted with until something restarts it,
-# and a freshly applied module (a new vibewatch pill, a reworked group) silently
-# does not show up until the next login or Mod+SHIFT+B. Restart it here, the
-# same thing that keybind does.
-#
-# Last, after the tool refresh: the bar's custom modules are long-lived `exec`
-# children (`vibewatch status --watch` streams until killed), so a bar restarted
-# before the binary underneath it moves keeps running the old one.
-restart_waybar_after_apply() {
-    if ! systemctl --user is-active --quiet waybar.service 2>/dev/null; then
-        return 0
-    fi
-
-    if systemctl --user restart waybar.service 2>/dev/null; then
-        print_success "Waybar restarted with the new config"
-    else
-        print_warning "Could not restart Waybar — press Mod+SHIFT+B to reload it"
-    fi
-}
-
-# Hyprland autoreloads on every config write, so a running session reparses the
-# tree mid-apply — conf/general.lua is rewritten before conf/theme.lua it
-# requires, and the parse fails with "module 'conf.theme' not found". The files
-# on disk are fine by the time the apply ends; only the error banner lingers,
-# so clear it with one reload instead of leaving it to the user.
-reload_hyprland_after_apply() {
-    if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ] || ! command -v hyprctl &> /dev/null; then
-        return 0
-    fi
-
-    if hyprctl reload &> /dev/null; then
-        print_success "Hyprland config reloaded"
-    else
-        print_warning "Could not reload Hyprland — run 'hyprctl reload' manually"
-    fi
 }
 
 # Migrate from old notification daemons (mako/dunst) to swaync
@@ -1950,6 +1980,22 @@ main() {
     declare -gA GROUP_PACKAGE_MODE=()
     declare -gA GROUP_CUSTOM_PACKAGE_LIST=()
 
+    # An already-managed machine has a cheaper, safer path: `dots update` moves
+    # it to the current repo without re-asking the questions it already answered
+    # (and without a full catalogue that has to be talked back down every time).
+    # Setup stays reachable behind --force, because a from-scratch reinstall is
+    # a real thing to want.
+    if machine_is_managed && ! $FORCE_SETUP; then
+        print_header "Already Set Up"
+        local synced
+        synced=$(profile_get SYNCED_COMMIT)
+        print_info "This machine has been through the installer${synced:+ (last synced at ${synced:0:8})}."
+        print_info "To bring it in line with the repo, run:  dots update"
+        echo ""
+        print_warning "To reinstall from scratch anyway: dots setup --force"
+        return 0
+    fi
+
     HAS_FINGERPRINT=false
     if has_fingerprint_reader; then
         HAS_FINGERPRINT=true
@@ -2009,7 +2055,9 @@ main() {
     install_common_tools
     setup_dotfiles
     refresh_preinstalled_tools
-    restart_waybar_after_apply
+    # No file list: a full install has no "before" to diff against, so every
+    # reconciliation runs.
+    run_post_apply
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         migrate_notification_daemon
         migrate_dropbox_to_dist
@@ -2025,10 +2073,15 @@ main() {
     fi
     setup_ssh
     setup_shell
-    
+
+    # Only now, with every step behind us: the marker is what tells setup not to
+    # run again and what `dots update` diffs against, so a run that died earlier
+    # must not have left one.
+    record_synced_state
+
     # Done!
     show_completion
 }
 
 # Run main
-main "$@"
+main

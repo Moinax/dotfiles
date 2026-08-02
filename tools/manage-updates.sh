@@ -843,7 +843,7 @@ do_refresh() {
 
 usage() {
     cat <<'EOF'
-Usage: dots update [command]
+Usage: dots update tools [command]
 
 Updates what the system package manager does not own: curl-installed binaries,
 global npm packages, the fnm-managed Node, cargo/git installs, and tracked

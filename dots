@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source shared utilities
 source "$SCRIPT_DIR/install/lib/common.sh"
 source "$SCRIPT_DIR/install/lib/hyprvoice.sh"
+source "$SCRIPT_DIR/install/lib/post-apply.sh"
 
 install_interrupt_trap
 
@@ -18,12 +19,12 @@ usage() {
 Usage: dots [command]
 
 Commands:
+  update      Bring this machine in line with the repo (pull, apply, refresh)
   packages    Manage packages (add/remove from groups, sync missing)
-  update      Update what pacman doesn't own (curl/npm/cargo tools, apps)
   apps        Manage standalone apps (AppImage / Distrobox)
   reconfig    Reconfigure chezmoi data flags
   whisper     Update whisper model for hyprvoice dictation
-  setup       Run full installer (bootstrap + interactive setup)
+  setup       Run the full installer (first install; --force to redo one)
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
@@ -45,7 +46,7 @@ argless_command_help() {
 # ── Actions ──────────────────────────────────────────────────────────────────
 
 do_setup() {
-    "$SCRIPT_DIR/tools/setup.sh"
+    "$SCRIPT_DIR/tools/setup.sh" "$@"
 }
 
 do_whisper() {
@@ -222,11 +223,13 @@ do_reconfig() {
 
     print_success "Flags updated in chezmoi.toml"
 
-    # Offer to apply immediately
+    # Offer to apply immediately. Through apply_dotfiles, not a bare `chezmoi
+    # apply`: toggling a group flag is exactly the change that rewrites the
+    # waybar modules and the hypr tree, so the running desktop has to be
+    # reconciled or it keeps showing the flags you just turned off.
     if gum confirm "Apply dotfiles now?"; then
         print_info "Applying dotfiles..."
-        chezmoi apply --force
-        print_success "Dotfiles applied"
+        apply_dotfiles
     fi
 }
 
@@ -234,11 +237,11 @@ do_packages() {
     "$SCRIPT_DIR/tools/manage-packages.sh" "$@"
 }
 
-# Complements cachy-update rather than duplicating it: only the tools the
-# system package manager doesn't own (curl binaries, npm globals, Node, cargo
-# installs, tracked external apps).
+# Bring the machine in line with the repo: pull, offer what the repo gained,
+# apply, refresh tools, reload the surfaces. The tool refresh alone — what this
+# command used to mean on its own — is still reachable as `dots update tools`.
 do_update() {
-    "$SCRIPT_DIR/tools/manage-updates.sh" "$@"
+    "$SCRIPT_DIR/tools/sync-machine.sh" "$@"
 }
 
 # Everything package-shaped under one submenu: the unified add/remove manager,
@@ -336,8 +339,16 @@ do_menu() {
         print_header "Dotfiles Manager"
 
         # Build menu options dynamically
+        # Update first: on a machine that is already managed it is the answer
+        # nearly every time, and Setup is the one entry that refuses to run
+        # there. A machine with no profile yet has nothing to update, so the
+        # order flips.
         local options=()
-        options+=("Setup")
+        if machine_is_managed; then
+            options+=("Update this machine")
+        else
+            options+=("Setup")
+        fi
         options+=("Manage packages")
         options+=("Reconfigure flags")
         if command_exists hyprvoice; then
@@ -347,6 +358,10 @@ do_menu() {
             options+=("Gaming HDR launch")
         fi
         options+=("Backup projects")
+        # Reachable, but last and named for what it is: on a managed machine it
+        # only proceeds with --force, and reinstalling from scratch is not
+        # something to land on by cursor drift.
+        machine_is_managed && options+=("Reinstall from scratch")
         options+=("Exit")
 
         local choice
@@ -356,6 +371,8 @@ do_menu() {
         # cancelled inside it) must not kill the menu — swallow it here.
         case "$choice" in
             "Setup")                   do_setup || true ;;
+            "Update this machine")     do_update || true ;;
+            "Reinstall from scratch")  do_setup --force || true ;;
             "Manage packages")         do_packages_menu || true ;;
             "Reconfigure flags")       do_reconfig || true ;;
             "Update whisper model")    do_whisper || true ;;
@@ -378,7 +395,12 @@ case "${2:-}" in
     help|--help|-h)
         case "${1:-}" in
             packages|update|apps|backup|gaming) ;;  # forward: these answer for themselves
-            setup|whisper|reconfig|lazy-lock)   argless_command_help "$1"; exit 0 ;;
+            # setup answers for itself too, but going through tools/setup.sh
+            # would install git and gum first — far too much for a help request
+            # or a completion probe. The installer parses --help before it
+            # sources or detects anything, so ask it directly.
+            setup)      exec "$SCRIPT_DIR/install/installer.sh" --help ;;
+            whisper|reconfig|lazy-lock)         argless_command_help "$1"; exit 0 ;;
             # Unknown command: everything goes to stderr (print_error prints to
             # stdout by default), leaving stdout empty so a completion asking
             # about a typo gets nothing rather than the interactive menu.
@@ -388,7 +410,7 @@ case "${2:-}" in
 esac
 
 case "${1:-}" in
-    setup)      do_setup ;;
+    setup)      shift; do_setup "$@" ;;
     whisper)    do_whisper ;;
     reconfig)   do_reconfig ;;
     packages)   shift; do_packages "$@" ;;

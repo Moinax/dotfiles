@@ -44,4 +44,4 @@ chmod +x "$REPO_DIR/install/lib/"*.sh
 # Run the main installer
 print_info "Starting interactive installer..."
 echo ""
-exec "$REPO_DIR/install/installer.sh"
+exec "$REPO_DIR/install/installer.sh" "$@"
