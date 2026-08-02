@@ -35,6 +35,21 @@ custom_install:
     source: Moinax/vibewatch
     # `vibewatch --version` prints "0.3.0 (<git sha>)" — the updater keeps the
     # leading version and ignores the build suffix.
+    #
+    # Same install script, plus the restart it does not do: it ends in
+    # `vibewatch install`, whose `systemctl --user enable --now` starts a stopped
+    # unit but leaves a running one on the old binary image — so the daemon and
+    # the waybar pill it feeds stayed on the previous build until the next login.
+    # Restarting is a supported path rather than a workaround: waybar's
+    # `status --watch` children reconnect on socket drop, the scanner re-adopts
+    # agents that were already running, and the mute state lives in the XDG
+    # state dir.
+    update: |
+      curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh
+      # try-restart, not restart: a no-op success when the unit isn't running,
+      # so a headless box or a session with no user bus doesn't turn a perfectly
+      # good binary update into a failed row.
+      systemctl --user try-restart vibewatch.service 2>/dev/null || true
 
 packages:
   arch:
