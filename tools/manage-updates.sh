@@ -124,6 +124,23 @@ CANDIDATE_META=(binary npm updated_by version source update requires install che
 # mapping.
 CANDIDATE_FIELDS=(kind name file section "${CANDIDATE_META[@]}")
 
+# Restrict the scan to named yaml entries. Empty means "everything", which is
+# what `dots update` does; the installer's post-install refresh passes the
+# entries it skipped as already installed, so a setup re-run offers to move
+# those and nothing else — not the global npm packages, not Node, not the
+# external apps, none of which setup put there.
+declare -A ONLY_NAMES=()
+ONLY_FILTER=false
+
+set_only_filter() {
+    local name
+    for name in "$@"; do
+        [ -n "$name" ] || continue
+        ONLY_NAMES["$name"]=1
+        ONLY_FILTER=true
+    done
+}
+
 # `tools:` in common.yaml and `custom_install:` in a group file declare the same
 # update metadata, so one collector reads both; only the kind label differs.
 collect_section_candidates() {
@@ -134,6 +151,12 @@ collect_section_candidates() {
     local "${CANDIDATE_META[@]}"
     while IFS= read -r entry; do
         [ -n "$entry" ] || continue
+
+        # Filter on the name before anything else: the yq read below is what
+        # makes a scan slow, so a two-entry refresh must not pay for twenty.
+        if $ONLY_FILTER && [ -z "${ONLY_NAMES[$entry]:-}" ]; then
+            continue
+        fi
 
         # One yq call per entry rather than one per field: the metadata reads
         # otherwise dominate the whole scan.
@@ -179,8 +202,13 @@ collect_candidates() {
         collect_section_candidates "$file" custom_install custom
     done
 
-    # Node itself: fnm's default version vs the latest LTS.
-    command_exists fnm && emit_candidate node "node (LTS)"
+    # Node itself: fnm's default version vs the latest LTS. Never part of a
+    # filtered scan — moving Node strands every global npm package installed
+    # against the old one (see apply_row's note), which is not something a
+    # setup re-run should slip into a list of tool refreshes.
+    if ! $ONLY_FILTER; then
+        command_exists fnm && emit_candidate node "node (LTS)"
+    fi
     return 0
 }
 
@@ -254,7 +282,12 @@ resolve_upstream() {
             printf '%s\n' "${repos[@]}" | sort -u \
                 | xargs "$APPS_TOOL" latest-release >"$dir/tags" 2>/dev/null &
         fi
-        "$APPS_TOOL" check-updates --porcelain >"$dir/apps" 2>/dev/null &
+        # External apps are `dots apps`' own inventory, never a yaml entry, so
+        # a filtered scan can't report them — and this check costs GitHub quota
+        # the filtered lookups above still need.
+        if ! $ONLY_FILTER; then
+            "$APPS_TOOL" check-updates --porcelain >"$dir/apps" 2>/dev/null &
+        fi
     fi
     if command_exists npm; then
         npm outdated -g --json 2>/dev/null \
@@ -264,7 +297,7 @@ resolve_upstream() {
             | jq -r '(.dependencies // {}) | to_entries[] | [.key, (.value.version // "")] | @tsv' \
             >"$dir/npm_installed" 2>/dev/null &
     fi
-    if command_exists fnm; then
+    if ! $ONLY_FILTER && command_exists fnm; then
         fnm ls-remote --lts >"$dir/node_lts" 2>/dev/null &
     fi
     wait
@@ -758,6 +791,56 @@ do_update() {
     footers "$REPORT"
 }
 
+# The installer's post-install pass, over the entries it skipped as already
+# installed. Setup only ever fills gaps — a tool whose `check` passes keeps
+# whatever build it was first installed with, so a machine set up months ago
+# still ran that month's binary after a fresh `dots setup`. Everything needed to
+# do better was already declared in the yaml (`binary:` + `source:`/`npm:`) and
+# already understood here; it was simply never consulted outside `dots update`.
+#
+# Confirmed rather than automatic, and as one prompt rather than one per tool:
+# a setup re-run started for an unrelated reason should not silently spend
+# several minutes on a `cargo install --git` nobody asked for.
+do_refresh() {
+    set_only_filter "$@"
+    $ONLY_FILTER || return 0
+
+    scan_report
+
+    local rows=()
+    mapfile -t rows < <(actionable_rows "$REPORT")
+
+    if [ ${#rows[@]} -eq 0 ]; then
+        report_summary "$REPORT"
+        return 0
+    fi
+
+    if ! gum confirm "Update ${#rows[@]} already-installed tool(s) now?"; then
+        print_info "Keeping the installed versions — 'dots update' applies them later"
+        footers "$REPORT"
+        return 0
+    fi
+
+    local row failed=0 applied=0
+    for row in "${rows[@]}"; do
+        IFS="$US" read -r "${REPORT_FIELDS[@]}" <<< "$row"
+        echo ""
+        if apply_row "$name" "$kind" "$file" "$payload"; then
+            applied=$((applied + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    echo ""
+    if [ "$failed" -gt 0 ]; then
+        print_warning "${applied} updated, ${failed} failed"
+        return 1
+    fi
+    print_success "${applied} tool(s) updated"
+    footers "$REPORT"
+}
+
 usage() {
     cat <<'EOF'
 Usage: dots update [command]
@@ -768,10 +851,14 @@ external apps. Pacman and AUR packages are left to cachy-update, and anything
 found to be owned by a distro package is reported as such instead of refreshed.
 
 Commands:
-  (none)      Check, then pick which updates to apply
-  check       Report only, change nothing
-  all         Apply every available update without prompting
-  help        Show this help message
+  (none)         Check, then pick which updates to apply
+  check          Report only, change nothing
+  all            Apply every available update without prompting
+  refresh NAME…  Check only the named packages/*.yaml entries, then offer to
+                 update them in one prompt. What the installer runs over the
+                 tools it found already installed; Node and external apps are
+                 out of scope here.
+  help           Show this help message
 EOF
 }
 
@@ -779,6 +866,7 @@ case "${1:-}" in
     ""|update)      do_update ;;
     check|--check)  do_check ;;
     all|--all)      do_update --all ;;
+    refresh)        shift; do_refresh "$@" ;;
     help|--help|-h) usage ;;
     *)              usage; exit 1 ;;
 esac

@@ -32,6 +32,10 @@ export PATH="$HOME/.local/bin:$PATH"
 SELECTED_GROUP_NAMES=()
 SERVICES_TO_ENABLE=()
 INSTALL_WARNINGS=()
+# yaml-declared tools found already installed, so left untouched by the install
+# phase. Collected for refresh_preinstalled_tools, which offers to move them to
+# the current release once the dotfiles are applied.
+PREINSTALLED_TOOLS=()
 declare -A GROUP_PACKAGE_MODE=()
 declare -A GROUP_CUSTOM_PACKAGE_LIST=()
 HYPRVOICE_MODEL="small"
@@ -593,6 +597,10 @@ ensure_node_toolchain() {
         activate_fnm_node
     else
         print_info "fnm is already installed"
+        # fnm itself, not the Node it manages: refreshing the version manager
+        # moves nothing under the global npm packages, so it belongs in the
+        # post-install refresh where `node (LTS)` deliberately does not.
+        PREINSTALLED_TOOLS+=(fnm)
     fi
 
     # Ensure a Node.js version is actually installed — fnm can exist with no
@@ -713,6 +721,10 @@ install_group_packages() {
 
             if $already_installed; then
                 print_info "$pkg is already installed"
+                # `check` only asks whether the tool exists, never which version
+                # it is — so this is also the only place that knows a refresh is
+                # even worth offering later.
+                PREINSTALLED_TOOLS+=("$pkg")
                 continue
             fi
 
@@ -796,6 +808,7 @@ install_common_tools() {
         install_common_tool zoxide
     else
         print_info "zoxide is already installed"
+        PREINSTALLED_TOOLS+=(zoxide)
     fi
 
     # Install fnm + a Node.js LTS (idempotent). Also called earlier, before
@@ -917,7 +930,7 @@ setup_dotfiles() {
     if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
         print_info "Running inside Hyprland session"
         print_info "You may see transient errors during config migration"
-        print_info "Run 'hyprctl reload' after setup completes"
+        print_info "The config is reloaded once the apply finishes"
     fi
     
     # Install chezmoi
@@ -1034,6 +1047,61 @@ EOF
         print_success "Dotfiles applied successfully"
     else
         print_warning "Chezmoi completed with some warnings"
+    fi
+
+    reload_hyprland_after_apply
+}
+
+# Offer to move the tools the install phase found already present. Runs after
+# the dotfiles apply, not before: group_enabled reads the chezmoi data that
+# setup_dotfiles has only just written, so a filtered scan started earlier would
+# find no enabled group and quietly report nothing to do.
+refresh_preinstalled_tools() {
+    [ ${#PREINSTALLED_TOOLS[@]} -gt 0 ] || return 0
+
+    local updater="$DOTFILES_DIR/tools/manage-updates.sh"
+    [ -x "$updater" ] || return 0
+
+    "$updater" refresh "${PREINSTALLED_TOOLS[@]}" \
+        || track_warning "Some tools could not be refreshed — run 'dots update' to retry"
+}
+
+# Waybar, unlike Hyprland, reads config-hyprland and modules.jsonc once at
+# startup — it only live-switches its *stylesheet* on a colour-scheme change.
+# So a running bar keeps the modules it booted with until something restarts it,
+# and a freshly applied module (a new vibewatch pill, a reworked group) silently
+# does not show up until the next login or Mod+SHIFT+B. Restart it here, the
+# same thing that keybind does.
+#
+# Last, after the tool refresh: the bar's custom modules are long-lived `exec`
+# children (`vibewatch status --watch` streams until killed), so a bar restarted
+# before the binary underneath it moves keeps running the old one.
+restart_waybar_after_apply() {
+    if ! systemctl --user is-active --quiet waybar.service 2>/dev/null; then
+        return 0
+    fi
+
+    if systemctl --user restart waybar.service 2>/dev/null; then
+        print_success "Waybar restarted with the new config"
+    else
+        print_warning "Could not restart Waybar — press Mod+SHIFT+B to reload it"
+    fi
+}
+
+# Hyprland autoreloads on every config write, so a running session reparses the
+# tree mid-apply — conf/general.lua is rewritten before conf/theme.lua it
+# requires, and the parse fails with "module 'conf.theme' not found". The files
+# on disk are fine by the time the apply ends; only the error banner lingers,
+# so clear it with one reload instead of leaving it to the user.
+reload_hyprland_after_apply() {
+    if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ] || ! command -v hyprctl &> /dev/null; then
+        return 0
+    fi
+
+    if hyprctl reload &> /dev/null; then
+        print_success "Hyprland config reloaded"
+    else
+        print_warning "Could not reload Hyprland — run 'hyprctl reload' manually"
     fi
 }
 
@@ -1824,12 +1892,6 @@ show_completion() {
         next_step=$((next_step + 1))
     fi
 
-    # Hyprland reload only if currently running in Hyprland
-    if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-        steps+=("  $next_step. Run 'hyprctl reload' to reload Hyprland config")
-        next_step=$((next_step + 1))
-    fi
-
     if group_selected ai; then
         steps+=("  $next_step. Press Mod+D to toggle dictation (hyprvoice)")
         next_step=$((next_step + 1))
@@ -1946,6 +2008,8 @@ main() {
     install_group_packages
     install_common_tools
     setup_dotfiles
+    refresh_preinstalled_tools
+    restart_waybar_after_apply
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         migrate_notification_daemon
         migrate_dropbox_to_dist

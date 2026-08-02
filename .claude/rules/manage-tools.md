@@ -102,6 +102,29 @@ package is reported as managed and skipped, never refreshed: several entries als
 as distro packages, and re-running their curl installer would shadow the packaged copy
 (`/usr/local/bin` over `/usr/bin`).
 
+### `refresh NAME…` — the installer's post-install pass
+
+`dots setup` only ever fills gaps: a `custom_install`/`tools` entry whose `check` passes is
+left at whatever build it was first installed with, since `check` asks *whether* a tool
+exists and never *which version*. So a long-lived machine kept its original binary across
+every re-run (a July vibewatch survived a `dots setup` three releases later). `refresh`
+closes that: the installer collects the entries it skipped into `PREINSTALLED_TOOLS` and
+hands them here, and one `gum confirm` covers the whole batch — a setup re-run started for
+an unrelated reason must not silently spend minutes on a `cargo install --git`.
+
+The name list sets `ONLY_NAMES`, filtered in `collect_section_candidates` *before* the
+per-entry yq read, so a two-name refresh doesn't pay for a twenty-entry scan. A filtered
+run also drops the Node candidate (moving Node strands the global npm packages installed
+against the old one) and the external-apps check (`dots apps`' inventory, never a yaml
+entry, and it spends the same GitHub quota the filtered lookups need).
+
+Ordering in the installer matters and is not incidental: the refresh runs *after*
+`setup_dotfiles`, because `group_enabled` reads chezmoi data that `setup_dotfiles` has only
+just written — an earlier scan finds no enabled group and reports nothing to do. The waybar
+restart then runs *after* the refresh, because the bar's custom modules are long-lived
+`exec` children (`vibewatch status --watch` streams until killed), so a bar restarted
+before the binary moves keeps running the old one.
+
 GitHub release lookups go through `manage-external-apps.py` (shared concurrent cache) and
 use `gh auth token` when available — unauthenticated api.github.com allows only 60
 requests/hour, which one scan plus an app check can exhaust, vs 5000 authenticated. An
