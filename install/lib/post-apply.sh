@@ -72,18 +72,92 @@ reload_herdr_after_apply() {
     fi
 }
 
+# Restart a user service, but only if it is already running — a surface that is
+# not up has nothing to reconcile — and say which way it went either way.
+# `is-active` first rather than `try-restart`: the latter exits 0 whether it
+# restarted the unit or found nothing, so it cannot tell the two apart.
+restart_user_service() {
+    local unit="$1" ok="$2" hint="$3"
+    systemctl --user is-active --quiet "$unit" 2>/dev/null || return 0
+
+    if systemctl --user restart "$unit" 2>/dev/null; then
+        print_success "$ok"
+    else
+        print_warning "$hint"
+    fi
+}
+
 # Waybar, unlike Hyprland, reads config-hyprland and modules.jsonc once at
 # startup — it only live-switches its *stylesheet* on a colour-scheme change.
 # So a running bar keeps the modules it booted with until something restarts it,
 # and a freshly applied module (a new vibewatch pill, a reworked group) silently
 # does not show up until the next login or Mod+SHIFT+B.
 restart_waybar_after_apply() {
-    systemctl --user is-active --quiet waybar.service 2>/dev/null || return 0
+    restart_user_service waybar.service \
+        "Waybar restarted with the new config" \
+        "Could not restart Waybar — press Mod+SHIFT+B to reload it"
+}
 
-    if systemctl --user restart waybar.service 2>/dev/null; then
-        print_success "Waybar restarted with the new config"
-    else
-        print_warning "Could not restart Waybar — press Mod+SHIFT+B to reload it"
+# The themed surfaces each read one fixed path — a *copy* of the mode-specific
+# file, which nothing but apply-dark-mode.sh writes and which chezmoi does not
+# manage. So an apply that rewrites the managed sources reaches none of them: the
+# copies they actually read keep whatever the last dark/light toggle put there,
+# and the change waits, silently, for the next Mod+N. Refreshing those copies is
+# the reconciliation; the reloads below are only what makes it visible.
+#
+# theme-copies.sh owns the list, shared with apply-dark-mode.sh so adding a
+# surface to one cannot leave it stale in the other. Sourced from the deployed
+# copy because that is the one apply-dark-mode.sh sees too, and chezmoi_apply has
+# already put it there by the time any caller reaches this.
+reconcile_theme_copies_after_apply() {
+    local lib="$HOME/.local/lib/theme-copies.sh"
+    [ -r "$lib" ] || return 0
+    # shellcheck source=/dev/null
+    . "$lib"
+
+    # Unconditional: the copies are idempotent and cost nothing, and a copy
+    # skipped is exactly the silent staleness this function exists to prevent.
+    # Only the reloads are gated, because only they cost anything.
+    sync_theme_copies
+
+    # These patterns are deliberately not derived from theme-copies.sh: they gate
+    # a *reload*, which is broader than the copy. kitty is the proof — it reads
+    # kitty.conf once at startup too, so a font or keybind change there needs the
+    # same signal as the theme copy, and `*kitty/*` catches both.
+    local f swaync=false swayosd=false kitty=false
+    # No file list at all — a full install, where there is no "before" — so
+    # reload everything rather than guess.
+    if [ $# -eq 0 ]; then
+        swaync=true; swayosd=true; kitty=true
+    fi
+    for f in "$@"; do
+        case "$f" in
+            *swaync/*)  swaync=true ;;
+            *swayosd/*) swayosd=true ;;
+            *kitty/*)   kitty=true ;;
+        esac
+    done
+
+    # Restart rather than `swaync-client -rs`: the reload re-reads the
+    # stylesheet but a running daemon keeps its old font map, so a font change
+    # stays tofu until the process is replaced. Gated because a restart drops
+    # whatever notifications are queued.
+    if $swaync; then
+        restart_user_service swaync.service \
+            "swaync restarted with the new stylesheet" \
+            "Could not restart swaync — run 'systemctl --user restart swaync'"
+    fi
+
+    if $swayosd; then
+        restart_user_service swayosd-server.service \
+            "swayosd restarted with the new stylesheet" \
+            "Could not restart swayosd — run 'systemctl --user restart swayosd-server'"
+    fi
+
+    # No pgrep guard: pkill already exits non-zero when nothing matched, which is
+    # exactly the "kitty is not running" case.
+    if $kitty && pkill -SIGUSR1 -x kitty 2>/dev/null; then
+        print_success "kitty reloaded its config"
     fi
 }
 
@@ -96,6 +170,7 @@ restart_waybar_after_apply() {
 run_post_apply() {
     reload_hyprland_after_apply
     reload_herdr_after_apply "$@"
+    reconcile_theme_copies_after_apply "$@"
     restart_waybar_after_apply
 }
 

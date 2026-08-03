@@ -57,9 +57,9 @@ packages:
 
     # Fonts
     - ttf-firacode-nerd
+    - ttf-jetbrains-mono-nerd
     - ttf-fira-sans
     - ttf-font-awesome
-    - maplemono-nf  # AUR — primary terminal/UI mono with ligatures
 
     # Theming
     - catppuccin-cursors-mocha  # AUR — Catppuccin Mocha cursor pack (dark mode)

@@ -146,7 +146,7 @@ box.pill {{
 }}
 label.state {{
   color: rgb({dim_r}, {dim_g}, {dim_b});
-  font-family: "Maple Mono NF", "FiraCode Nerd Font", monospace;
+  font-family: "JetBrainsMono Nerd Font", "FiraCode Nerd Font", monospace;
   font-size: 13px;
 }}
 label.state.alert {{ color: rgb({alert_r}, {alert_g}, {alert_b}); }}

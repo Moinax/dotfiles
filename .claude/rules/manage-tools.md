@@ -64,9 +64,55 @@ the user is not an acceptable default.
 
 What has to happen after any `chezmoi apply` for the running desktop to show it:
 Hyprland reload (its mid-apply autoreload fails on `conf/general.lua` requiring a
-`conf/theme.lua` not yet written), herdr `reload-config`/`migrate-layout`, waybar
+`conf/theme.lua` not yet written), herdr `reload-config`/`migrate-layout`, the
+themed surface copies plus the swaync/swayosd/kitty reloads they need, waybar
 restart. Shared because these used to live in the installer only — the one script
 you stop running once the machine is set up.
+
+### The themed surfaces read a copy, so refreshing it *is* the reconciliation
+
+Six surfaces — kitty, eza, swaync, swayosd, wlogout, rofi — read one fixed path
+(`style.css`, `theme.yml`, `current-theme.conf`) and express the mode by copying
+`style-dark.css` or `style-light.css` over it. None of those copies is managed:
+the only thing that ever writes them is a dark/light toggle.
+
+So an apply that rewrites the managed sources reaches *none* of them. Each copy
+keeps whatever the last Mod+N put there and the change waits, silently, for the
+next one. A font swap surfaced it as tofu across the whole notification panel
+while `swaync-client -rs` cheerfully reported `success: true` — the reload
+re-read a stylesheet that still named the by-then-uninstalled font. The other
+five had the identical staleness and merely nothing visible to show for it,
+which is the point: only swaync had a symptom, so only swaync would ever have
+been fixed.
+
+**`home/dot_local/lib/theme-copies.sh` owns the list**, deployed to
+`~/.local/lib/` and sourced by both callers — `apply-dark-mode.sh` to switch
+modes, `reconcile_theme_copies_after_apply` to reconcile after an apply. Two
+copies of the list would go stale the first time a surface was added to one and
+not the other, which is this bug again, one surface at a time.
+
+**Reload policy deliberately stays with each caller**, because they need
+different things. A toggle only changes colours, so swaync takes the cheap
+`swaync-client -rs` — restarting on every Mod+N would drop every queued
+notification. An apply can change *structure* (a font family), and a running
+daemon keeps its old font map, so there the process must be replaced. Same
+reason the post-apply restarts are gated on the file list while waybar's is
+unconditional: a restart costs queued notifications, a copy costs nothing, so
+the copies run unconditionally and only the reloads are gated.
+
+kitty's SIGUSR1 is in that set for a second reason beyond the theme copy: kitty
+reads `kitty.conf` once at startup, so a font or keybind change needs the same
+signal.
+
+Do **not** reach for `apply-dark-mode.sh` from post-apply. It would fix every
+surface in one call, but it also runs `plasma-apply-colorscheme` and repaints
+the whole desktop — and it ends by calling `chezmoi apply` itself, so invoking
+it from a post-apply hook re-enters the thing that just ran.
+
+Known limit of hanging this off post-apply: it only fires through
+`apply_dotfiles`/`run_post_apply`, so a bare hand-run `chezmoi apply` still leaves
+all six copies stale. That is the general rule about hand applies, not a special
+case — but it is the one path this reconciliation does not cover.
 
 `run_post_apply` takes the list of files an update changed and fires only the
 reconciliations that list justifies; called with no arguments (a full install,

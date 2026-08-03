@@ -9,15 +9,13 @@
 # manages repo-local theme files in addition to that KDE scheme switch.
 
 . "$HOME/.local/lib/compositor.sh"
+# Owns the list of surfaces that read a copy, shared with post-apply.sh so the
+# two cannot disagree about which files a mode is made of. Reloads stay here.
+. "$HOME/.local/lib/theme-copies.sh"
 
-STATE_FILE="$HOME/.local/share/dark-light-mode"
-
-# Determine mode
-if [ -n "$1" ]; then
-    MODE="$1"
-else
-    MODE=$(cat "$STATE_FILE" 2>/dev/null || echo "dark")
-fi
+# The mode: the argument if given, else the one in force. theme_mode already
+# normalises the state file, so this only has argv left to reject.
+MODE="${1:-$(theme_mode)}"
 
 if [ "$MODE" != "dark" ] && [ "$MODE" != "light" ]; then
     echo "Usage: apply-dark-mode.sh [dark|light]" >&2
@@ -27,8 +25,8 @@ fi
 FLAVOR=$( [ "$MODE" = "dark" ] && echo "mocha" || echo "latte" )
 # ---------- State ----------
 
-mkdir -p "$(dirname "$STATE_FILE")"
-echo "$MODE" > "$STATE_FILE"
+mkdir -p "$(dirname "$THEME_STATE_FILE")"
+echo "$MODE" > "$THEME_STATE_FILE"
 
 CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 if [ -f "$CHEZMOI_CONF" ]; then
@@ -126,47 +124,25 @@ if is_hyprland; then
     hyprctl setcursor "$CURSOR_THEME" "$CURSOR_SIZE" 2>/dev/null || true
 fi
 
-# ---------- Kitty ----------
-KITTY_THEME_SRC="$HOME/.config/kitty/themes/${MODE}.conf"
-if [ -f "$KITTY_THEME_SRC" ]; then
-    cp "$KITTY_THEME_SRC" "$HOME/.config/kitty/current-theme.conf"
-    pkill -SIGUSR1 -x kitty 2>/dev/null || true
+# ---------- Themed copies ----------
+# Every surface that reads a fixed path instead of the mode-specific file; the
+# list is theme-copies.sh's.
+sync_theme_copies "$MODE"
+
+# ---------- Reloads for the copies above ----------
+# Only the surfaces with something running to tell — the rest re-read their file
+# on every invocation, so for those the copy alone is the whole job.
+pkill -SIGUSR1 -x kitty 2>/dev/null || true
+
+# A toggle only ever changes colours here, so the cheap stylesheet reload is
+# right: restarting would drop every queued notification on each Mod+N. An
+# apply is the case that needs the daemon replaced, and post-apply.sh does that.
+if pgrep -x swaync &>/dev/null; then
+    swaync-client -rs 2>/dev/null || true
 fi
 
-# ---------- Eza ----------
-EZA_THEME_SRC="$HOME/.config/eza/theme-${MODE}.yml"
-if [ -f "$EZA_THEME_SRC" ]; then
-    cp "$EZA_THEME_SRC" "$HOME/.config/eza/theme.yml"
-fi
-
-# ---------- SwayNC ----------
-SWAYNC_SRC="$HOME/.config/swaync/style-${MODE}.css"
-if [ -f "$SWAYNC_SRC" ]; then
-    cp "$SWAYNC_SRC" "$HOME/.config/swaync/style.css"
-    if pgrep -x swaync &>/dev/null; then
-        swaync-client -rs 2>/dev/null || true
-    fi
-fi
-
-# ---------- SwayOSD ----------
-SWAYOSD_SRC="$HOME/.config/swayosd/style-${MODE}.css"
-if [ -f "$SWAYOSD_SRC" ]; then
-    cp "$SWAYOSD_SRC" "$HOME/.config/swayosd/style.css"
-    if systemctl --user is-active --quiet swayosd-server.service 2>/dev/null; then
-        systemctl --user restart swayosd-server.service 2>/dev/null || true
-    fi
-fi
-
-# ---------- Rofi ----------
-ROFI_SRC="$HOME/.local/share/rofi/themes/moinax-${MODE}.rasi"
-if [ -f "$ROFI_SRC" ]; then
-    cp "$ROFI_SRC" "$HOME/.local/share/rofi/themes/moinax.rasi"
-fi
-
-# ---------- Wlogout ----------
-WLOGOUT_SRC="$HOME/.config/wlogout/style-${MODE}.css"
-if [ -f "$WLOGOUT_SRC" ]; then
-    cp "$WLOGOUT_SRC" "$HOME/.config/wlogout/style.css"
+if systemctl --user is-active --quiet swayosd-server.service 2>/dev/null; then
+    systemctl --user restart swayosd-server.service 2>/dev/null || true
 fi
 
 # Waybar discovers the appearance via the portal color-scheme (set through
@@ -180,7 +156,7 @@ pkill -RTMIN+8 -x waybar 2>/dev/null || true
 # mirror waybar's workspace pills, which have a light and a dark palette).
 # Borders do not, and are set from conf/general.lua at parse time only.
 #
-# The palette is not repeated here: conf/theme.lua derives it from "$STATE_FILE"
+# The palette is not repeated here: conf/theme.lua derives it from the state file
 # — written above — and is loaded with dofile so this stays one `eval` and not a
 # `hyprctl reload`. A reload would re-apply the whole config over the live
 # session, reverting anything else set at runtime through `hyprctl eval`
