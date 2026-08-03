@@ -561,6 +561,73 @@ def build_profile(app):
     return profile
 
 
+class ColorSchemeFollower(QObject):
+    """Carries the desktop's light/dark mode into the page, and keeps it there.
+
+    Two effects, one flip: the colour painted under the page, and a reload so
+    the page re-samples prefers-color-scheme.
+
+    The window is nothing but the page, so the desktop appearance reaches it
+    only as prefers-color-scheme — and QtWebEngine samples that once, when a
+    page loads. Qt itself keeps up: the KDE platform theme (QT_QPA_PLATFORMTHEME
+    =kde, which is what makes KDE the canonical source of the mode here)
+    repaints the palette and emits colorSchemeChanged as soon as
+    plasma-apply-colorscheme runs. The page that is already loaded is simply
+    never told. Measured: styleHints().colorScheme() flips to Dark while the
+    page goes on matching (prefers-color-scheme: light) indefinitely, and a
+    reload is what re-samples it. Qt 6.11 offers no runtime setter — only the
+    ForceDarkMode attribute, which is Chromium inverting the page itself, and
+    worth nothing to a site that ships a real dark theme of its own.
+
+    A reload is also all this can do. Whether the site then follows is the
+    site's own business: both Messenger and WhatsApp Web keep a per-account
+    appearance setting that has to be on its "system"/"automatic" option for
+    prefers-color-scheme to mean anything.
+    """
+
+    def __init__(self, app, page):
+        super().__init__(app)
+        self.page = page
+        # Held rather than fetched per use: PyQt parks the proxy for a connected
+        # Python callable on the *sender's* wrapper, and the wrapper for an
+        # app-owned QStyleHints reached through a local is collected soon after.
+        # Measured: the connection went with it and the reload silently stopped
+        # happening, while a reference held elsewhere kept firing.
+        self.hints = app.styleHints()
+        self.loaded_with = self.hints.colorScheme()
+        self.hints.colorSchemeChanged.connect(self.on_scheme_changed)
+        self.apply_background()
+
+    def apply_background(self):
+        """Paint under the page in the palette's colour, not Qt's flat white.
+
+        White is what Qt paints whatever the theme, which is a full-window flash
+        on every load and reload while the desktop is dark. Base rather than
+        Window: this sits under a document, not behind widget chrome.
+        """
+        self.page.setBackgroundColor(QApplication.palette().base().color())
+
+    def on_scheme_changed(self, scheme):
+        # Guarded on the scheme the page actually loaded with, and hung off
+        # colorSchemeChanged rather than paletteChanged: that one fires twice per
+        # flip and for changes that are not the scheme at all, and a reload costs
+        # a resync plus any half-typed message.
+        if scheme == self.loaded_with:
+            log("SCHEME", f"{scheme.name} unchanged -> no reload")
+            return
+        self.loaded_with = scheme
+        self.apply_background()
+        log("SCHEME", f"{scheme.name} -> reloading to re-sample")
+        # Deferred, and not for tidiness: Qt hands the new scheme to the render
+        # process from its own queued settings batch, so a reload started inside
+        # this handler is still sampled against the old one. Measured — it came
+        # back one flip behind, dark desktop and a light page, and one turn of
+        # the event loop is the whole difference.
+        QTimer.singleShot(
+            0, lambda: self.page.triggerAction(QWebEnginePage.WebAction.Reload)
+        )
+
+
 def bind_shortcuts(view, page):
     """Wire the browser keys by hand.
 
@@ -674,6 +741,13 @@ def run(config: ChatApp) -> int:
     view = ShellView()
     page = ShellPage(profile, view)
     view.setPage(page)
+
+    # Unheld, and parented to the app which owns it: nothing else here needs to
+    # reach it, but a follower left to a local would take its signal connection
+    # with it when collected. Here rather than lower down because it paints the
+    # background as it is built, and that has to land before the first load or
+    # a dark desktop gets a white flash.
+    ColorSchemeFollower(app, page)
 
     # The tray icon carries the unread badge, and nothing depends on it: with no
     # StatusNotifier host (waybar's tray module, here) the app is simply a window.
