@@ -12,7 +12,9 @@
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
 [alias]
-	cleanup = "!sh -c 'git fetch -p && git for-each-ref --format \"%(refname:short) %(upstream:track)\" refs/heads/ | awk \"/\\\\[gone\\\\]/ {print \\$1}\" | xargs -r -n 1 git branch -D; git branch --merged main --format \"%(refname:short)\" | grep -v \"^main$\" | xargs -r -n 1 git branch -d'"
+	# `cleanup` is deliberately not an alias: it lives in ~/.local/bin/git-cleanup,
+	# which Git resolves for `git cleanup` on its own. As a one-liner here it could
+	# not skip branches held by a worktree, so it errored on every one of them.
 	fp = push --force-with-lease
 	pr = pull --rebase
 	cm = checkout main

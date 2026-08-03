@@ -4,6 +4,8 @@ paths:
   - home/dot_local/bin/executable_herdr-*
   - home/dot_local/bin/executable_dev-herdr
   - home/dot_local/bin/executable_dev-agent-argv
+  - home/dot_local/bin/executable_wtclean
+  - home/dot_local/bin/executable_dev-clean
 ---
 
 # herdr pane identity: roles are state, labels are decoration
@@ -72,6 +74,45 @@ after which the label no longer matters. That bootstrap trusts the label, which
 is why `migrate-layout` sets the role wherever it fixes a label: running them in
 the other order would otherwise teach the bootstrap a stale label as a permanent
 role.
+
+## Workspaces: the checkout path is the identity
+
+The same rule one level up — a workspace label is cosmetic, so **never look a
+workspace up by its label**. `herdr-workspace for-paths` owns path → workspace
+and needs two keys, because only one of them exists per workspace:
+
+| key | set for |
+|---|---|
+| `worktree.checkout_path` | workspaces opened through `herdr worktree open` (dev-herdr's linked-checkout path) |
+| a pane's `cwd` | everything else — `workspace create --cwd` (dev-herdr's fallback for a non-linked checkout) leaves no worktree metadata at all, and `workspace list` has no `cwd` field of its own |
+
+Matching only the first is a silent leak: `wtclean` deleted the checkout and left
+a live workspace pointing at a directory that no longer existed. `labs/vibewatch`
+is a real workspace with `worktree: null`, so it is the case to test against.
+
+Resolve **before** destroying anything — the session comes from `dev-projects
+session`, which needs the directory to still be there.
+
+`dev-herdr`'s reattach asks by path only — no label fallback, because a label
+match binds `dev` to whichever workspace happens to carry the project's name. A
+path miss means "not open yet", and the create path handles that safely.
+
+Whether a checkout may be destroyed is also settled here, as a `busy`/`free`
+column: an **allow-list** over herdr's statuses, because the binary ships more of
+them (`running`, `unknown`, `error`, `ready`) than this setup has seen, and a
+status we do not recognise has to read as "an agent may be in there". The
+asymmetry is the point — guessing `free` wrongly destroys an agent's work,
+guessing `busy` wrongly just leaves a worktree for the next run.
+
+**Never hand these rows from jq to `read` as tab-separated fields.** `read`
+cannot see an empty field between two tabs — tab is IFS *whitespace*, so a run of
+them collapses into one delimiter and every later field shifts left. Since
+`worktree.checkout_path` is empty for most workspaces, `wA<TAB><TAB>working`
+parsed as path=`working`, status=`""`, and *every* workspace read back as idle,
+i.e. free to destroy: a `working` agent's checkout was reported `free`, inverting
+the polarity the paragraph above exists to protect. `herdr-workspace` and
+`wtclean` therefore join jq's fields with US (`0x1f`), which is not IFS
+whitespace and so delimits exactly one field however empty its neighbours are.
 
 ## What the labels are for now
 

@@ -15,7 +15,7 @@ if (( $# > 0 )); then
   exit 2
 fi
 
-for command in dev-projects wtclean; do
+for command in dev-projects wtclean git-cleanup; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "dev-clean: '$command' not found" >&2
     exit 1
@@ -24,11 +24,18 @@ done
 
 root=$(dev-projects root)
 repos=()
+names=()
 while IFS= read -r entry; do
   repo=$(dev-projects resolve "$entry")
   # Keep this command scoped to the project tree and skip linked worktrees
   # (.git is a file there, whereas it is a directory in the main checkout).
-  [[ "$repo" == "$root"/* && -d "$repo/.git" ]] && repos+=("$repo")
+  if [[ "$repo" == "$root"/* && -d "$repo/.git" ]]; then
+    repos+=("$repo")
+    # Keep the entry `dev-projects` gave us rather than deriving a name back out
+    # of the path: the entry↔path mapping is that command's business, and
+    # reversing it here would break on any pinned out-of-root project.
+    names+=("${entry%/}")
+  fi
 done < <(dev-projects list --main-only)
 
 if (( ${#repos[@]} == 0 )); then
@@ -36,35 +43,177 @@ if (( ${#repos[@]} == 0 )); then
   exit 0
 fi
 
-echo "Repositories to clean:"
-printf '  - %s\n' "${repos[@]}"
+failures=0
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+
+# Scanning is network-bound and cleaning is disk-bound, so both fan out across
+# projects — with caps, so thirty projects become neither thirty simultaneous
+# fetches nor thirty simultaneous multi-gigabyte deletions.
+scan_jobs=12
+clean_jobs=4
+
+row() { printf '%-24s  %-32s  %-14s  %s\n' "$1" "$2" "$3" "$4"; }
+
+# Every phase here has the same shape: independent per-project work, writing
+# into $work, collected afterwards in project order. The indices are passed in
+# rather than taken from $repos, because the second phase only has business with
+# the projects that turned out to have something to remove.
+fanout() { # $1: worker function, called as `worker INDEX`; $2: max concurrent; $3+: indices
+  local worker="$1" max="$2" index running=0
+  shift 2
+  for index in "$@"; do
+    "$worker" "$index" &
+    running=$((running + 1))
+    if (( running >= max )); then
+      wait -n || true
+      running=$((running - 1))
+    fi
+  done
+  wait || true
+}
+
+# gum spin needs a process to watch; `tail --pid` blocks on one without the
+# fork-per-tick that a `while kill -0` poll loop costs.
+with_spinner() { # $1: title; remaining args: command to run
+  local title="$1"
+  shift
+  if command -v gum >/dev/null 2>&1 && [[ -t 2 ]]; then
+    "$@" &
+    local pid=$!
+    gum spin --spinner dot --title "$title" -- tail --pid="$pid" -f /dev/null || true
+    wait "$pid"
+  else
+    "$@"
+  fi
+}
+
+# Replay what the workers reported, in project order — they ran concurrently,
+# so their own writes would interleave — and add up the warnings.
+drain() {
+  local index
+  for index in "${!repos[@]}"; do
+    [[ -s "$work/$index.log" ]] && cat "$work/$index.log" >&2
+    failures=$((failures + $(<"$work/$index.failures")))
+  done
+}
+
+# Clear what `drain` reads, so each phase reports only its own work. Owned here
+# rather than by the workers: the second phase skips the projects with nothing to
+# do, and their scan-phase report — already drained once — would otherwise be
+# counted and printed a second time.
+reset_reports() {
+  local index
+  for index in "${!repos[@]}"; do
+    : >"$work/$index.log"
+    printf '0\n' >"$work/$index.failures"
+  done
+}
+
+# Fetch and discover before asking anything, so the confirmation describes the
+# actual destructive work rather than merely listing every project scanned.
+discover_repo() { # $1: index into repos
+  local index="$1"
+  local repo="${repos[$index]}" name="${names[$index]}" out="$work/$index"
+  local failed=0 err
+  # An unscannable project leaves both plans empty, which is all the apply phase
+  # needs to know to leave it alone.
+  : >"$out.plan"; : >"$out.branches"
+  if ! err=$(git -C "$repo" fetch -p 2>&1 >/dev/null); then
+    printf 'warning: skipped %s — fetch failed (%s)\n' \
+      "$name" "${err%%$'\n'*}" >>"$out.log"
+    printf '1\n' >"$out.failures"
+    return 0
+  fi
+  if ! (cd "$repo" && wtclean --plan) >"$out.plan" 2>>"$out.log"; then
+    printf 'warning: worktree discovery failed in %s\n' "$name" >>"$out.log"
+    failed=$((failed + 1))
+  fi
+  # `git cleanup` owns which local branches are done with, so `gcl` in one repo
+  # and `dcl` across all of them can never disagree. It fetched above already.
+  if ! git -C "$repo" cleanup --plan --no-fetch >"$out.branches" 2>>"$out.log"; then
+    printf 'warning: branch discovery failed in %s\n' "$name" >>"$out.log"
+    failed=$((failed + 1))
+  fi
+  printf '%s\n' "$failed" >"$out.failures"
+}
+
+reset_reports
+with_spinner "Scanning ${#repos[@]} projects..." \
+  fanout discover_repo "$scan_jobs" "${!repos[@]}"
+drain
+
+# Render once, so the emptiness test, the count and what the user sees all come
+# from the same rows and cannot disagree.
+table=$(
+  for index in "${!repos[@]}"; do
+    while IFS=$'\t' read -r branch _kind herdr_status; do
+      [[ -n "$branch" ]] || continue
+      row "${names[$index]}" "$branch" worktree "$herdr_status"
+    done <"$work/$index.plan"
+    while IFS=$'\t' read -r branch kind; do
+      [[ -n "$branch" ]] || continue
+      row "${names[$index]}" "$branch" "$kind branch" "—"
+    done <"$work/$index.branches"
+  done
+)
+
+if [[ -z "$table" ]]; then
+  # A project that could not be scanned is not a clean project, so say so and
+  # exit non-zero rather than reporting success for the ones that did work.
+  if (( failures > 0 )); then
+    echo "Nothing to clean up, and $failures project(s) could not be scanned." >&2
+    exit 1
+  fi
+  echo "Nothing to clean up."
+  exit 0
+fi
+
+echo
+row PROJECT BRANCH TYPE HERDR
+printf '%s\n' "$table"
 echo
 if [[ "$assume_yes" != true ]]; then
-  read -r -p "Clean all? [y/N] " reply
+  read -r -p "Remove these $(grep -c . <<< "$table") worktree(s) and branch(es)? [y/N] " reply
   [[ "$reply" =~ ^[Yy]$ ]] || exit 0
 fi
 
-failures=0
-for repo in "${repos[@]}"; do
-  echo
-  echo "==> ${repo#"$root"/}"
+# Hand each confirmed plan straight back to the command that drew it up, so the
+# user's "y" applies to exactly the rows they were shown, and so neither the
+# `-d`/`-D` choice nor the graph/squash distinction has to be repeated here.
+# Replaying a plan also skips re-detection: wtclean would otherwise hit GitHub
+# again for every squash candidate it is about to remove.
+clean_repo() { # $1: index into repos — one of them has at least one plan to apply
+  local index="$1"
+  local repo="${repos[$index]}" name="${names[$index]}" out="$work/$index" failed=0
 
-  # Refresh remote state before worktree merge detection. git cleanup fetches
-  # again internally, but retaining that command as-is keeps dev-clean aligned
-  # with the standalone gcl behaviour.
-  if ! git -C "$repo" fetch -p; then
-    echo "warning: fetch failed; cleaning from existing local state" >&2
-    failures=$((failures + 1))
+  if [[ -s "$out.plan" ]] \
+    && ! (cd "$repo" && wtclean --apply <"$out.plan") >>"$out.log" 2>&1; then
+    printf 'warning: worktree cleanup failed in %s\n' "$name" >>"$out.log"
+    failed=$((failed + 1))
   fi
-  if ! (cd "$repo" && wtclean --yes); then
-    echo "warning: worktree cleanup failed in $repo" >&2
-    failures=$((failures + 1))
+  if [[ -s "$out.branches" ]] \
+    && ! git -C "$repo" cleanup --apply <"$out.branches" >>"$out.log" 2>&1; then
+    printf 'warning: branch cleanup failed in %s\n' "$name" >>"$out.log"
+    failed=$((failed + 1))
   fi
-  if ! git -C "$repo" cleanup; then
-    echo "warning: branch cleanup failed in $repo" >&2
-    failures=$((failures + 1))
+  printf '%s\n' "$failed" >"$out.failures"
+}
+
+# Only the projects with rows in the table above. Fanning out over all of them
+# forked a subshell per project just to fail two `-s` tests, and those no-ops
+# took the concurrency slots the real deletions were queuing for.
+pending=()
+for index in "${!repos[@]}"; do
+  if [[ -s "$work/$index.plan" || -s "$work/$index.branches" ]]; then
+    pending+=("$index")
   fi
 done
+
+reset_reports
+with_spinner "Cleaning ${#pending[@]} projects..." \
+  fanout clean_repo "$clean_jobs" "${pending[@]}"
+drain
 
 echo
 if (( failures > 0 )); then

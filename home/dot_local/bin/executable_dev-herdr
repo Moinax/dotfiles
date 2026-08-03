@@ -83,9 +83,14 @@ show_client() {
 }
 
 # --- reattach path: workspace already exists ------------------------------
-existing="$(h workspace list \
-  | jq -r --arg l "$name" '.result.workspaces[]? | select(.label == $l) | .workspace_id' \
-  | head -n1)"
+# Ask by checkout path, never by label: a label is cosmetic and the user may
+# rename it (see .claude/rules/herdr-layout.md). Matching on the label found a
+# workspace someone had renamed to this project's name, and missed the one
+# actually sitting in this checkout. A miss here means "not open yet", which the
+# create path below handles safely — `worktree open` reuses an already-open
+# checkout in place rather than duplicating it.
+existing="$(printf '%s\n' "$dir" \
+  | herdr-workspace for-paths --session "$session" | cut -f3)"
 if [[ -n "$existing" ]]; then
   # `worktree open` reuses an already-open checkout and upgrades its
   # provenance in place, preserving every tab, pane and running agent.

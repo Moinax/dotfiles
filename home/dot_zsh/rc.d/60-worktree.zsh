@@ -50,3 +50,4 @@ wtstart() {
 alias wts=wtstart
 alias wtc=wtclean      # standalone script in ~/.local/bin
 alias wtu=wtupdate     # standalone script in ~/.local/bin
+alias dcl=dev-clean    # clean merged worktrees across all dev projects

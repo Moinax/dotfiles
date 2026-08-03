@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Resolve which Herdr workspace hosts a checkout directory, say whether it is
+# safe to destroy, and close it.
+#
+# A workspace's *label* is cosmetic and user-editable (see
+# .claude/rules/herdr-layout.md), so the durable identity of a dev workspace is
+# the checkout it sits in. Two things tie a workspace to a path, and both are
+# needed to cover every workspace this setup creates:
+#
+#   * `worktree.checkout_path` — set only for workspaces registered through
+#     `herdr worktree open`, i.e. dev-herdr's native-grouping path.
+#   * a pane's `cwd` — dev-herdr falls back to plain `workspace create --cwd`
+#     whenever a checkout is not a linked worktree, and those workspaces carry
+#     no worktree metadata at all (`workspace list` has no cwd field of its
+#     own). Pane cwd is persisted across restarts, so it also covers workspaces
+#     predating the worktree API.
+#
+# Matching on only the first is what let wtclean delete a checkout and leave a
+# live workspace pointing at the deleted directory.
+#
+# Usage: herdr-workspace for-paths [--session NAME]
+#          Reads checkout paths on stdin, one per line. Prints one
+#          PATH<TAB>SESSION<TAB>WORKSPACE<TAB>STATUS<TAB>busy|free line per
+#          path that resolved, and nothing for the others. Batched on purpose:
+#          callers ask about every branch of a repo at once, so each session is
+#          queried once instead of once per path.
+#          --session pins the session instead of deriving it per path, for a
+#          caller that already knows it (dev-herdr's may come from
+#          HERDR_DEV_SESSION, which is not re-derivable from the path).
+#        herdr-workspace close SESSION WORKSPACE
+#
+# Resolve before destroying anything: the session is derived with
+# `dev-projects session`, which needs the directory to still exist.
+set -euo pipefail
+
+die() { echo "herdr-workspace: $*" >&2; exit 1; }
+usage() { echo "usage: herdr-workspace for-paths [--session NAME] | close SESSION WORKSPACE" >&2; exit 2; }
+
+case "${1:-}" in
+  for-paths) shift ;;
+  close)
+    (( $# == 3 )) || usage
+    command -v herdr >/dev/null 2>&1 || die "herdr not installed"
+    herdr --session "$2" workspace close "$3" >/dev/null \
+      || die "could not close workspace '$3' in session '$2'"
+    exit 0
+    ;;
+  *) usage ;;
+esac
+
+pinned_session=""
+if [[ "${1:-}" == --session ]]; then
+  [[ -n "${2:-}" ]] || die "--session requires a name"
+  pinned_session="$2"
+  shift 2
+fi
+(( $# == 0 )) || usage
+
+# No herdr (or no jq) means no workspaces to report, not an error: callers use
+# this to decide whether a checkout is in use, and "not in use" is the answer.
+command -v herdr >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+
+declare -A ws_seen=()    # session -> `workspace list` already indexed
+declare -A pane_seen=()  # session -> `pane list` already indexed
+declare -A ws_at=()      # session<TAB>path -> workspace id
+declare -A status_of=()  # session<TAB>workspace -> agent status
+
+# jq hands its rows over separated by US (0x1f), not by tabs, because
+# `worktree.checkout_path` is empty for most workspaces and `read` cannot see an
+# empty field between two tabs: tab is IFS *whitespace*, so a run of them
+# collapses into one delimiter and `wA<TAB><TAB>working` parses as
+# path="working", status="". Every workspace then read back as idle — that is,
+# as free to destroy, the one verdict that must never be guessed (a `working`
+# agent's checkout was reported free). US is not IFS whitespace, so each
+# separator delimits exactly one field however empty its neighbours are. Passed
+# to jq as $us so the separator has one spelling in this file rather than two.
+readonly US=$'\x1f'
+
+index_workspaces() { # $1: session — the strong key, and every workspace's status
+  local session="$1" ws path status
+  [[ -z "${ws_seen[$session]:-}" ]] || return 0
+  ws_seen["$session"]=1
+  while IFS="$US" read -r ws path status; do
+    [[ -n "$ws" ]] || continue
+    # Recorded verbatim: "no agent" is spelled `idle` by the jq below, which is
+    # the single place a status is ever defaulted. Anything else, empty string
+    # included, has to survive intact down to the verdict, where an unrecognised
+    # status reads as busy.
+    status_of["$session"$'\t'"$ws"]="$status"
+    [[ -n "$path" ]] || continue
+    ws_at["$session"$'\t'"$path"]="$ws"
+  done < <(herdr --session "$session" workspace list 2>/dev/null \
+    | jq -r --arg us "$US" '.result.workspaces[]?
+             | [.workspace_id, (.worktree.checkout_path // ""),
+                (.agent_status // "idle")] | join($us)' 2>/dev/null || true)
+}
+
+index_panes() { # $1: session — the fallback key, only fetched once a path misses
+  local session="$1" ws path
+  [[ -z "${pane_seen[$session]:-}" ]] || return 0
+  pane_seen["$session"]=1
+  # `cwd` is the pane's spawn directory, which herdr persists; `foreground_cwd`
+  # is wherever that shell has since wandered, so it must not count here —
+  # identity has to be stable, and a pane that cd'd into another checkout would
+  # otherwise bind this path to the wrong workspace. (herdr-clients'
+  # migrate_worktrees does accept foreground_cwd, for the looser question of
+  # guessing which repo a workspace belongs to.)
+  while IFS="$US" read -r ws path; do
+    [[ -n "$ws" && -n "$path" ]] || continue
+    # Never override a workspace that claimed this path by checkout_path.
+    [[ -z "${ws_at["$session"$'\t'"$path"]:-}" ]] || continue
+    ws_at["$session"$'\t'"$path"]="$ws"
+  done < <(herdr --session "$session" pane list 2>/dev/null \
+    | jq -r --arg us "$US" '.result.panes[]? | select(.workspace_id and .cwd)
+             | [.workspace_id, .cwd] | join($us)' 2>/dev/null || true)
+}
+
+while IFS= read -r path; do
+  [[ -n "$path" ]] || continue
+  session="$pinned_session"
+  if [[ -z "$session" ]]; then
+    command -v dev-projects >/dev/null 2>&1 || continue
+    session=$(dev-projects session "$path" 2>/dev/null) || continue
+    [[ -n "$session" ]] || continue
+  fi
+
+  index_workspaces "$session"
+  ws="${ws_at["$session"$'\t'"$path"]:-}"
+  if [[ -z "$ws" ]]; then
+    index_panes "$session"
+    ws="${ws_at["$session"$'\t'"$path"]:-}"
+  fi
+  [[ -n "$ws" ]] || continue
+
+  # Whether a checkout may be destroyed is a question about herdr's agent
+  # vocabulary, so it is settled here instead of in every caller. This is an
+  # allow-list on purpose: herdr ships more statuses than this setup has seen
+  # (`running`, `unknown`, `error`, `ready` are all in the binary, and 57 live
+  # panes currently report `unknown`), and one we do not recognise has to read
+  # as "an agent may be in there". That polarity is asymmetric — guessing
+  # "free" wrongly destroys an agent's work, guessing "busy" wrongly just
+  # leaves a worktree for the next run. Which is why nothing between here and
+  # jq's `// "idle"` re-defaults a status: an unset or empty one is exactly the
+  # case where we do not know, so it falls through to busy like any other.
+  status="${status_of["$session"$'\t'"$ws"]:-}"
+  case "$status" in
+    idle|done) verdict=free ;;
+    *)         verdict=busy ;;
+  esac
+  printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$session" "$ws" "$status" "$verdict"
+done

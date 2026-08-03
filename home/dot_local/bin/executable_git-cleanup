@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Delete local branches that are done with: upstream gone, or already merged
+# into main. Reachable as `git cleanup` — Git resolves an unknown subcommand to
+# a `git-*` executable on PATH, which is why this replaced the one-liner that
+# used to live in alias.cleanup.
+#
+# Branches that a worktree has checked out are excluded up front. Git refuses
+# those deletions anyway, but unfiltered the refusals bury the real result in a
+# wall of "Cannot delete branch 'x' checked out at ..." errors — which is what
+# the old alias did in every repo that had worktrees open, i.e. all of them.
+#
+# Usage: git cleanup [--no-fetch]      fetch, then delete what is done with
+#        git cleanup --plan [--no-fetch]
+#          Print candidates as BRANCH<TAB>gone|merged and delete nothing.
+#        git cleanup --apply
+#          Read BRANCH<TAB>gone|merged on stdin and delete exactly those. Lets
+#          a caller show a plan, get it confirmed, and then act on that same
+#          set — dev-clean does this across every project at once — without
+#          reimplementing which flag each kind needs.
+set -euo pipefail
+
+# The integration branch, hardcoded exactly as the alias this replaced did.
+# It gates only the `--merged` pass, which is skipped outright when there is no
+# local `refs/heads/main` — so in a repo whose trunk is named otherwise, the
+# `[gone]` pass below still runs (it needs no integration branch) and nothing
+# else does. Two things this does not handle, both inherited from the alias:
+# a *stale* local `main` in a `master` repo satisfies the guard, and
+# `--merged main` reads the local ref, so the fetch above never freshens it.
+# The real fix is to resolve the trunk per repo from
+# `git symbolic-ref refs/remotes/origin/HEAD` and compare against
+# `origin/<trunk>` — left out here because it changes which branches get
+# deleted, which is not a change to smuggle into a move.
+integration=main
+
+mode=delete
+do_fetch=true
+while (( $# > 0 )); do
+  case "$1" in
+    --plan) mode=plan ;;
+    --apply) mode=apply; do_fetch=false ;;
+    --no-fetch) do_fetch=false ;;
+    *) echo "usage: git cleanup [--plan | --apply] [--no-fetch]" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+candidates() { # prints BRANCH<TAB>gone|merged
+  local branch tracking
+  local -A seen=()
+  # Every branch a worktree holds, the current HEAD included: `git worktree
+  # list` covers the main checkout too.
+  while IFS= read -r branch; do
+    [[ -n "$branch" ]] || continue
+    seen["$branch"]=1
+  done < <(git worktree list --porcelain | sed -n 's/^branch refs\/heads\///p')
+
+  while IFS=$'\t' read -r branch tracking; do
+    [[ "$tracking" == *'[gone]'* ]] || continue
+    [[ -z "${seen[$branch]:-}" ]] || continue
+    printf '%s\tgone\n' "$branch"
+    seen["$branch"]=1
+  done < <(git for-each-ref \
+    --format=$'%(refname:short)\t%(upstream:track)' refs/heads/)
+
+  git show-ref --verify --quiet "refs/heads/$integration" || return 0
+  while IFS= read -r branch; do
+    [[ -n "$branch" && "$branch" != "$integration" ]] || continue
+    [[ -z "${seen[$branch]:-}" ]] || continue
+    printf '%s\tmerged\n' "$branch"
+  done < <(git branch --merged "$integration" --format='%(refname:short)')
+}
+
+# Reads BRANCH<TAB>gone|merged; returns non-zero if any deletion was refused.
+delete_branches() {
+  local branch kind flag rc=0
+  while IFS=$'\t' read -r branch kind; do
+    [[ -n "$branch" ]] || continue
+    # A gone branch needs -D: with its upstream deleted the commits are usually
+    # not ancestors of main, so -d would refuse. A merged one takes -d, keeping
+    # Git's own merge check as the last line of defence — as it is for a branch
+    # that got checked out somewhere since the plan was drawn up.
+    flag=-D
+    [[ "$kind" != merged ]] || flag=-d
+    git branch "$flag" -- "$branch" || rc=1
+  done
+  return "$rc"
+}
+
+if [[ "$do_fetch" == true ]]; then
+  git fetch -p
+fi
+
+case "$mode" in
+  plan)   candidates ;;
+  apply)  delete_branches ;;
+  delete) delete_branches < <(candidates) ;;
+esac
