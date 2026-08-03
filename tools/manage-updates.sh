@@ -203,9 +203,8 @@ collect_candidates() {
     done
 
     # Node itself: fnm's default version vs the latest LTS. Never part of a
-    # filtered scan — moving Node strands every global npm package installed
-    # against the old one (see apply_row's note), which is not something a
-    # setup re-run should slip into a list of tool refreshes.
+    # filtered scan — a setup re-run offers the entries setup skipped, and the
+    # whole toolchain underneath them is not one of those.
     if ! $ONLY_FILTER; then
         command_exists fnm && emit_candidate node "node (LTS)"
     fi
@@ -339,8 +338,16 @@ resolve_upstream() {
 # act on the row: an npm package, an app name, or the yaml section the entry was
 # declared in — never a command, so a multi-line install snippet can't split a
 # newline-delimited row.
+#
+# `missing` and `absent` both mean "declared but not installed here", split
+# because only one of them is fixable from this tool: a global npm package's
+# whole install command is `npm install -g`, which apply_row already runs, while
+# an absent binary entry needs its yaml `install:` and belongs to
+# `dots packages sync`. Keeping them one status would have made actionable_rows
+# either miss the recoverable half or offer the other half an action it cannot
+# carry out.
 REPORT_FIELDS=(status name cur latest detail kind file payload)
-STATUS_ORDER=(outdated refresh unavailable self ok managed absent)
+STATUS_ORDER=(outdated missing refresh unavailable self ok managed absent)
 
 # Split one candidate record into variables named after CANDIDATE_FIELDS — the
 # caller declares them local, so they land in its scope. The terminator is
@@ -449,7 +456,7 @@ build_node_row() {
     if [ -z "$cur" ] || [ -z "$NODE_LATEST" ]; then
         emit_row unavailable "$name" "${cur:-?}" "?" "fnm could not resolve versions" node "" ""
     elif version_is_outdated "$cur" "$NODE_LATEST"; then
-        emit_row outdated "$name" "$cur" "$NODE_LATEST" "fnm — moves global npm packages" node "" ""
+        emit_row outdated "$name" "$cur" "$NODE_LATEST" "fnm — carries global npm packages over" node "" ""
     else
         emit_row ok "$name" "$cur" "$NODE_LATEST" "fnm" node "" ""
     fi
@@ -471,9 +478,14 @@ build_npm_row() {
         return 0
     fi
 
+    # Neither lookup lists a package that isn't installed, so there is no version
+    # to show on either side — and none is needed: the row's action is the same
+    # `npm install -g` an up-to-date one would refresh with. This is the state a
+    # Node version bump used to strand tools in (see install_node_lts), and the
+    # one an actionable row makes recoverable on a machine already in it.
     local cur="${NPM_CURRENT[$npm]:-}" latest="${NPM_LATEST[$npm]:-}"
     if [ -z "$cur" ]; then
-        emit_row absent "$name" "—" "—" "npm package ${npm} not installed" npm "" "$npm"
+        emit_row missing "$name" "—" "—" "npm global ${npm} not installed here" npm "" "$npm"
     elif [ "$updated_by" = "self" ]; then
         emit_self_row "$name" "$cur" "$latest" npm
     elif version_is_outdated "$cur" "$latest"; then
@@ -559,10 +571,12 @@ pad() {
 declare -A STATUS_COLOR=(
     [outdated]="$YELLOW" [refresh]="$BLUE"   [ok]="$GREEN"    [managed]="$PURPLE"
     [self]="$PURPLE"     [absent]="$YELLOW"  [unavailable]="$RED"
+    [missing]="$YELLOW"
 )
 declare -A STATUS_LABEL=(
     [outdated]=update    [refresh]=refresh   [ok]=current     [managed]=pacman
     [self]=self          [absent]=absent     [unavailable]=unknown
+    [missing]=install
 )
 
 # Print the report grouped by status, most actionable first.
@@ -609,18 +623,21 @@ entry_update_command() {
 
 apply_row() {
     local name="$1" kind="$2" file="$3" payload="$4"
-    local note="" argv=()
+    local argv=()
 
     case "$kind" in
         node)
             activate_node
             # Shared with the installer, so a refresh lands the same Node the
-            # first setup would have.
+            # first setup would have — and carries the global npm packages over,
+            # which nothing downstream of here would have done.
             argv=(install_node_lts)
-            note="Global npm packages live per Node version — run 'dots update' again to reinstall any that moved"
             ;;
         npm)
             activate_node
+            # One command for both an outdated row and a missing one: npm treats
+            # install-over and install-fresh alike, which is what lets a `missing`
+            # row be actionable without a second apply path.
             argv=(npm install -g "${payload}@latest")
             ;;
         app)
@@ -641,7 +658,6 @@ apply_row() {
         return 1
     fi
     print_success "$name updated"
-    [ -n "$note" ] && print_warning "$note"
     return 0
 }
 
@@ -651,7 +667,7 @@ apply_row() {
 # status rather than re-assembled field by field, so the row format can gain a
 # column without this needing to know.
 actionable_rows() {
-    grep -E "^(outdated|refresh)${US}" <<< "$1" || true
+    grep -E "^(outdated|missing|refresh)${US}" <<< "$1" || true
 }
 
 rate_limit_footer() {
@@ -689,7 +705,7 @@ report_summary() {
     n_unknown=$(grep -c "^unavailable${US}" <<< "$report" || true)
 
     if [ "${n_action:-0}" -gt 0 ]; then
-        print_info "${n_action} item(s) can be updated — run 'dots update' to pick"
+        print_info "${n_action} item(s) can be updated or installed — run 'dots update' to pick"
     elif [ "${n_unknown:-0}" -gt 0 ]; then
         print_warning "Nothing to update among the items that could be checked; ${n_unknown} could not be checked"
     else
@@ -735,11 +751,14 @@ do_update() {
     local "${REPORT_FIELDS[@]}"
     for row in "${rows[@]}"; do
         IFS="$US" read -r "${REPORT_FIELDS[@]}" <<< "$row"
-        if [ "$status" = "outdated" ]; then
-            labels+=("$name  ${cur} → ${latest}")
-        else
-            labels+=("$name  refresh (${cur})")
-        fi
+        case "$status" in
+            outdated) labels+=("$name  ${cur} → ${latest}") ;;
+            # No version on either side to render, and "refresh" would misname
+            # what applying it does. The verb comes from STATUS_LABEL so the
+            # picker can't drift from the word the report already used.
+            missing)  labels+=("$name  ${STATUS_LABEL[$status]}") ;;
+            *)        labels+=("$name  refresh (${cur})") ;;
+        esac
     done
 
     local selected

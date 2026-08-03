@@ -514,11 +514,78 @@ activate_fnm_node() {
     return 0
 }
 
+# Where a global npm package lands: inside the Node version's own tree, reached
+# through fnm's `default` alias. That is why moving Node strands every one of
+# them — the new version starts with an empty node_modules. The path is stable
+# while what it points at moves, which is what lets one constant name both the
+# version being left and the one being landed on.
+FNM_GLOBALS_DIR="$FNM_BIN_DIR/aliases/default/lib/node_modules"
+
+# The global packages installed against the Node currently in use, one name per
+# line, ready to hand back to `npm install -g`. npm and corepack ship with Node
+# itself, so they are never ours to reinstall.
+#
+# A scope directory is not a package — its children are, so the two depths are
+# globbed separately rather than walked and then descended into. Trimming the
+# root off the whole path, instead of taking the basename, is what makes a scoped
+# entry come back out as `@scope/name`.
+list_global_npm_packages() {
+    local path name
+    [ -d "$FNM_GLOBALS_DIR" ] || return 0
+
+    for path in "$FNM_GLOBALS_DIR"/[^@]* "$FNM_GLOBALS_DIR"/@*/*; do
+        [ -d "$path" ] || continue
+        name="${path#"$FNM_GLOBALS_DIR"/}"
+        case "$name" in npm|corepack) continue ;; esac
+        printf '%s\n' "$name"
+    done
+    return 0
+}
+
+# Reinstall the named globals that the Node now in use is missing. Never fatal:
+# Node itself did move, so a package npm can't fetch is reported and left for
+# the user rather than rolling the version change back.
+reinstall_global_npm_packages() {
+    local pkg missing=() stranded=()
+    for pkg in "$@"; do
+        [ -d "$FNM_GLOBALS_DIR/$pkg" ] || missing+=("$pkg")
+    done
+    # Nothing to carry covers the no-argument call too, so this is the only guard
+    # needed — and it comes before the npm probe so the common case forks nothing.
+    [ "${#missing[@]}" -gt 0 ] || return 0
+    command_exists npm || return 0
+
+    print_info "Carrying ${#missing[@]} global npm package(s) over: ${missing[*]}"
+    for pkg in "${missing[@]}"; do
+        npm install -g "$pkg" || stranded+=("$pkg")
+    done
+
+    if [ "${#stranded[@]}" -gt 0 ]; then
+        print_warning "Left behind by the Node move: ${stranded[*]}"
+        print_info "Reinstall by hand with 'npm install -g ${stranded[*]}'"
+        return 0
+    fi
+    print_success "Global npm packages carried over"
+    return 0
+}
+
 # Install the latest Node LTS, make it fnm's default and put it on PATH. Shared
 # with 'dots update', which refreshes Node exactly the way the installer
 # first provisions it, so the two can't drift.
+#
+# The carry-over lives here rather than in the updater's apply path because it
+# belongs welded to the `fnm default` that causes the stranding: any future
+# caller that moves Node gets the repair whether it thought about it or not.
+# `dots update` is the only caller that can trigger it today — the installer
+# reaches this function solely when fnm has no versions at all, where there is
+# nothing to carry and the read costs one stat.
 install_node_lts() {
-    fnm install --lts && fnm default lts-latest && activate_fnm_node
+    local carried=()
+    mapfile -t carried < <(list_global_npm_packages)
+
+    fnm install --lts && fnm default lts-latest && activate_fnm_node || return 1
+
+    reinstall_global_npm_packages "${carried[@]}"
 }
 
 # ── Groups ───────────────────────────────────────────────────────────────────
