@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create — or focus — a Herdr workspace for a project:
-#   agent tab (labeled by task when a prompt came with it, else by provider:
-#                  "claude", "codex", ...):
+#   agent tab (labeled by the run — the task a prompt came with, else the
+#                  project name; never the provider, which row 1 already has):
 #                  agent (top-left) + hunk review (top-right); bottom
 #                  row = "dev" + "logs" terminals (both plain shells)
 #   tab "nvim":    full-window nvim
@@ -129,25 +129,33 @@ else
   [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 fi
 
-# The workspace keeps the project name (revive-panes and the reattach path
-# above both match on it), but the agent tab can say what this run is for when
-# a prompt came with it: "fix the flaky updater tests" beats "claude". Slash
-# commands are excluded — `wtstart -s` sends "/start <branch>", which is an
-# instruction, not a description of the work. It stays a seed, not a pin: the
-# opening prompt is a first approximation, and herdr-agent-title should be
-# free to replace it once the agent has titled the session itself. Only a name
-# typed in the ctrl+alt+a picker is pinned.
-tab_label="$provider"; agent_name="$name"
+# One name for the run, across the three slots it can be read from: the tab
+# label here, and — through herdr-agent-layout — the agent's display name
+# (`claude -n`, so its resume picker and terminal title agree with the tab) and
+# the reported pane title. One variable, because they are one value: they used to
+# differ, the tab carrying "$provider" while the agent carried the project name.
+# The sidebar's row 2 *is* the tab label and is meant to say what the work is,
+# while row 1 already dims the provider — so a tab reading "claude" repeated row
+# 1 and said nothing. herdr-nav agent-tab labels a *named* tab the same way; only
+# its unnamed tabs fall back to "<provider> N", and it deliberately gives those a
+# longer display name than their label.
+# A prompt that came with the run sharpens it: "fix the flaky updater tests"
+# beats "dotfiles". Slash commands are excluded — `wtstart -s` sends
+# "/start <branch>", which is an instruction, not a description of the work.
+# Either way it stays a seed, not a pin: both are first approximations, and
+# herdr-agent-title should be free to replace them once the agent has titled the
+# session itself. Only a name typed in the ctrl+alt+a picker is pinned.
+run_name="$name"
 if [[ -n "$prompt" && "$prompt" != /* ]]; then
   prompt_label="$(herdr-task-name "$prompt" || true)"
-  [[ -n "$prompt_label" ]] && { tab_label="$prompt_label"; agent_name="$prompt_label"; }
+  [[ -n "$prompt_label" ]] && run_name="$prompt_label"
 fi
 
-h tab rename "$t_agent" "$tab_label" >/dev/null
+h tab rename "$t_agent" "$run_name" >/dev/null
 # Panes (agent + hunk review top row, dev/logs bottom row) are built by
 # herdr-agent-layout, shared with herdr-nav's agent-tab keybind.
 herdr-agent-layout -s "$session" "$p_agent" "$dir" "$provider" \
-  "$agent_name" "$prompt"
+  "$run_name" "$prompt"
 
 # Full-window utility tabs — currently just "nvim", the one tool wanted in
 # every workspace; git/review/files are opened on demand instead (see the
