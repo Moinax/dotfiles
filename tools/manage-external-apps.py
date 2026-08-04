@@ -109,20 +109,30 @@ RED, GREEN, YELLOW, BLUE = "\033[0;31m", "\033[0;32m", "\033[1;33m", "\033[0;34m
 NC = "\033[0m"
 
 
+# Kept in step with install/lib/common.sh, whose tags this pads to the same width:
+# this script's output interleaves with the shell helpers' in one terminal. See
+# there for why 9.
+TAG_WIDTH = 9
+
+
+def _print_tag(color, tag, msg, file):
+    print(f"{color}{tag:<{TAG_WIDTH}}{NC} {msg}", file=file)
+
+
 def print_info(msg, file=sys.stdout):
-    print(f"{BLUE}[INFO]{NC} {msg}", file=file)
+    _print_tag(BLUE, "[INFO]", msg, file)
 
 
 def print_success(msg, file=sys.stdout):
-    print(f"{GREEN}[SUCCESS]{NC} {msg}", file=file)
+    _print_tag(GREEN, "[SUCCESS]", msg, file)
 
 
 def print_warning(msg, file=sys.stdout):
-    print(f"{YELLOW}[WARNING]{NC} {msg}", file=file)
+    _print_tag(YELLOW, "[WARNING]", msg, file)
 
 
 def print_error(msg, file=sys.stdout):
-    print(f"{RED}[ERROR]{NC} {msg}", file=file)
+    _print_tag(RED, "[ERROR]", msg, file)
 
 
 class AppError(Exception):

@@ -9,17 +9,36 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Every status tag pads to the width of the longest — [SUCCESS] and [WARNING], at
+# 9 — so the message text starts in the same column whatever the level. A log is
+# read down the message column, and unpadded tags step that column in and out by
+# up to three characters on every line.
+TAG_WIDTH=9
+
+# The width applies to the bare tag: the colour is a separate `%b` conversion, so
+# its escape bytes never count towards the field. (They would if colour and tag
+# were one argument to one field — then the width is spent on the escapes and no
+# padding is emitted at all.)
+#
+# `%s` for the message, not `echo -e`'s implicit unescaping — which switching to
+# printf for the field width is what makes possible in the first place. Nothing
+# should reinterpret a backslash that arrived in a path or a command's output.
+_print_tag() {
+    local color="$1" tag="$2" msg="$3"
+    printf '%b%-*s%b %s\n' "$color" "$TAG_WIDTH" "$tag" "$NC" "$msg"
+}
+
 # Print colored messages
 print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    _print_tag "$BLUE" "[INFO]" "$1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    _print_tag "$GREEN" "[SUCCESS]" "$1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    _print_tag "$YELLOW" "[WARNING]" "$1"
 }
 
 # Print warning and track it for the end-of-install summary
@@ -29,7 +48,7 @@ track_warning() {
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    _print_tag "$RED" "[ERROR]" "$1"
 }
 
 # Install a SIGINT/SIGTERM trap so Ctrl+C cleanly exits interactive scripts
