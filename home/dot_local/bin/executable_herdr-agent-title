@@ -10,8 +10,14 @@
 #        herdr-agent-title codex-notify JSON Codex `notify` callback; payload
 #                                            is the first argv as documented
 #        herdr-agent-title seed [-s SESSION] PANE KIND NAME
-#                                            record the launch label so the
-#                                            hook knows what it may replace
+#                                            report the launch name and record
+#                                            what the hook may replace
+#        herdr-agent-title restore [-s SESSION]
+#                                            boot: put back the titles a server
+#                                            restart wiped. PANE<TAB>FALLBACK
+#                                            lines on stdin; reads, never writes
+#        herdr-agent-title prune [-s SESSION] PANE [PANE ...]
+#                                            drop entries for panes that are gone
 #
 # Where the name comes from, in order:
 #   1. Claude Code's own session title — the `custom-title` record it keeps in
@@ -22,8 +28,8 @@
 #      launch label — this is what makes a brand-new tab self-name after one
 #      exchange instead of sitting on "claude 2" for the first ten minutes.
 #
-# Seed kinds (written by herdr-agent-layout at launch, one line
-# KIND<TAB>NAME<TAB>SEEN under $XDG_RUNTIME_DIR, where SEEN is the raw agent
+# Seed kinds (written by the `seed` verb at tab creation, one line
+# KIND<TAB>NAME<TAB>SEEN under $cache_root, where SEEN is the raw agent
 # title this script last observed on the pane — banked on every write, read
 # only to decide whether a `pin` has been overtaken):
 #   seed  launched with a generated label (project / provider + number) — the
@@ -40,12 +46,10 @@
 #   set   written by this script: the last name it applied, and therefore the
 #         tab label it expects to find. A different live label means the user
 #         renamed the tab by hand, which flips the entry back to `pin`.
-# With no entry at all — a pane from before this existed, or after a reboot,
-# which reassigns pane ids anyway — the live tab label is adopted as the
-# baseline: a name that is already right then costs a re-report, not a rename.
-# A `pin` does not survive that (the state is per boot by nature), so a
-# hand-named tab can be renamed once after a reboot if the agent's own title
-# has moved on since; renaming it again re-pins it.
+# With no entry at all — a pane from before this existed — the live tab label is
+# adopted as the baseline: a name that is already right then costs a re-report,
+# not a rename. That case is now rare, because the entries outlive the machine:
+# see $cache_root for why they can and what it cost when they could not.
 #
 # The settled name goes to four places, always the same one: the tab label, the
 # pane's reported title (what its border renders), the sidebar `$task` token,
@@ -66,13 +70,38 @@
 # is kept to the turns that need it.
 set -euo pipefail
 
-usage="usage: herdr-agent-title sync | codex-notify JSON | seed [-s SESSION] PANE KIND NAME"
+usage="usage: herdr-agent-title sync | codex-notify JSON
+       | seed [-s SESSION] PANE KIND NAME | restore [-s SESSION] | prune [-s SESSION] PANE..."
 
-cache_root="${XDG_RUNTIME_DIR:-/tmp}/herdr-agent-title"
+# Durable, under $XDG_STATE_HOME beside herdr-pane-role's own sidecar — NOT
+# $XDG_RUNTIME_DIR, where this used to live. Nothing about these entries is
+# per boot: pane ids are stable across restarts and never reused
+# (.claude/rules/herdr-layout.md has the probe), which is the same fact
+# herdr-pane-role is built on. Only the location was per boot, and it cost the
+# whole design: because the entries vanished with the machine, revive-panes had
+# to *reconstruct* the seed/pin machine from tab labels at every boot and write
+# its guess back, which promoted throwaway launch labels to user-typed `pin`s
+# and froze them; and because the runtime dir survives a *server* restart while
+# that guess ran anyway, `herdr-clients stop-all && open-all` overwrote live
+# `set` entries with an empty SEEN and swallowed titles that had moved. Persisted,
+# the boot path only reads (see the `restore` verb) and a pin survives a reboot
+# on its own. Cost is a directory that now needs sweeping — hence `prune`.
+#
+# One directory per session, not a flat "<session>.<pane>" key: `prune` has to
+# enumerate exactly one session's entries, and a flat glob of `foo.*` also
+# matches every file belonging to a session named `foo.bar`.
+cache_root="${XDG_STATE_HOME:-$HOME/.local/state}/dots/herdr-agent-title"
 
 # Every herdr call in this script goes through here, so the time-box the header
 # promises is structural and not a thing each new call site has to remember.
 h() { timeout 2 herdr "$@"; }
+# ...and the optional --session every out-of-pane caller needs. An empty session
+# means the one inherited from HERDR_SOCKET_PATH, which is what a pane acting on
+# itself has; the create and boot paths act on a pane from outside it and pass one.
+hs() { # $1: session (may be empty), rest: herdr args
+  local s="$1"; shift
+  if [[ -n "$s" ]]; then h --session "$s" "$@"; else h "$@"; fi
+}
 # Same rule, same reason, for the other binary this talks to.
 vw() { timeout 2 vibewatch "$@"; }
 
@@ -81,10 +110,23 @@ vw() { timeout 2 vibewatch "$@"; }
 # override. Compared against a per-pane stamp below.
 vibewatch_sock="${XDG_RUNTIME_DIR:-/run/user/$UID}/vibewatch.sock"
 
-# Pane ids (w8:p48) are unique per session only, so the key carries both.
-cache_path() { # $1: session, $2: pane id
-  local key="$1.$2"
-  printf '%s/%s\n' "$cache_root" "${key//[![:alnum:]._-]/_}"
+# Pane ids (w8:p48) are unique per session only, so the session is the directory
+# and the pane is the file. Called once per verb, right after the session is
+# resolved, so the directory is made in one place and no writer below carries an
+# obligation to remember it — the same reasoning as `h` and `vw` above. The `-d`
+# test is a builtin, so steady state costs nothing and only the first run after
+# an install forks. A failure is reported and survived: names must never end a
+# turn, but a state directory that cannot be made is a real fault and silently
+# degrading to "no memory" is how a hand-typed tab name gets overwritten at every
+# turn end forever, with nothing said anywhere.
+cache_ready() { # $1: session
+  cache_dir="$cache_root/${1//[![:alnum:]._-]/_}"
+  [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir" 2>/dev/null \
+    || echo "herdr-agent-title: cannot create $cache_dir; names will not persist" >&2
+}
+
+cache_path() { # $1: pane id — $cache_dir set by cache_ready
+  printf '%s/%s\n' "$cache_dir" "${1//[![:alnum:]._-]/_}"
 }
 
 # Session name from the inherited socket path — named sessions live in
@@ -100,9 +142,25 @@ session_from_socket() {
   fi
 }
 
+# The redirect is swallowed even though cache_ready has already reported a
+# missing directory: a full or read-only filesystem fails here instead, and a
+# redirect that fails under `set -e` is an exit in the middle of naming a pane —
+# the shape of failure that cost a whole boot once already (see tell_vibewatch).
+# A name must never end a turn — nor print, which on a Stop hook lands in the
+# agent's own output, so `2>/dev/null` goes first: redirections are applied in
+# order and a failing target reports on whatever stderr is at that moment.
 write_cache() { # $1: file, $2: kind, $3: name, $4: agent title last seen
-  [[ -d "$cache_root" ]] || mkdir -p "$cache_root"
-  printf '%s\t%s\t%s\n' "$2" "$3" "${4:-}" >"$1"
+  printf 2>/dev/null '%s\t%s\t%s\n' "$2" "$3" "${4:-}" >"$1" || return 0
+}
+
+# The NAME field of a pane's entry, empty when there is none. The one reader
+# that wants just the name; the sync arm below reads all three fields at once.
+cached_name() { # $1: pane id
+  local f kind name
+  f="$(cache_path "$1")"
+  [[ -r "$f" ]] || return 0
+  IFS=$'\t' read -r kind name _ <"$f" || return 0
+  printf '%s\n' "$name"
 }
 
 # The tab's current label, empty on any failure.
@@ -113,23 +171,32 @@ tab_label() { # $1: tab id
 # The display title this script last reported onto the pane — not its label
 # (the provider) and not the terminal's own OSC title. Empty after a server
 # restart, which drops reported metadata but keeps labels.
-pane_title() { # $1: pane id
-  h pane get "$1" 2>/dev/null | jq -r '.result.pane.title // empty' 2>/dev/null
+pane_title() { # $1: session (may be empty), $2: pane id
+  hs "$1" pane get "$2" 2>/dev/null | jq -r '.result.pane.title // empty' 2>/dev/null
 }
 
 # Display-only metadata: the pane title (what the pane border renders) and the
 # $task sidebar token. The semantic agent state stays herdr's own integration's
 # business, and deliberately no `pane rename` — the header owns why.
 #
+# The one place that contract lives, for all three moments a pane gets named:
+# tab creation (`seed`), boot (`restore`) and turn end (`sync`, below). All three
+# are verbs of this script, so a change to what naming reports — another token, a
+# renamed key, the `timeout 2` box `h` gives it — lands once. herdr-agent-layout
+# used to open-code it and revive-panes would have been a third copy.
+report_title() { # $1: session (may be empty), $2: pane id, $3: name
+  hs "$1" pane report-metadata "$2" \
+    --source dots:agent-title --title "$3" --token "task=$3" \
+    >/dev/null 2>&1 || true
+}
+
 # Always the same name the tab label is getting, which is why every caller
 # below settles the label question first: a sidebar row reading one name beside
 # a tab reading another is worse than either name alone.
 #
 # vibewatch is told too, for the same reason — see tell_vibewatch.
 report_metadata() { # $1: name
-  h pane report-metadata "$HERDR_PANE_ID" \
-    --source dots:agent-title --title "$1" --token "task=$1" \
-    >/dev/null 2>&1 || true
+  report_title "" "$HERDR_PANE_ID" "$1"
   tell_vibewatch "$1"
 }
 
@@ -160,8 +227,18 @@ tell_vibewatch() { # $1: name
   [[ -n "${session_id:-}" && -n "${1:-}" ]] || return 0
   command -v vibewatch >/dev/null 2>&1 || return 0
   vw rename "$session_id" "$1" >/dev/null 2>&1 || true
-  # Builtin redirect, no fork.
-  [[ -n "${vibewatch_stamp:-}" ]] && : >"$vibewatch_stamp"
+  # Builtin redirect, no fork — but a redirect into a directory that is not
+  # there yet fails, and under `set -e` that failure ended the script right
+  # here: after the report above, before the tab rename and the cache write
+  # below. So on the first boot-fresh sync the pane took the new name, the tab
+  # kept the old one, and no cache was written — leaving every later turn to
+  # repeat the same half-rename and die at the same line, with the whole
+  # seed/pin/set machine dead for the boot and nothing on screen but a tab and
+  # a pane disagreeing. `cache_ready` has made the directory by the time any of
+  # this runs; the `|| true` is the second belt, because nothing about a name may
+  # be fatal. `2>/dev/null` goes first: redirections are applied in
+  # order, so a failing target reports on whatever stderr is at that moment.
+  : 2>/dev/null >"${vibewatch_stamp:-}" || true
   return 0
 }
 
@@ -226,14 +303,78 @@ case "${1:-sync}" in
   seed)
     shift
     # Without -s the session is the one this call inherited (herdr-agent-layout
-    # runs inside a pane for the agent-tab path); dev-herdr passes it
-    # explicitly because it can create a workspace in another session than the
-    # pane it was launched from.
-    session="$(session_from_socket)"
+    # runs inside a pane for the agent-tab path); dev-herdr passes it explicitly
+    # because it can create a workspace in a session other than the pane it was
+    # launched from. Resolved after the flag, so the common case does not pay a
+    # subshell for a value it is about to overwrite.
     [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    session="${session:-$(session_from_socket)}"
     pane="${1:?$usage}"; kind="${2:?$usage}"; name="${3:?$usage}"
     [[ "$kind" == seed || "$kind" == pin ]] || { echo "$usage" >&2; exit 2; }
-    write_cache "$(cache_path "$session" "$pane")" "$kind" "$name"
+    cache_ready "$session"
+    write_cache "$(cache_path "$pane")" "$kind" "$name"
+    # The launch name belongs on the border as well as in the entry, and the one
+    # caller wants both in the same breath: recording what the hook may replace
+    # and saying what the pane is called are one act, so they are one call.
+    report_title "$session" "$pane" "$name"
+    ;;
+
+  restore)
+    shift
+    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    session="${session:-$(session_from_socket)}"
+    cache_ready "$session"
+    # A server restart keeps labels but drops reported metadata, so every agent
+    # pane comes back with its provider on the border and nothing saying what the
+    # work is. Put the name back — and *only* that. This verb writes nothing: the
+    # entries outlive the machine now, so there is no state to rebuild here, and
+    # rebuilding it was the bug (see $cache_root). A pane whose name someone typed
+    # keeps its `pin`, one still wearing a launch label keeps its `seed`, and both
+    # keep the SEEN they had.
+    #
+    # FALLBACK covers the panes with no entry — created before these were durable
+    # — so a first boot after this change still puts something readable on the
+    # border. It is reported, never recorded, which leaves the next turn end to
+    # sync's ordinary no-entry adoption instead of a guess made from out here.
+    while IFS=$'\t' read -r pane fallback; do
+      [[ -n "$pane" ]] || continue
+      name="$(cached_name "$pane")"
+      [[ -n "$name" ]] || name="$fallback"
+      [[ -n "$name" ]] || continue
+      # Only panes that actually lost their title. A resumed agent fires its own
+      # SessionStart, which re-reports for itself; stamping a name over that would
+      # put the pre-restart name on the border beside a tab already showing the
+      # current one — the very disagreement this verb exists to prevent. Two IPCs
+      # for a pane that needs restoring, one for a pane that does not, all from
+      # this single process.
+      [[ -z "$(pane_title "$session" "$pane")" ]] || continue
+      report_title "$session" "$pane" "$name"
+    done
+    ;;
+
+  prune)
+    shift
+    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    session="${session:-$(session_from_socket)}"
+    # The caller passes the live pane ids. An empty list means "could not
+    # enumerate", never "nothing is alive", so it does nothing — a failed `pane
+    # list` upstream must not wipe every name in the session. Same contract as
+    # herdr-pane-role prune, which revive-panes calls from the same place.
+    [[ $# -gt 0 ]] || exit 0
+    cache_ready "$session"
+    declare -A keep=()
+    for pane in "$@"; do keep["$(cache_path "$pane")"]=1; done
+    stale=()
+    for f in "$cache_dir"/*; do
+      # No nullglob here, so an empty directory yields the pattern itself.
+      [[ -e "$f" ]] || continue
+      # A pane's vibewatch stamp is its entry plus ".vw" and lives or dies with
+      # it. Pane ids sanitize to [alnum._-] with no dots, so nothing else can
+      # end that way.
+      [[ -n "${keep[${f%.vw}]:-}" ]] || stale+=("$f")
+    done
+    [[ ${#stale[@]} -gt 0 ]] && rm -f "${stale[@]}"
+    exit 0
     ;;
 
   sync|codex-notify)
@@ -246,7 +387,8 @@ case "${1:-sync}" in
     # Cache first: it decides how much of the rest is allowed to run. Reading
     # it costs no process at all, and a third field on old two-field lines just
     # reads back empty (handled where `seen` is used).
-    cache="$(cache_path "$(session_from_socket)" "$HERDR_PANE_ID")"
+    cache_ready "$(session_from_socket)"
+    cache="$(cache_path "$HERDR_PANE_ID")"
     vibewatch_stamp="$cache.vw"  # see tell_vibewatch
     kind=""; applied=""; seen=""
     if [[ -r "$cache" ]]; then
@@ -275,10 +417,9 @@ case "${1:-sync}" in
     fi
 
     if [[ -z "$kind" && -n "${HERDR_TAB_ID:-}" ]]; then
-      # No entry: this pane predates the cache, or the machine rebooted (pane
-      # ids are reassigned on restore anyway, so the cache cannot outlive a
-      # boot). Adopt whatever the tab is called as the baseline, so a name
-      # that is already right costs a re-report and not a rename.
+      # No entry: this pane predates the cache, or `restore` reported a fallback
+      # onto it without recording one. Adopt the live tab label as the baseline
+      # (header) — which is exactly why restore leaves this case to us.
       applied="$(tab_label "$HERDR_TAB_ID")" || applied=""
     fi
 
@@ -303,7 +444,7 @@ case "${1:-sync}" in
       pinned=""; pane_live=""
       [[ -n "${HERDR_TAB_ID:-}" ]] && { pinned="$(tab_label "$HERDR_TAB_ID")" || pinned=""; }
       [[ -n "$pinned" ]] || pinned="$applied"
-      pane_live="$(pane_title "$HERDR_PANE_ID")" || pane_live=""
+      pane_live="$(pane_title "" "$HERDR_PANE_ID")" || pane_live=""
 
       # A tab label that has drifted from the last reported name is a hand
       # rename, and this path is the only one that can see it: the `live !=

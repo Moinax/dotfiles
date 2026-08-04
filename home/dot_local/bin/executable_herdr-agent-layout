@@ -30,6 +30,10 @@ dir="${2:?$usage}"
 provider="${3:?$usage}"
 label="${4:?$usage}"
 prompt="${5:-}"
+# Checked here and not left to herdr-agent-title: the pane's title now comes
+# from that call and nothing else, so a bad -k would exit it before the report
+# and leave the border reading a bare "claude" with no way to tell why.
+[[ "$kind" == seed || "$kind" == pin ]] || { echo "$usage" >&2; exit 2; }
 
 h() {
   if [[ -n "$session" ]]; then herdr --session "$session" "$@"; else herdr "$@"; fi
@@ -52,8 +56,6 @@ if [[ -n "$session" ]]; then sess=(-s "$session"); fi
 # the task was written into the label instead, and the probe behind "the title
 # wins on the border".
 h pane rename "$p_agent" "$provider" >/dev/null
-h pane report-metadata "$p_agent" --source dots:agent-title \
-  --title "$label" --token "task=$label" >/dev/null
 
 # Bottom row FIRST (splitting down before any right-split keeps it spanning
 # the full width), then hunk right of the agent.
@@ -69,11 +71,16 @@ p_review="$(h pane split "$p_agent" --direction right \
 h pane rename "$p_review" review >/dev/null
 h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
 
-# Register the launch label before the agent can report a better one, so the
-# Claude Code hook (herdr-agent-title) knows what it is allowed to replace:
-# a generated "dotfiles (claude 2)" freely, a task the user typed only once the
-# agent's own title moves.
-herdr-agent-title seed "${sess[@]}" "$p_agent" "$kind" "$label" || true
+# Put the launch label on the border and record it before the agent can report a
+# better one, so the Claude Code hook (herdr-agent-title) knows what it is
+# allowed to replace: a generated "dotfiles (claude 2)" freely, a task the user
+# typed only once the agent's own title moves. Both writes in one call, in the
+# script that owns them — the `title` slot described above is filled here.
+# Non-fatal, because a name must never break a tab; not silent, because this is
+# now the only thing that fills that slot and a pane stuck on its bare provider
+# is otherwise indistinguishable from one that simply has no task yet.
+herdr-agent-title seed "${sess[@]}" "$p_agent" "$kind" "$label" \
+  || echo "herdr-agent-layout: could not name pane $p_agent" >&2
 
 # Agent command comes from dev-agent-argv (single source of truth; -q emits
 # it %q-quoted so prompts with spaces/quotes survive the pane's shell). The

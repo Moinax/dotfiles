@@ -233,7 +233,7 @@ infer_role() { # $1: label, $2: detected agent, $3: is-agent-slot, $4: tab label
 revive_panes() {
   local session="$1" panes tabs workspaces
   local pane label ws_label tab_label agent has_session slot single role rc name cmd
-  local -a learned=() live=()
+  local -a learned=() live=() titles=()
   local -A roles=()
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
@@ -281,6 +281,32 @@ revive_panes() {
         *) role="" ;;
       esac
     fi
+    # A restart keeps labels but drops reported metadata, so an agent pane comes
+    # back with its provider on the border and nothing saying what the work is —
+    # the tab reads "OCT 645: Reset password" while the pane beside it reads
+    # "claude". Collected here and handed to `herdr-agent-title restore` in one
+    # call after the loop, which puts each pane's recorded name back.
+    #
+    # Nothing about the seed/pin machine is decided here, on purpose. This used
+    # to reconstruct it from the labels and write the guess back, which is a
+    # rules violation dressed as a fallback — labels are decoration — and it
+    # broke both ways: a prompt-derived launch label came back as a user-typed
+    # `pin` and froze, and a plain `herdr-clients stop-all && open-all` (no
+    # reboot, entries still there) overwrote live `set` entries with an empty
+    # SEEN. The entries are durable now, so boot reads them and writes nothing.
+    # What is passed is a *fallback* name for panes that predate them, and
+    # herdr-agent-title reports it without recording it.
+    #
+    # Before the has_session gate on purpose: a pane herdr resumes itself lost
+    # its title just the same. $name is the relaunch display name below too —
+    # one derivation, two readers. "Says something" means anything but the
+    # generated "<provider>[ N]" placeholder herdr-nav hands an unnamed tab.
+    if [[ "$role" == agent:* ]]; then
+      name="$ws_label"
+      [[ -n "$tab_label" && ! "$tab_label" =~ ^"${role#agent:}"( [0-9]+)?$ ]] \
+        && name="$tab_label"
+      titles+=("$pane"$'\t'"$name")
+    fi
     [[ "$has_session" == 1 ]] && continue
     case "$role" in
       # "shell" is dev/logs and is the reason roles are recorded for every pane
@@ -289,9 +315,6 @@ revive_panes() {
       # silent skip. "" is the latter — a pane the user made, nothing to run.
       shell | "") continue ;;
       agent:*)
-        name="$ws_label"
-        [[ -n "$tab_label" && ! "$tab_label" =~ ^"${role#agent:}"( [0-9]+)?$ ]] \
-          && name="$tab_label"
         cmd="$(dev-agent-argv -q "${role#agent:}" "$name")" || continue ;;
       *) cmd="$(herdr-pane-cmd "$role")" \
            || { echo "$session: pane $pane has role '$role', which resolves to no command" >&2
@@ -325,7 +348,18 @@ revive_panes() {
   # Both after the loop so a single call covers the whole session, and after
   # `live` is complete so prune can never see a partial list.
   [[ ${#learned[@]} -gt 0 ]] && herdr-pane-role set -s "$session" "${learned[@]}"
+  # Names, same shape: one process for the session rather than one per pane, so
+  # a boot does not fan a bash + timeout + herdr tree out across every agent pane
+  # of every session at the moment the server is slowest to answer. It runs while
+  # the revive jobs above are still polling their shells, so it costs no extra
+  # wall time. Non-fatal — a title is never worth failing a revive over.
+  if [[ ${#titles[@]} -gt 0 ]]; then
+    printf '%s\n' "${titles[@]}" | herdr-agent-title restore -s "$session" || true
+  fi
+  # Both sidecars are keyed by pane id and both now outlive the machine, so both
+  # need the same sweep against the same live list.
   [[ ${#live[@]} -gt 0 ]] && herdr-pane-role prune -s "$session" "${live[@]}"
+  [[ ${#live[@]} -gt 0 ]] && { herdr-agent-title prune -s "$session" "${live[@]}" || true; }
   # Reaps only the revive jobs: long-lived spawns (launch_client's kitty,
   # ensure_servers' server) go through spawn_detached, so they are never this
   # shell's children and cannot turn this wait into a forever-block.
