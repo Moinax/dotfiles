@@ -23,20 +23,31 @@ hyprvoice_list_models() {
     done < <(hyprvoice model list 2>/dev/null)
 }
 
-# Provider menu. Prints the bare provider name (whisper-cpp | groq);
-# propagates gum's cancel status so callers pick their own fallback.
+# Provider menu. Prints the bare provider name (whisper-cpp | groq).
+#
+# Returns gum's own status rather than flattening every non-zero to 1, because the
+# caller has to tell "declined, use the default" (1) from "cancelled, stop" (130) —
+# and it cannot call abort_interrupted itself: this runs inside a command
+# substitution, where an exit ends only the subshell. So the status is the whole
+# channel, and callers check for 130.
 hyprvoice_choose_provider() {
-    local header="$1" choice
+    local header="$1" choice rc=0
     choice=$(printf '%s\n' "whisper-cpp (local)" "groq (cloud, free tier)" | \
-        gum choose --cursor.foreground="212" --header "$header") || return 1
+        gum choose --cursor.foreground="212" --header "$header") || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        return "$rc"
+    fi
     printf '%s\n' "${choice%% (*}"
 }
 
-# Groq model menu. Prints the bare model name; propagates cancel status.
+# Groq model menu. Prints the bare model name; propagates gum's status as above.
 hyprvoice_choose_groq_model() {
-    local choice
+    local choice rc=0
     choice=$(printf '%s\n' "${GROQ_WHISPER_MODELS[@]}" | gum choose --cursor.foreground="212" \
-        --header "Select Groq model:") || return 1
+        --header "Select Groq model:") || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        return "$rc"
+    fi
     printf '%s\n' "${choice%% *}"
 }
 
@@ -62,7 +73,7 @@ setup_groq_api_key() {
     if [ -n "$existing_key" ]; then
         local masked="${existing_key:0:8}...${existing_key: -4}"
         print_success "Groq API key found: $masked"
-        if [ "${1:-}" = "--allow-change" ] && ! gum confirm "Keep current API key?"; then
+        if [ "${1:-}" = "--allow-change" ] && ! confirm_or_abort "Keep current API key?"; then
             existing_key=""
         fi
     fi

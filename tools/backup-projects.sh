@@ -211,7 +211,7 @@ push_to_backup_repo() {
         }
         slug="$user/$BACKUP_REPO_NAME"
         if ! gh repo view "$slug" &>/dev/null; then
-            gum confirm "Create private GitHub repo $slug for backups?" || {
+            confirm_or_abort "Create private GitHub repo $slug for backups?" || {
                 print_info "Skipped push — archive kept at $archive"
                 return 0
             }
@@ -384,7 +384,7 @@ offer_remove_unlisted_repos() {
     fi
 
     if command_exists gum; then
-        gum confirm "Move these repositories to the trash?" || return 0
+        confirm_or_abort "Move these repositories to the trash?" || return 0
     else
         local reply
         read -r -p "Move these repositories to the trash? [y/N] " reply

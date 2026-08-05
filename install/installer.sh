@@ -38,6 +38,11 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/hyprvoice.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
+# The prompt-heaviest script in the repo, and the last one still without this:
+# gum exits 130 on Ctrl+C rather than dying from the signal, so a shell with no
+# trap reads the interrupt as an answer and installs on regardless.
+install_interrupt_trap
+
 # Detect distro
 DISTRO=$(detect_distro)
 DISTRO_NAME=$(get_distro_name)
@@ -96,10 +101,13 @@ select_purpose() {
     gum style --foreground 212 --bold "What type of setup?"
     echo ""
 
+    # Esc here used to fall through to the *) arm and silently start a full Desktop
+    # install — the largest thing this script does, chosen by a keypress that means
+    # "stop". The *) arm stays for a genuinely empty answer.
     local choice
-    choice=$(gum choose --cursor.foreground="212" \
+    choose_or_abort choice --cursor.foreground="212" \
         "🖥️  Desktop — full desktop environment with GUI apps" \
-        "⌨️  Terminal — CLI tools only (headless/server)")
+        "⌨️  Terminal — CLI tools only (headless/server)" || true
 
     case "$choice" in
         *Desktop*)
@@ -164,22 +172,14 @@ _build_tree_json() {
         local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
         [ -f "$group_file" ] || continue
 
-        # Read group icon and display name
-        local group_icon="" group_label=""
-        if command_exists yq; then
-            group_icon=$(yq -r '.icon // ""' "$group_file")
-            group_label=$(yq -r '.name // ""' "$group_file")
-        else
-            group_icon=$(grep "^icon:" "$group_file" | sed 's/icon:[[:space:]]*//')
-            group_label=$(grep "^name:" "$group_file" | sed 's/name:[[:space:]]*//')
-        fi
+        # One read for the icon, the name and the descriptions — four separate ones
+        # (two of them a yq apiece) used to open every group here.
+        load_group_meta "$group_file"
+        local group_icon="$GROUP_ICON" group_label="$GROUP_NAME"
         [ -z "$group_label" ] && group_label="$group"
-
-        # Load descriptions
         local -A descs=()
-        while IFS='=' read -r dkey dval; do
-            [ -n "$dkey" ] && descs["$dkey"]="$dval"
-        done < <(parse_descriptions "$group_file")
+        local _dk
+        for _dk in "${!DESCRIPTIONS[@]}"; do descs["$_dk"]="${DESCRIPTIONS[$_dk]}"; done
 
         # Build desktop_only exclusion set for terminal mode
         local -A desktop_only_pkgs=()
@@ -257,13 +257,15 @@ _build_tree_payload() {
     for group in "${SELECTED_GROUP_NAMES[@]}"; do
         local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
         [ -f "$group_file" ] || continue
+        # One read for both halves, and the same read the tree itself uses. The two
+        # loops this replaces also skipped the desktop_only filter, so a terminal
+        # install advertised a total one higher than the list underneath it could
+        # show (development's cursor-bin); group_declared_packages applies the filter,
+        # so the header now agrees with its own rows.
         local count=0 pkg
         while IFS= read -r pkg; do
             [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_packages "$group_file" "$DISTRO_FAMILY")
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && count=$((count + 1))
-        done < <(parse_custom_install_names "$group_file")
+        done < <(group_declared_packages "$group_file")
         totals+="${group}=${count} "
     done
     printf '%s\n' "$totals"
@@ -285,20 +287,14 @@ _select_packages_gum_fallback() {
         local group_file="$DOTFILES_DIR/packages/groups/$group.yaml"
         [ -f "$group_file" ] || continue
 
-        local group_icon="" group_label=""
-        if command_exists yq; then
-            group_icon=$(yq -r '.icon // ""' "$group_file")
-            group_label=$(yq -r '.name // ""' "$group_file")
-        else
-            group_icon=$(grep "^icon:" "$group_file" | sed 's/icon:[[:space:]]*//')
-            group_label=$(grep "^name:" "$group_file" | sed 's/name:[[:space:]]*//')
-        fi
+        # One read for the icon, the name and the descriptions — four separate ones
+        # (two of them a yq apiece) used to open every group here.
+        load_group_meta "$group_file"
+        local group_icon="$GROUP_ICON" group_label="$GROUP_NAME"
         [ -z "$group_label" ] && group_label="$group"
-
         local -A descs=()
-        while IFS='=' read -r dkey dval; do
-            [ -n "$dkey" ] && descs["$dkey"]="$dval"
-        done < <(parse_descriptions "$group_file")
+        local _dk
+        for _dk in "${!DESCRIPTIONS[@]}"; do descs["$_dk"]="${DESCRIPTIONS[$_dk]}"; done
 
         # Build desktop_only exclusion set for terminal mode
         local -A desktop_only_pkgs=()
@@ -466,6 +462,9 @@ select_group_packages() {
         if [ "$select_rc" -eq 1 ]; then
             # User pressed Esc — confirm cancellation
             echo ""
+            # The one prompt left as a raw `gum confirm`, on purpose: everywhere
+            # else a cancel means "stop", but here stopping *is* the Yes answer, so
+            # treating Esc as an abort would silently invert it into a yes.
             if gum confirm "Cancel installation?"; then
                 print_info "Installation cancelled"
                 exit 0
@@ -569,7 +568,7 @@ confirm_installation() {
     fi
     echo ""
 
-    if gum confirm "Proceed with installation?"; then
+    if confirm_or_abort "Proceed with installation?"; then
         return 0
     else
         print_info "Installation cancelled"
@@ -651,11 +650,19 @@ install_common_tool() {
     local name="$1"
     local install_cmd
     install_cmd=$(parse_entry_field "$DOTFILES_DIR/packages/common.yaml" tools "$name" install)
+    # Both outcomes leave the tool absent — callers only get here when it is
+    # missing — so both withhold the anchor. A missing declaration is a repo bug
+    # rather than a machine one, but the machine is still short a declared tool, and
+    # the fix belongs in common.yaml where CLAUDE.md already requires the metadata.
     if [ -z "$install_cmd" ]; then
         track_warning "No install command declared for $name in packages/common.yaml"
+        mark_sync_shortfall
         return 0
     fi
-    install_curl_tool "$name" "$install_cmd"
+    install_curl_tool "$name" "$install_cmd" || {
+        mark_sync_shortfall
+        return 1
+    }
 }
 
 # Install fnm and a Node.js LTS if missing. Idempotent, safe to call more than
@@ -819,14 +826,22 @@ install_group_packages() {
                 hash -r 2>/dev/null || true
             fi
 
-            # Skip if a hard-required command is still missing
+            # Skip if a hard-required command is still missing. No shortfall for
+            # the same reason install_custom_pkg does not mark one: a toolchain the
+            # machine has not got is not something this run fell short of.
             if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
                 track_warning "$requires_cmd still unavailable — skipping $pkg"
                 continue
             fi
 
             if [ -n "$install_cmd" ]; then
-                install_curl_tool "$pkg" "$install_cmd" || track_warning "Failed to install $pkg"
+                # track_warning alone is not enough: it prints at the end of setup
+                # but leaves SYNC_SHORTFALL false, so record_synced_state stamped the
+                # anchor over the missing tool and no later delta ever re-offered it.
+                install_curl_tool "$pkg" "$install_cmd" || {
+                    track_warning "Failed to install $pkg"
+                    mark_sync_shortfall
+                }
             fi
         done
 
@@ -902,9 +917,15 @@ install_common_tools() {
         print_info "No global npm packages declared in packages/common.yaml"
     elif command_exists npm; then
         print_info "Installing global npm packages (${npm_pkgs[*]})..."
-        npm install -g "${npm_pkgs[@]}" || track_warning "Failed to install global npm packages"
+        npm install -g "${npm_pkgs[@]}" || {
+            track_warning "Failed to install global npm packages"
+            mark_sync_shortfall
+        }
     else
+        # ensure_node_toolchain ran just above, so npm missing here is a failure of
+        # this run, not a machine that never had node.
         track_warning "npm unavailable — skipped global npm packages (${npm_pkgs[*]})"
+        mark_sync_shortfall
     fi
 
     # Install rofi themes when the Hyprland group is selected
@@ -947,9 +968,19 @@ install_common_tools() {
                 [ -n "$existing_model_cfg" ] && HYPRVOICE_MODEL="$existing_model_cfg"
                 print_info "Hyprvoice already configured (provider=$HYPRVOICE_PROVIDER, model=$HYPRVOICE_MODEL)"
             else
-                # First-time setup: choose provider (default to local on cancel)
+                # First-time setup: default to local when declined, but stop on a
+                # cancel. Esc used to land on whisper-cpp and go on to install the
+                # engine and a model — the install the user was trying to call off.
+                # abort_interrupted has to run here, not in the helper: the helper
+                # runs in a command substitution, where an exit ends the subshell only.
+                local _provider_rc=0
                 HYPRVOICE_PROVIDER=$(hyprvoice_choose_provider "Select transcription provider for dictation:") \
-                    || HYPRVOICE_PROVIDER="whisper-cpp"
+                    || _provider_rc=$?
+                if [ "$_provider_rc" -eq 130 ]; then
+                    abort_interrupted
+                elif [ "$_provider_rc" -ne 0 ]; then
+                    HYPRVOICE_PROVIDER="whisper-cpp"
+                fi
 
                 if [ "$HYPRVOICE_PROVIDER" = "whisper-cpp" ]; then
                     # Local provider: install the whisper.cpp engine on demand.
@@ -958,7 +989,10 @@ install_common_tools() {
                     # the CUDA toolkit + ggml-cuda-git compile.
                     if ! command_exists whisper-cli && ! command_exists whisper-cpp; then
                         print_info "Installing local whisper.cpp engine (may build against CUDA)..."
-                        install_packages whisper.cpp \
+                        # install_optional_packages, not install_packages: the comment
+                        # above is why it is in no yaml, so a failure here is not a
+                        # declared package missing and must not withhold the anchor.
+                        install_optional_packages whisper.cpp \
                             || track_warning "Failed to install whisper.cpp — local dictation will not work"
                     fi
 
@@ -968,8 +1002,12 @@ install_common_tools() {
 
                     if [ ${#models[@]} -gt 0 ]; then
                         models+=("Skip — download later")
-                        HYPRVOICE_MODEL=$(printf '%s\n' "${models[@]}" | \
-                            gum choose --header "Select a whisper model for dictation:") || HYPRVOICE_MODEL="Skip"
+                        # The list carries an explicit "Skip — download later", so Esc
+                        # is a cancel, not a skip. Redirect rather than a pipe:
+                        # choose_or_abort must run in this shell to be able to stop it.
+                        choose_or_abort HYPRVOICE_MODEL \
+                            --header "Select a whisper model for dictation:" \
+                            <<< "$(printf '%s\n' "${models[@]}")" || HYPRVOICE_MODEL="Skip"
                         HYPRVOICE_MODEL="${HYPRVOICE_MODEL%% *}"
                     else
                         track_warning "Could not fetch model list from hyprvoice"
@@ -985,8 +1023,13 @@ install_common_tools() {
                         HYPRVOICE_MODEL="small"
                     fi
                 elif [ "$HYPRVOICE_PROVIDER" = "groq" ]; then
-                    HYPRVOICE_MODEL=$(hyprvoice_choose_groq_model) \
-                        || HYPRVOICE_MODEL="${GROQ_WHISPER_MODELS[0]%% *}"
+                    local _model_rc=0
+                    HYPRVOICE_MODEL=$(hyprvoice_choose_groq_model) || _model_rc=$?
+                    if [ "$_model_rc" -eq 130 ]; then
+                        abort_interrupted
+                    elif [ "$_model_rc" -ne 0 ]; then
+                        HYPRVOICE_MODEL="${GROQ_WHISPER_MODELS[0]%% *}"
+                    fi
 
                     if ! setup_groq_api_key; then
                         track_warning "No Groq API key provided — set GROQ_API_KEY later"
@@ -1131,8 +1174,16 @@ refresh_preinstalled_tools() {
     local updater="$DOTFILES_DIR/tools/manage-updates.sh"
     [ -x "$updater" ] || return 0
 
-    "$updater" refresh "${PREINSTALLED_TOOLS[@]}" \
-        || track_warning "Some tools could not be refreshed — run 'dots update' to retry"
+    # 130 means the user stopped the child at one of its prompts (gum sends no
+    # signal on Esc, so our own trap never fires). Swallowing it as a warning
+    # carried on with the rest of the install; see update_tools in sync-machine.sh.
+    local rc=0
+    "$updater" refresh "${PREINSTALLED_TOOLS[@]}" || rc=$?
+    if [ "$rc" -eq 130 ]; then
+        exit 130
+    elif [ "$rc" -ne 0 ]; then
+        track_warning "Some tools could not be refreshed — run 'dots update' to retry"
+    fi
 }
 
 # Migrate from old notification daemons (mako/dunst) to swaync
@@ -1457,7 +1508,7 @@ setup_biometric() {
 
     if fprintd-list "$USER" 2>&1 | grep -q '^Fingerprints for user'; then
         print_info "Fingerprint(s) already enrolled for $USER"
-    elif gum confirm "Enroll a fingerprint now?"; then
+    elif confirm_or_abort "Enroll a fingerprint now?"; then
         print_info "Touch the sensor several times when prompted..."
         # Use sudo: polkit's enroll rule requires an "active" session with auth_admin,
         # which fails from many terminal contexts (subterminals, IDE shells, tmux).
@@ -1476,7 +1527,7 @@ setup_biometric() {
     [ -f /etc/pam.d/system-auth ] && sysauth_file=/etc/pam.d/system-auth
     if grep -q 'pam_fprintd.so' "$sysauth_file" 2>/dev/null; then
         print_info "pam_fprintd already configured in $sysauth_file"
-    elif gum confirm "Enable fingerprint for system auth (login, sudo, polkit, Bitwarden)?"; then
+    elif confirm_or_abort "Enable fingerprint for system auth (login, sudo, polkit, Bitwarden)?"; then
         print_info "Adding pam_fprintd.so to $sysauth_file"
         sudo cp "$sysauth_file" "${sysauth_file}.bak.$(date +%s)"
         sudo sed -i '0,/^auth/s//auth      sufficient   pam_fprintd.so\n&/' "$sysauth_file"
@@ -1723,15 +1774,14 @@ setup_ssh() {
     local opt_restore="Restore from backup (private GitHub repo)"
     local opt_generate="Generate a new SSH key"
     local choice
-    choice=$(printf '%s\n' \
-        "$opt_restore" \
-        "$opt_generate" \
-        "Skip" | gum choose --cursor.foreground="212" --header "No SSH key found:") || true
+    # "Skip" is on the menu, so Esc is a cancel rather than a skip.
+    choose_or_abort choice --cursor.foreground="212" --header "No SSH key found:" \
+        <<< "$(printf '%s\n' "$opt_restore" "$opt_generate" "Skip")" || true
 
     case "$choice" in
         "$opt_restore")
             if ! restore_ssh_from_backup; then
-                if gum confirm "Generate a new SSH key instead?"; then
+                if confirm_or_abort "Generate a new SSH key instead?"; then
                     generate_ssh_key
                 fi
             fi
@@ -1771,7 +1821,9 @@ generate_ssh_key() {
 restore_ssh_from_backup() {
     if ! command_exists gh; then
         print_info "Installing GitHub CLI..."
-        install_packages github-cli || {
+        # Optional: fetched because this step needs gh, not because a yaml asked
+        # for it. The development group installs its own copy and marks that.
+        install_optional_packages github-cli || {
             print_error "Failed to install GitHub CLI"
             return 1
         }
@@ -1808,7 +1860,7 @@ setup_plymouth() {
     fi
 
     echo ""
-    if ! gum confirm "Set up Plymouth boot splash screen?"; then
+    if ! confirm_or_abort "Set up Plymouth boot splash screen?"; then
         return
     fi
 
@@ -1816,7 +1868,9 @@ setup_plymouth() {
 
     # Install plymouth
     print_info "Installing Plymouth..."
-    install_packages plymouth || {
+    # Declared in no yaml — setup installs it directly — so a failure is reported
+    # here and does not withhold the sync anchor.
+    install_optional_packages plymouth || {
         print_error "Failed to install Plymouth"
         return 1
     }
@@ -1833,7 +1887,8 @@ setup_plymouth() {
 
     # Let user pick a theme
     local theme
-    theme=$(printf '%s\n' "${themes[@]}" | gum choose --header "Select Plymouth theme")
+    choose_or_abort theme --header "Select Plymouth theme" \
+        <<< "$(printf '%s\n' "${themes[@]}")" || true
 
     if [ -z "$theme" ]; then
         print_info "No theme selected, using default (spinner)"
@@ -1876,7 +1931,7 @@ setup_shell() {
         return 0
     fi
     
-    if gum confirm "Change default shell to zsh?"; then
+    if confirm_or_abort "Change default shell to zsh?"; then
         chsh -s "$zsh_path"
         SHELL_CHANGED=true
         print_success "Default shell changed to zsh"
@@ -2061,8 +2116,14 @@ main() {
 
     # Only now, with every step behind us: the marker is what tells setup not to
     # run again and what `dots update` diffs against, so a run that died earlier
-    # must not have left one.
+    # must not have left one. It also declines by itself if a declared package did
+    # not land — an anchor written over a shortfall tells every later delta those
+    # packages were dealt with, so they would never be offered again.
     record_synced_state
+    if sync_shortfall; then
+        track_warning "No sync anchor written: some declared packages are missing"
+        print_info "Fix them ('dots packages sync'), then 'dots update' anchors this machine"
+    fi
 
     # Done!
     show_completion

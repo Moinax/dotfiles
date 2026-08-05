@@ -47,18 +47,120 @@ track_warning() {
     INSTALL_WARNINGS+=("$1")
 }
 
+# ── Package shortfall ────────────────────────────────────────────────────────
+# Set for the rest of the run by anything that leaves this machine without a
+# package the repo declares — a failed install, a declined one, a custom entry
+# that did not land. record_synced_state consults it and will not stamp the
+# anchor while it is set.
+#
+# One flag rather than a judgement per command, because the two commands that
+# install packages had drawn opposite conclusions from the same situation:
+# `dots update` grew its own flag for exactly this and held the anchor back,
+# while `dots setup` stamped it regardless of a "Some base packages failed to
+# install" warning — so packages that failed during setup were never offered
+# again by any later delta. Marking it where the shortfall happens, and reading
+# it in the single writer of the anchor, is what makes the two agree.
+#
+# Per-process and deliberately not persisted: it describes this run, and the next
+# run that installs everything it was asked to has no shortfall to report.
+#
+# Assigned only when already unset, because common.sh is sourced more than once in
+# a run: installer.sh re-sources it through lib/services.sh *after* the package
+# phase, and a plain `SYNC_SHORTFALL=false` there wiped what the installs had
+# recorded, so `dots setup` stamped the anchor over a package that never landed —
+# the exact failure this flag exists to prevent. Exported so a child that installs
+# on our behalf inherits the outstanding shortfall; the value cannot travel back up
+# from a child, which is why the two callers that delegate an install to one read
+# its exit status instead.
+: "${SYNC_SHORTFALL:=false}"
+export SYNC_SHORTFALL
+
+mark_sync_shortfall() {
+    SYNC_SHORTFALL=true
+    export SYNC_SHORTFALL
+}
+
+sync_shortfall() {
+    $SYNC_SHORTFALL
+}
+
 print_error() {
     _print_tag "$RED" "[ERROR]" "$1"
 }
 
-# Install a SIGINT/SIGTERM trap so Ctrl+C cleanly exits interactive scripts
-# even when gum (or any child) absorbs the signal first. Idempotent via an
-# exported marker: child processes inherit it and skip installing a second
-# trap, so Ctrl+C only prints one "Interrupted." line across the tree.
+# One presentation for "the user stopped this", shared by the signal trap below
+# and by prompts that learn of an abort from an exit status rather than a signal.
+abort_interrupted() {
+    echo
+    print_warning "Interrupted."
+    exit 130
+}
+
+# Install a SIGINT/SIGTERM trap so Ctrl+C stops the script even when the child it
+# is waiting on absorbs the signal and exits *normally* rather than dying from it.
+# gum does exactly that (it exits 130), and bash only exits on its own when the
+# foreground command was killed by the signal — so a shell with no trap simply
+# carries on to the next command, which for a prompt means carrying on with an
+# answer the user never gave.
+#
+# Every shell gets a trap. What used to happen: the marker below is exported, and
+# any shell that found it set skipped installing one — which meant *no script dots
+# runs ever had a trap*, since `dots` itself installs the first one and `dots
+# update`, `dots packages` and `dots backup` are all its children. An interrupt at
+# one of their gum prompts was read as a plain answer and the flow continued to the
+# end, applying the dotfiles the user had just tried to stop.
+#
+# The marker survives for what it was actually good for — keeping the announcement
+# to one line. An inner shell stops silently and lets the outermost one, whose trap
+# runs once the child has exited, do the talking. tools/manage-external-apps.py
+# reads the same marker for the same reason.
 install_interrupt_trap() {
-    [ -n "${_INTERRUPT_TRAP_OWNER:-}" ] && return 0
+    if [ -n "${_INTERRUPT_TRAP_OWNER:-}" ]; then
+        trap 'exit 130' INT TERM
+        return 0
+    fi
     export _INTERRUPT_TRAP_OWNER=$$
-    trap 'echo; print_warning "Interrupted."; exit 130' INT TERM
+    trap abort_interrupted INT TERM
+}
+
+# `gum confirm` for a question where declining and aborting are different
+# answers. gum exits 0 for yes, 1 for no and 130 when cancelled — and cancelling
+# with Esc sends no signal at all, so the interrupt trap never fires and Esc
+# otherwise reads as a deliberate "no", quietly carrying on with the rest of a
+# flow the user meant to stop. Ctrl+C is still delivered as a signal and handled
+# by the trap; this covers the same intent expressed the other way.
+#
+# Returns 0 for yes and 1 for no. Never returns on an abort. Requires gum — a
+# caller that cannot assume it must check first, since gum's absence would come
+# back as some other status and be read as "no".
+confirm_or_abort() {
+    local rc=0
+    gum confirm "$@" || rc=$?
+    [ "$rc" -eq 130 ] && abort_interrupted
+    return "$rc"
+}
+
+# `gum choose` for a picker where cancelling means "stop", assigning the choice to
+# the variable named by the first argument. Returns 0 with a selection, 1 when the
+# user chose nothing, and never returns on a cancel.
+#
+# The output goes through a variable name — the shape spin_capture already uses —
+# rather than stdout, and that is the whole reason this can exist. A helper whose
+# output is captured (`sel=$(… | choose_or_abort …)`) runs inside a command
+# substitution, which is a subshell, so its `exit` would end only the subshell and
+# leave the caller running with an empty selection and no idea why. Feed the
+# options in on stdin with a redirect, NOT a pipe, for the same reason: the right
+# side of a pipe is also a subshell.
+# Usage: choose_or_abort picked --no-limit --header "…" <<< "$options"
+choose_or_abort() {
+    local __var="$1"
+    shift
+    local __out __rc=0
+    __out=$(gum choose "$@") || __rc=$?
+    [ "$__rc" -eq 130 ] && abort_interrupted
+    printf -v "$__var" '%s' "$__out"
+    [ -n "$__out" ] || return 1
+    return 0
 }
 
 # Test whether a group is in SELECTED_GROUP_NAMES.
@@ -723,8 +825,16 @@ chezmoi_data_set() {
 }
 
 # Whether this machine's install_purpose matches (desktop | terminal).
+# $INSTALL_PURPOSE wins when it is set, and only the installer sets it. It has to:
+# chezmoi.toml does not learn the purpose until setup_dotfiles writes it, which is
+# after the package selector has run and after the group packages are installed — so
+# on a fresh install the file answers "" for the whole phase that needs the answer,
+# and a terminal install would silently keep every desktop_only package. Reading the
+# in-memory value first is also what lets the installer use the shared enumerators at
+# all, instead of the hand-rolled copies it grew for this reason. Unset everywhere
+# else (`dots update`, `dots packages`), so those still read the file.
 install_purpose_is() {
-    [ "$(chezmoi_data_get install_purpose)" = "$1" ]
+    [ "${INSTALL_PURPOSE:-$(chezmoi_data_get install_purpose)}" = "$1" ]
 }
 
 # ── Machine profile state ────────────────────────────────────────────────────
@@ -774,7 +884,18 @@ machine_is_managed() {
 # on: both `dots setup` (at the very end of a run that worked) and `dots update`
 # call this, so the next key added here cannot end up written by one and not the
 # other. Requires $DOTFILES_DIR.
+#
+# Refuses while a package shortfall is outstanding, because the anchor's meaning
+# is "this machine agrees with that commit". Stamping it while a declared package
+# failed to install would compute every future delta from a commit the machine
+# never caught up with, and the packages left behind would never be offered again
+# — the anchor would claim they had been dealt with. Silent, since the callers
+# word it themselves (they know whether anything else in the run still landed);
+# ask `sync_shortfall` if you need to.
 record_synced_state() {
+    if $SYNC_SHORTFALL; then
+        return 0
+    fi
     local head
     head=$(git -C "$DOTFILES_DIR" rev-parse HEAD 2>/dev/null) || head=""
     [ -n "$head" ] && profile_set SYNCED_COMMIT "$head"
@@ -804,44 +925,165 @@ set_secret() {
 # the update delta grew its own walk and read a packages/base.yaml that has
 # never existed, silently emptying half its answer).
 
-# Every package a group declares for this machine: distro packages plus
-# custom_install entries, minus the desktop-only ones on a terminal install.
-# One package per line.
-get_group_packages() {
-    local file="$1"
-    local all_packages
-    all_packages=$({ parse_packages "$file" "$DISTRO_FAMILY"; parse_custom_install_names "$file"; } \
-        | grep -v "^$" || true)
+# Every package a group declares for this machine — distro packages then
+# custom_install entries, minus the desktop-only ones on a terminal install — as
+# "pkg<TAB>custom" for a custom_install entry and "pkg<TAB>" for a distro one.
+#
+# All three of the group's lists come from ONE yq call. They used to be three
+# (`parse_packages` + `parse_custom_install_names` + `parse_desktop_only`), and
+# `declared_packages_at` asked for the custom names a second time on top, so a
+# 7-group tree cost 21 yq invocations and the update delta — which walks two trees
+# — cost 50. That is not a rounding error: this machine has python-yq, where every
+# invocation pays ~180ms of interpreter start, so the walk was ~9s of the ~10s
+# scan. One call per file makes it 16.
+#
+# Emission order inside the query is deliberate: desktop_only and the custom names
+# come first so both sets are known before the rows they classify arrive, and the
+# rows are then replayed distro-first to keep the order every caller already saw.
+group_declared_packages() {
+    group_declared_lists "$1" | classify_declared_rows
+}
 
-    if [ -z "$all_packages" ]; then
-        return
-    fi
-
-    # Filter desktop_only packages when in terminal mode
+# The classification half, reading tagged rows on stdin rather than a filename, so
+# a caller that also wants the metadata rows can capture one read and use it twice
+# instead of paying for a second yq. That is the whole reason this is split out —
+# `dots packages`' catalogue needs the name, the icon, the descriptions AND the
+# package rows, and it used to spend four separate invocations per group getting
+# them (~5.9s of a 7.1s scan).
+classify_declared_rows() {
+    local terminal=false
     if install_purpose_is terminal; then
-        local desktop_only_list
-        desktop_only_list=$(parse_desktop_only "$file")
-        if [ -n "$desktop_only_list" ]; then
-            grep -vxFf <(printf '%s\n' "$desktop_only_list") <<< "$all_packages" || true
-            return
-        fi
+        terminal=true
     fi
 
-    echo "$all_packages"
+    # Prefixed because common.sh is sourced by every script: a plain `custom` or
+    # `distro` array here shadows the same name in whichever caller's function is
+    # on the stack, and shellcheck reads it as one variable used two ways in files
+    # that never mention it.
+    local -A _gdp_desktop_only=() _gdp_custom_names=()
+    local -a _gdp_distro=() _gdp_custom=()
+    local kind name
+
+    while IFS=$'\t' read -r kind name; do
+        [ -n "$name" ] || continue
+        case "$kind" in
+            D) _gdp_desktop_only["$name"]=1 ;;
+            # Marked by name, not by which list the row came from: a name declared
+            # in both lists counted as custom before, and its install path differs.
+            C) _gdp_custom_names["$name"]=1; _gdp_custom+=("$name") ;;
+            P) _gdp_distro+=("$name") ;;
+            # N/I/E are metadata for whoever asked for it; not our business.
+        esac
+    done
+
+    for name in "${_gdp_distro[@]}" "${_gdp_custom[@]}"; do
+        if $terminal && [ -n "${_gdp_desktop_only[$name]:-}" ]; then
+            continue
+        fi
+        printf '%s\t%s\n' "$name" "${_gdp_custom_names[$name]:+custom}"
+    done
+}
+
+# The one yq call: "<tag><TAB>value" rows, tagged
+#   N name · I icon · E pkg=description · D desktop_only · C custom name · P package
+# Metadata first, then the two sets classify_declared_rows needs before the rows
+# they classify. The yq-less fallback calls the same parsers as before rather than
+# reimplementing their line-oriented scanning — that path is for a machine that has
+# not got yq yet, so correctness there matters and speed does not.
+group_declared_lists() {
+    local file="$1"
+    if command_exists yq; then
+        # Every value is coerced with tostring before it is concatenated. jq's `+`
+        # refuses string + number and one error aborts the whole comma-expression,
+        # so a single unquoted yaml scalar — `descriptions: {foo: 1.5}`, a version
+        # number read as a float — emitted *no rows at all* for the file. The group
+        # then looked empty everywhere at once: absent from `dots packages`, nothing
+        # missing in its sync, and no packages in the update delta, with stderr
+        # discarded and `|| true` swallowing the status. The four separate parsers
+        # this replaced could only ever lose the one list they parsed.
+        yq -r "
+          (\"N\t\" + ((.name // \"\") | tostring)),
+          (\"I\t\" + ((.icon // \"\") | tostring)),
+          ((.descriptions // {}) | to_entries[] | \"E\t\" + (.key | tostring) + \"=\" + ((.value // \"\") | tostring)),
+          ((.desktop_only // [])[]?   | select(. != null) | \"D\t\" + tostring),
+          ((.custom_install // [])[]? | .name | select(. != null) | \"C\t\" + tostring),
+          ((.packages.${DISTRO_FAMILY} // [])[]? | select(. != null) | \"P\t\" + tostring)
+        " "$file" 2>/dev/null | grep -v "^.	#" || true
+    else
+        printf 'N\t%s\n' "$(grep -m1 '^name:' "$file" | sed 's/^name:[[:space:]]*//')"
+        printf 'I\t%s\n' "$(grep -m1 '^icon:' "$file" | sed 's/^icon:[[:space:]]*//')"
+        parse_descriptions "$file" | sed 's/^/E\t/'
+        parse_desktop_only "$file" | sed 's/^/D\t/'
+        parse_custom_install_names "$file" | sed 's/^/C\t/'
+        parse_packages "$file" "$DISTRO_FAMILY" | sed 's/^/P\t/'
+    fi
+}
+
+# One read of a group file, exposing everything a view needs from it: GROUP_NAME,
+# GROUP_ICON and DESCRIPTIONS are set for the caller, and GROUP_ROWS keeps the raw
+# tagged text so the package rows can be classified without reading the file again
+# (pipe it into classify_declared_rows). Globals rather than stdout because a
+# command substitution or a pipe would put the assignments in a subshell — the same
+# constraint choose_or_abort works around.
+#
+# Replaces the name + icon + descriptions + package-list sequence every view used
+# to open with (its four helpers are gone): four yq invocations per group where one
+# does.
+# shellcheck disable=SC2034  # GROUP_ICON/GROUP_ROWS are read by callers
+load_group_meta() {
+    local file="$1"
+    GROUP_NAME=""
+    GROUP_ICON=""
+    declare -gA DESCRIPTIONS=()
+    GROUP_ROWS=$(group_declared_lists "$file")
+
+    local tag value
+    while IFS=$'\t' read -r tag value; do
+        case "$tag" in
+            N) GROUP_NAME="$value" ;;
+            I) GROUP_ICON="$value" ;;
+            E) [ -n "$value" ] && DESCRIPTIONS["${value%%=*}"]="${value#*=}" ;;
+        esac
+    done <<< "$GROUP_ROWS"
+}
+
+# Names only, in the same order — the shape every caller but the update delta
+# wants. The delta needs the custom flag too, and takes group_declared_packages
+# directly rather than re-deriving it with another parse.
+get_group_packages() {
+    group_declared_packages "$1" | cut -f1
 }
 
 # Base packages this machine should have: core (+ aur), plus the desktop
 # sections unless this is a terminal-only install. Takes the packages/ directory
 # to read, so the same walk serves the current checkout and a worktree exported
 # at an older commit; defaults to this machine's.
+# Also one yq call rather than one per section, for the reason in
+# group_declared_packages: four invocations per tree, eight per delta scan.
 base_desired_packages() {
     local base_file="${1:-${PACKAGES_DIR:-}}/$DISTRO_FAMILY/base.yaml"
     [ -f "$base_file" ] || return 0
-    parse_packages "$base_file" "core"
-    parse_packages "$base_file" "aur"
+
+    local sections=(core aur)
     if ! install_purpose_is terminal; then
-        parse_packages "$base_file" "desktop"
-        parse_packages "$base_file" "desktop_aur"
+        sections+=(desktop desktop_aur)
+    fi
+
+    local section
+    if command_exists yq; then
+        # `select(. != null)` for the reason group_declared_lists carries one: `[]?`
+        # tolerates a missing key but not a null *entry*, and with -r a null list
+        # item prints as the literal string `null`, which then reaches pacman as a
+        # package name. Parenthesised because `|` binds looser than `,`.
+        local query=""
+        for section in "${sections[@]}"; do
+            query+="((.packages.${section} // [])[]? | select(. != null)),"
+        done
+        yq -r "${query%,}" "$base_file" 2>/dev/null | grep -v "^#" | grep -v "^$" || true
+    else
+        for section in "${sections[@]}"; do
+            parse_packages "$base_file" "$section"
+        done
     fi
 }
 
@@ -879,12 +1121,22 @@ install_custom_pkg() {
     local install_cmd requires_cmd
     install_cmd=$(parse_custom_install_cmd "$file" "$pkg")
     requires_cmd=$(parse_custom_install_requires "$file" "$pkg")
+    # No shortfall on this path, unlike the install failure below: a missing
+    # toolchain is a standing property of the machine, not something this run fell
+    # short of, and the flag is never cleared. Marking it froze the anchor for good
+    # — the same skip recurred every run, so the delta was recomputed from the same
+    # ancient commit forever and re-prompted for packages the machine had decided
+    # not to build. The warning is the report; `dots packages sync` lists it on
+    # demand.
     if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
         print_warning "$requires_cmd not found — skipping $pkg"
         return 0
     fi
     if [ -n "$install_cmd" ]; then
-        install_curl_tool "$pkg" "$install_cmd" || print_warning "Failed to install $pkg"
+        install_curl_tool "$pkg" "$install_cmd" || {
+            print_warning "Failed to install $pkg"
+            mark_sync_shortfall
+        }
     fi
 }
 

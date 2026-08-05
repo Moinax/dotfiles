@@ -33,6 +33,9 @@ load_distro_lib || exit 1
 # Filled by pull_repo / resolve_base, read by the phases after them.
 BASE_COMMIT=""        # what this machine last agreed with; "" = no delta known
 CHANGED_FILES=()      # BASE_COMMIT..HEAD, empty when BASE_COMMIT is ""
+# A package left behind is tracked by mark_sync_shortfall/sync_shortfall in
+# common.sh, not by a flag of this script's own: `dots setup` needed the same
+# judgement and had drawn the opposite conclusion from it.
 
 # ── Phase 1: the repo ────────────────────────────────────────────────────────
 
@@ -58,7 +61,7 @@ pull_repo() {
         print_warning "Uncommitted changes in $DOTFILES_DIR:"
         git -C "$DOTFILES_DIR" status --short | sed 's/^/  /'
         echo ""
-        if gum confirm "Stash them, pull, then restore?"; then
+        if confirm_or_abort "Stash them, pull, then restore?"; then
             pull_args=(-c rebase.autoStash=true "${pull_args[@]}")
         else
             print_info "Keeping local state — skipping pull"
@@ -114,7 +117,7 @@ resolve_base() {
 # and carrying it out of here is what saves a second parse of every group file.
 declared_packages_at() {
     local root="$1"
-    local file pkg
+    local file pkg flag
 
     while IFS= read -r pkg; do
         [ -n "$pkg" ] && printf '%s\t\n' "$pkg"
@@ -126,14 +129,13 @@ declared_packages_at() {
         # so it is judged on the group's name and not on the old file's content.
         group_enabled "$file" || continue
 
-        local -A custom=()
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && custom["$pkg"]=1
-        done < <(parse_custom_install_names "$file")
-
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "${custom[$pkg]:+$file}"
-        done < <(get_group_packages "$file")
+        # group_declared_packages already knows which names are custom_install
+        # entries — it had to, to build its list. Asking again with a second
+        # parse_custom_install_names was the same yq work twice per group, and the
+        # only thing this needs on top is *which file* declared it.
+        while IFS=$'\t' read -r pkg flag; do
+            [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "${flag:+$file}"
+        done < <(group_declared_packages "$file")
     done
 }
 
@@ -194,7 +196,10 @@ reconcile_group_flags() {
         print_info "$group${desc:+ — $desc}"
         print_info "  $state"
         flag=$(get_chezmoi_flag "$group")
-        if gum confirm "Record '$group' as enabled on this machine?"; then
+        # confirm_or_abort matters most here: answering either way writes the flag
+        # and the question is never put again, so a cancel read as "no" would
+        # record a group as disabled permanently on the strength of an Esc.
+        if confirm_or_abort "Record '$group' as enabled on this machine?"; then
             chezmoi_data_set "$flag" true
             print_success "$flag = true"
         else
@@ -202,6 +207,48 @@ reconcile_group_flags() {
             print_info "$flag = false — it will not be asked again"
         fi
     done
+}
+
+# The delta scan: everything between "what has the repo gained?" and the answer.
+# Emits "pkg<TAB>group-file" per candidate, carrying the custom_install split out
+# so the caller does not walk the yaml a second time to rebuild it.
+#
+# Silent and several seconds long — a `git archive` export, two full yq walks over
+# packages/, a package-manager query and one installed-check per custom entry — so
+# it is meant to be run through spin_capture. That is also why it prints nothing
+# itself: a failure to read the anchor comes back as exit status 1 and the caller
+# words the warning, since the spinner swallows this pass's stderr. INSTALLED_SET
+# stays local to the background pass, and nothing after the scan needs it.
+new_package_candidates() {
+    local tmp
+    tmp=$(mktemp -d)
+    # shellcheck disable=SC2064  # $tmp must expand now, not at trap time
+    trap "rm -rf '$tmp'" RETURN
+
+    git -C "$DOTFILES_DIR" archive "$BASE_COMMIT" packages 2>/dev/null \
+        | tar -x -C "$tmp" || return 1
+
+    local -A was=()
+    local pkg group_file
+    while IFS=$'\t' read -r pkg group_file; do
+        [ -n "$pkg" ] && was["$pkg"]=1
+    done < <(declared_packages_at "$tmp")
+
+    # New = declared now, not declared then, not already on the machine.
+    ensure_installed_index
+    local -A seen=()
+    while IFS=$'\t' read -r pkg group_file; do
+        [ -z "$pkg" ] && continue
+        [ -n "${seen[$pkg]:-}" ] && continue
+        seen["$pkg"]=1
+        [ -n "${was[$pkg]:-}" ] && continue
+        if [ -n "$group_file" ]; then
+            is_custom_install_installed "$group_file" "$pkg" && continue
+        else
+            [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] && continue
+        fi
+        printf '%s\t%s\n' "$pkg" "$group_file"
+    done < <(declared_packages_at "$DOTFILES_DIR")
 }
 
 # Install what the repo gained and this machine does not have. Deliberately not
@@ -219,39 +266,26 @@ sync_new_packages() {
 
     print_header "New Packages"
 
-    local tmp
-    tmp=$(mktemp -d)
-    # shellcheck disable=SC2064  # $tmp must expand now, not at trap time
-    trap "rm -rf '$tmp'" RETURN
-
-    if ! git -C "$DOTFILES_DIR" archive "$BASE_COMMIT" packages 2>/dev/null | tar -x -C "$tmp"; then
+    local found=""
+    if ! spin_capture found "Comparing packages against ${BASE_COMMIT:0:8}..." \
+            new_package_candidates; then
         print_warning "Could not read packages/ at ${BASE_COMMIT:0:8} — skipping the delta"
+        # A shortfall, not a clean skip: the scan is what decides whether anything
+        # is missing, so a scan that did not run leaves that unknown. Advancing the
+        # anchor here would move it past every package the repo gained since it,
+        # and nothing would ever offer them again.
+        mark_sync_shortfall
         return 0
     fi
 
-    local -A was=()
+    local -A custom_of=()
+    local -a candidates=()
     local pkg group_file
     while IFS=$'\t' read -r pkg group_file; do
-        [ -n "$pkg" ] && was["$pkg"]=1
-    done < <(declared_packages_at "$tmp")
-
-    # New = declared now, not declared then, not already on the machine.
-    ensure_installed_index
-    local -A custom_of=() seen=()
-    local -a candidates=()
-    while IFS=$'\t' read -r pkg group_file; do
-        [ -z "$pkg" ] && continue
-        [ -n "${seen[$pkg]:-}" ] && continue
-        seen["$pkg"]=1
-        [ -n "$group_file" ] && custom_of["$pkg"]="$group_file"
-        [ -n "${was[$pkg]:-}" ] && continue
-        if [ -n "$group_file" ]; then
-            is_custom_install_installed "$group_file" "$pkg" && continue
-        else
-            [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] && continue
-        fi
+        [ -n "$pkg" ] || continue
         candidates+=("$pkg")
-    done < <(declared_packages_at "$DOTFILES_DIR")
+        [ -n "$group_file" ] && custom_of["$pkg"]="$group_file"
+    done <<< "$found"
 
     if [ ${#candidates[@]} -eq 0 ]; then
         print_success "No new packages since ${BASE_COMMIT:0:8}"
@@ -261,28 +295,59 @@ sync_new_packages() {
     print_info "Added to the dotfiles since ${BASE_COMMIT:0:8} (${#candidates[@]}):"
     printf '  %s\n' "${candidates[@]}"
     echo ""
-    if ! gum confirm "Install them?"; then
+    if ! confirm_or_abort "Install them?"; then
         print_info "Skipped — they will be offered again next time"
+        mark_sync_shortfall
         return 0
     fi
 
     local -a distro_pkgs=()
     for pkg in "${candidates[@]}"; do
         if [ -n "${custom_of[$pkg]:-}" ]; then
+            # install_custom_pkg marks the shortfall itself on both of its
+            # not-installed paths, so nothing to record here.
             install_custom_pkg "${custom_of[$pkg]}" "$pkg"
         else
             distro_pkgs+=("$pkg")
         fi
     done
-    [ ${#distro_pkgs[@]} -gt 0 ] && install_packages "${distro_pkgs[@]}"
+
+    # Only reached for a shortfall this machine can carry: an AUR build that broke,
+    # a package the repo names and the mirrors no longer have. Those warn, let the
+    # configs and tools land, and hold the anchor back through the shortfall flag
+    # install_packages already set — whereas a stale package database means nothing
+    # can be installed at all, and install_packages ends the run itself rather than
+    # returning here (see _recover_stale_db in arch.sh).
+    #
+    # Unguarded, this was `[ n -gt 0 ] && install_packages …` — a bare failing
+    # command under `set -e`, so *every* failure exited mid-phase with no chezmoi
+    # apply, no tool refresh, no surface reloads and no anchor, and did it silently,
+    # since the exit looked like a clean end. Which of the two happens is now a
+    # decision rather than an accident of shell semantics.
+    if [ ${#distro_pkgs[@]} -gt 0 ]; then
+        install_packages "${distro_pkgs[@]}" \
+            || print_warning "Some new packages could not be installed"
+    fi
     return 0
 }
 
 # ── Phase 4: tools ───────────────────────────────────────────────────────────
 
 update_tools() {
-    "$DOTFILES_DIR/tools/manage-updates.sh" \
-        || print_warning "Some tools could not be updated"
+    # 130 is the child telling us the user stopped it, and it is the one status that
+    # must not become a warning: gum sends no signal on Esc, so our own INT trap
+    # never fires and swallowing this applied the dotfiles and stamped the anchor
+    # for a run the user had just aborted. Anything else really is "a tool failed".
+    #
+    # `if` rather than `&&` on each test: a bare failing && list is what `set -e`
+    # exits the whole script on.
+    local rc=0
+    "$DOTFILES_DIR/tools/manage-updates.sh" || rc=$?
+    if [ "$rc" -eq 130 ]; then
+        exit 130
+    elif [ "$rc" -ne 0 ]; then
+        print_warning "Some tools could not be updated"
+    fi
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -308,12 +373,20 @@ do_sync() {
     # passes none, which means "reconcile everything".
     run_post_apply "${CHANGED_FILES[@]}"
 
+    # record_synced_state declines on its own while a package shortfall is
+    # outstanding — mark_sync_shortfall in common.sh carries the why. Everything
+    # above this line has still happened, so the cost is one re-offer next run.
     record_synced_state
 
     local head
     head=$(profile_get SYNCED_COMMIT)
     echo ""
-    print_success "Machine in sync${head:+ at ${head:0:8}}"
+    if sync_shortfall; then
+        print_warning "Configs and tools are up to date, but packages were left behind"
+        print_info "Still anchored at ${head:0:8} — they will be offered again next 'dots update'"
+    else
+        print_success "Machine in sync${head:+ at ${head:0:8}}"
+    fi
 }
 
 usage() {

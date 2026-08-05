@@ -5,15 +5,46 @@
 _DISTRO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_DISTRO_DIR/../lib/common.sh"
 
+# Why the last _run_pkg_cmd failed, for callers that can act on it. Only the
+# stale-database case is worth distinguishing: it is the one failure that is not
+# transient and that a plain retry can never fix.
+_PKG_CMD_STALE_DB=false
+
+# Whether the packages being installed are ones a yaml declares. True by default,
+# because nearly every install is; the exceptions declare `local _PKG_DECLARED=false`
+# (or go through install_optional_packages) and are the bootstrap tools and optional
+# extras. Only a declared package withholds the sync anchor: the anchor's meaning is
+# "this machine agrees with that commit", and a failed extra is one `dots packages
+# sync` can neither list nor repair — marking it left an unclearable shortfall whose
+# own advice reported nothing to fix.
+_PKG_DECLARED=true
+
 # Run a pacman/paru command, converting "up to date" messages to info and
 # suppressing boilerplate noise. Output is filtered in real time via a pipe
-# so that download/install progress remains visible. On failure, print an
-# unmissable banner with the exact command — a transient mirror/download
+# so that download/install progress remains visible. A failure of unknown cause
+# prints an unmissable banner with the exact command — a transient mirror/download
 # error once aborted the whole base-package transaction and the generic
-# "some packages failed" warning made it easy to overlook.
+# "some packages failed" warning made it easy to overlook. A failure whose cause
+# this recognises reports the cause instead; see the branch at the bottom.
 _run_pkg_cmd() {
-    local rc=0
-    "$@" 2>&1 | while IFS= read -r line; do
+    local rc=0 stale_db
+    _PKG_CMD_STALE_DB=false
+    # Written from inside the pipe, so it has to be a file: the while loop runs in
+    # a subshell and a variable set there does not survive it.
+    #
+    # A fixed name per process rather than mktemp's random one, removed on the way in
+    # as well as out: the cleanup below is skipped whenever the interrupt trap exits
+    # mid-command, and a random name leaked one file per interrupted install.
+    stale_db="${TMPDIR:-/tmp}/dots-staledb.$$"
+    rm -f "$stale_db"
+    # LC_ALL=C because every branch below matches pacman's *English* output, the 404
+    # line included. Without it a translated locale silently disabled the whole
+    # stale-database recovery: the cause went unrecognised and the user was told to
+    # re-run a command that 404s identically every time. The two pacman readers
+    # further down this file already pin it for the same reason. Prefix assignment
+    # rather than `sudo LC_ALL=C`: sudo's compiled defaults pass LC_* through, and
+    # the sudoers here may not permit an explicit assignment.
+    LC_ALL=C "$@" 2>&1 | while IFS= read -r line; do
         if [[ "$line" =~ ^warning:\ (.+)\ is\ up\ to\ date\ --\ skipping$ ]]; then
             print_info "Already installed: ${BASH_REMATCH[1]}"
         elif [[ "$line" =~ ^::\ (.+)\ is\ up\ to\ date\ --\ skipping$ ]]; then
@@ -23,13 +54,30 @@ _run_pkg_cmd() {
         elif [[ "$line" =~ ^::\ (Resolving\ dependencies|Calculating\ (inner\ )?conflicts)\.\.\. ]]; then
             :
         else
+            # A 404 on the package file is not a network problem and re-running
+            # changes nothing: the local sync database names a version the mirrors
+            # have already replaced, so it asks every one of them for a filename
+            # that no longer exists. Worth calling out, because the symptom is
+            # fifty lines of per-mirror errors that read like a flaky connection.
+            [[ "$line" == *"failed retrieving file"*404* ]] && echo 1 >"$stale_db"
             echo "$line"
         fi
     done
     rc="${PIPESTATUS[0]}"
+    [ -s "$stale_db" ] && _PKG_CMD_STALE_DB=true
+    rm -f "$stale_db"
     if [ "$rc" -ne 0 ]; then
-        print_error "Package command failed (exit $rc): $*"
-        print_error "Scroll up for pacman's error output; re-run the command above to retry."
+        # A known cause gets one line and no banner. The banner exists so a
+        # transient failure is not overlooked and can be retried by hand — but here
+        # the cause is named, the command is about to be retried for you, and
+        # echoing it back as something to re-run would be wrong advice on top of
+        # noise. The pacman output above already ends with its own two errors.
+        if $_PKG_CMD_STALE_DB; then
+            print_warning "The mirrors 404'd: this package database is older than they are, so only an upgrade can fix it."
+        else
+            print_error "Package command failed (exit $rc): $*"
+            print_error "Scroll up for pacman's error output; re-run the command above to retry."
+        fi
     fi
     return "$rc"
 }
@@ -59,8 +107,10 @@ ensure_paru() {
     
     print_info "Installing paru (AUR helper)..."
     
-    # Ensure base-devel and git are installed
-    _run_pkg_cmd sudo pacman -S --needed --noconfirm git base-devel
+    # Ensure base-devel and git are installed. Not a declared package: paru is
+    # bootstrap, and a failure here is reported by the caller, not by the anchor.
+    local _PKG_DECLARED=false
+    _install_with_db_recovery sudo pacman -S --needed --noconfirm git base-devel
     
     # Clone and build paru
     local temp_dir="/tmp/paru-build"
@@ -104,6 +154,116 @@ update_system() {
     fi
 }
 
+# ── Stale-database recovery ──────────────────────────────────────────────────
+# Installing a package needs a database no older than the mirrors, and only
+# `dots setup` ever guaranteed that (it opens with update_system). The day-to-day
+# paths — `dots update`, `dots packages` — install against whatever database the
+# machine happens to have, which after a few days names versions the mirrors have
+# already rebuilt: every mirror then 404s on a filename that no longer exists.
+#
+# So the upgrade is offered exactly where the failure proves it is needed, rather
+# than run up front on every install. That keeps the standing rule intact — pacman
+# and AUR upgrades belong to cachy-update, and `dots` does not quietly become a
+# system upgrader — while still making the one case that demands one recoverable
+# without leaving the command.
+
+# Returns 0 once the database is fresh and the caller should retry. It has no
+# other return: every way of not fixing it ends the run instead.
+#
+# That is deliberate and it is the whole point. A stale database is not a package
+# that failed to build or a tool this machine lacks a toolchain for — it means the
+# repo's packages *cannot* be installed here at all, so carrying on would apply the
+# configs, the tool refresh and the surface reloads around a hole. That state is
+# the one worth avoiding above all: a machine that looks synced, reports success,
+# and is missing what the configs it just applied were written for. There is
+# nothing to weigh, so declining, cancelling and having nobody to ask are all the
+# same answer — stop, and say what to run.
+_recover_stale_db() {
+    # Non-interactive (an installer under a pipe, a cron sync): nobody to ask.
+    if ! command_exists gum || [ ! -t 0 ]; then
+        print_error "Cannot install against a stale database."
+        print_info "Run 'cachy-update' to refresh it, then run this again."
+        exit 1
+    fi
+
+    # No explanation printed above the prompt: _run_pkg_cmd's one line already
+    # said the database is behind and that an upgrade is the only fix, which is
+    # everything needed to answer this. (The reason it cannot be a database
+    # refresh alone: the version the install wants is the one the mirrors have,
+    # and that version belongs to the pending upgrade — refreshing the database
+    # without taking it just moves the failure to a missing dependency.)
+    echo ""
+    # Yes is the only answer that continues, so all three ways of saying no —
+    # the button, Esc, Ctrl+C — land in the same place. confirm_or_abort still
+    # earns its keep: it keeps a cancel reporting as an interrupt (130) rather
+    # than as a decision, which is what the caller's exit status should say.
+    if ! confirm_or_abort "Upgrade the system (repo + AUR) and retry the install?"; then
+        print_warning "Stopped — nothing else was applied."
+        print_info "Run 'cachy-update' when you are ready, then run this again."
+        exit 1
+    fi
+
+    # `confirm` rather than the non-interactive form on purpose: this upgrade is
+    # far larger than the install that triggered it, so paru shows the transaction
+    # and its download size before anything is committed.
+    if ! update_system confirm; then
+        print_error "System upgrade failed — the database is still stale, so nothing else was applied."
+        exit 1
+    fi
+
+    # An upgrade is exactly the "something changed what is installed" that
+    # build_installed_index's contract says invalidates the cached index. Dropped
+    # rather than rebuilt: on the `dots update` path nothing reads it after this
+    # (the scan's copy lived in spin_capture's subshell), so rebuilding here would
+    # spend a full pacman query on an answer no one asks for. ensure_installed_index
+    # rebuilds on demand for the callers that do read it.
+    unset INSTALLED_SET
+    return 0
+}
+
+# Run an install, and if it failed only because the database was stale, offer the
+# upgrade that fixes it and run it again. One wrapper for all three install
+# entry points, so the recovery cannot end up on some of them and not others.
+_install_with_db_recovery() {
+    # Guarded with `if` rather than `&&`: a bare failing && list is what `set -e`
+    # exits the whole script on.
+    if _run_pkg_cmd "$@"; then
+        return 0
+    fi
+    if $_PKG_CMD_STALE_DB; then
+        # No `|| return 1`: _recover_stale_db either refreshed the database or
+        # already ended the run. That is also why it cannot be asked twice in one
+        # run, so there is no "already offered" state to carry between batches.
+        _recover_stale_db
+        print_info "Database refreshed — retrying the install."
+        if _run_pkg_cmd "$@"; then
+            return 0
+        fi
+    fi
+    # Marked here rather than at each call site: every install in this file goes
+    # through this function, so "a declared package did not land" is recorded once
+    # instead of relying on nine callers to remember it. Callers still get the
+    # non-zero status and still decide whether to carry on.
+    #
+    # Marked only once the retry has also failed. Marking on the first failure read
+    # a recovery that then installed everything as a shortfall, and since nothing
+    # clears the flag, a fully successful stale-database recovery still refused the
+    # anchor and reported packages left behind that were not.
+    if $_PKG_DECLARED; then
+        mark_sync_shortfall
+    fi
+    return 1
+}
+
+# Install packages that no yaml declares — an optional extra, or a tool a later step
+# needs. Same database recovery; see _PKG_DECLARED for why the anchor is not withheld.
+# `local` reaches _install_with_db_recovery through bash's dynamic scoping, so the
+# whole call tree below this one is covered by the single assignment.
+install_optional_packages() {
+    local _PKG_DECLARED=false
+    install_packages "$@"
+}
+
 # Install packages using pacman
 install_pacman_packages() {
     local packages=("$@")
@@ -118,7 +278,7 @@ install_pacman_packages() {
     fi
 
     print_info "Installing ${#packages[@]} packages with pacman..."
-    _run_pkg_cmd sudo pacman -S --needed --noconfirm "${packages[@]}"
+    _install_with_db_recovery sudo pacman -S --needed --noconfirm "${packages[@]}"
 }
 
 # Install packages using paru (for AUR packages)
@@ -137,7 +297,7 @@ install_paru_packages() {
     ensure_paru
 
     print_info "Installing ${#packages[@]} packages with paru..."
-    _run_pkg_cmd paru -S --needed --noconfirm "${packages[@]}"
+    _install_with_db_recovery paru -S --needed --noconfirm "${packages[@]}"
 }
 
 # Install all packages (handles both official and AUR)
@@ -156,7 +316,7 @@ install_packages() {
     ensure_paru
 
     print_info "Installing ${#packages[@]} packages..."
-    _run_pkg_cmd paru -S --needed --noconfirm "${packages[@]}"
+    _install_with_db_recovery paru -S --needed --noconfirm "${packages[@]}"
 }
 
 # Remove packages
@@ -200,7 +360,21 @@ package_owners() {
 # Beyond the real package names (pacman -Qq), this also emits everything those
 # packages Provide/Replace, so virtual or renamed packages resolve the same way
 # a per-package `pacman -Qi <name>` would (e.g. `rofi` provides `rofi-wayland`).
+# expac asks libalpm for exactly those three fields and prints them; `pacman -Qi`
+# formats every field of every package and has them parsed back out, which costs
+# 830ms against expac's 48ms on ~2600 packages. Same output, verified identical
+# line-for-line — worth the branch because every `dots packages` and `dots update`
+# scan pays this, and the fallback still has to exist for a machine whose expac is
+# not installed yet (base.yaml declares it, so that is a first run or a removal).
 list_installed_packages() {
+    if command_exists expac; then
+        # %n %S %R = name, provides, replaces. One line per package, fields and
+        # list items alike separated by spaces, so one split handles both levels.
+        expac -Q '%n %S %R' 2>/dev/null \
+            | tr ' ' '\n' | sed 's/[<>=].*$//' | grep -v '^$' || true
+        return
+    fi
+
     pacman -Qq 2>/dev/null
     LC_ALL=C pacman -Qi 2>/dev/null | awk -F': ' '
         /^(Provides|Replaces)[[:space:]]*:/ {
@@ -221,8 +395,9 @@ install_gum() {
     fi
     
     print_info "Installing gum..."
+    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
     ensure_paru
-    _run_pkg_cmd paru -S --needed --noconfirm gum
+    _install_with_db_recovery paru -S --needed --noconfirm gum
 }
 
 # Install chezmoi
@@ -233,8 +408,9 @@ install_chezmoi() {
     fi
     
     print_info "Installing chezmoi..."
+    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
     ensure_paru
-    _run_pkg_cmd paru -S --needed --noconfirm chezmoi
+    _install_with_db_recovery paru -S --needed --noconfirm chezmoi
 }
 
 # Install yq for YAML parsing
@@ -245,7 +421,8 @@ install_yq() {
     fi
     
     print_info "Installing yq..."
-    _run_pkg_cmd sudo pacman -S --needed --noconfirm yq
+    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
+    _install_with_db_recovery sudo pacman -S --needed --noconfirm yq
 }
 
 # Install AppImage runtime support
@@ -256,5 +433,5 @@ install_appimage_support() {
     fi
 
     print_info "Installing AppImage runtime support via fuse2..."
-    install_packages fuse2
+    install_optional_packages fuse2
 }

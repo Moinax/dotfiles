@@ -11,6 +11,8 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO_DIR/install/lib/common.sh"
 source "$REPO_DIR/install/lib/detect.sh"
 
+install_interrupt_trap
+
 print_header "🏠 Dotfiles Setup - Bootstrap"
 
 DISTRO=$(detect_distro)

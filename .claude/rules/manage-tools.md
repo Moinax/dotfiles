@@ -50,6 +50,107 @@ carrying it out of the walk is what avoids re-parsing every group file to
 rebuild it. Group enabledness is always read from this machine's chezmoi data,
 never from the old file, so a group disabled here stays out of both sides.
 
+The delta scan runs behind `spin_capture`, which is why `new_package_candidates`
+is a separate function that prints its answer instead of filling arrays: a
+`git archive` export plus two full yq walks plus the installed-checks is ~10s of
+silence otherwise. Two consequences the split forces — it prints no diagnostics
+of its own (the spinner discards that pass's stderr, so an unreadable anchor is
+exit status 1 and `sync_new_packages` words the warning), and `INSTALLED_SET`
+stays inside the background pass, which is safe only because nothing after the
+scan reads it.
+
+**One yq call per group file, and it is not an optimisation you may undo.**
+`group_declared_lists` (common.sh) reads *everything* a caller can want from a group
+file in a single query, as tagged rows: `N` name, `I` icon, `E` pkg=description,
+`D` desktop_only, `C` custom name, `P` package. Two consumers sit on it —
+`classify_declared_rows` (stdin → `pkg<TAB>custom`, applying the terminal-install
+`desktop_only` filter) and `load_group_meta` (sets `GROUP_NAME`, `GROUP_ICON`,
+`DESCRIPTIONS`, and leaves the raw rows in `GROUP_ROWS` so the same read can be
+classified without touching the file again). `group_declared_packages` is the two
+composed; `get_group_packages` is that, names only.
+
+The split exists so a view can pay once: every `dots packages` screen used to open
+by fetching the name, the icon, the descriptions and a package list separately —
+four invocations per group, ~5.9s of a 7.1s catalogue scan, now 1.2s. The three
+helpers that served the first three are deleted; `load_group_meta` is the one read.
+`group_package_states` takes those rows as an optional second argument for the same
+reason. Callers take the custom flag from the row instead of parsing the names again
+— `declared_packages_at`, `group_package_states` and `build_manage_json` all used to. It was 21 yq per tree
+plus the callers' extra one, and the delta walks two trees, so a scan spent 50
+invocations. This machine has **python-yq**, ~180ms of interpreter start each, which
+made it ~9s of a ~10s scan; it is now 3.2s. `base_desired_packages` is one call for
+the same reason. Both keep their yq-less fallback by delegating to the old parsers.
+`list_installed_packages` prefers `expac -Q '%n %S %R'` (48ms) over the
+`pacman -Qi | awk` pass (830ms) for the identical name+provides+replaces set —
+which is why base.yaml declares expac; it was previously present only as somebody
+else's dependency.
+
+**Re-anchoring is conditional, and that is part of the anchor's meaning.**
+`mark_sync_shortfall` (common.sh) is set by whatever leaves the machine without a
+declared package — a failed `_install_with_db_recovery`, a declined delta, an
+`install_custom_pkg` that skipped or failed — and `record_synced_state` declines to
+stamp while it is set. Stamping HEAD anyway would compute
+every future delta from a commit the machine never caught up with, and the skipped
+packages would never be offered again — the anchor would claim they had been dealt
+with. Everything else in the run still happens; the cost of holding it back is one
+re-offer. Note the failure path was worse than a wrong anchor before: the call was
+`[ n -gt 0 ] && install_packages …`, a bare failing `&&` list under `set -e`, so
+one 404 exited the script mid-phase and skipped the apply, the tool refresh, the
+surface reloads and the stamp — silently, since the exit looked like a clean end.
+
+The flag lives in common.sh rather than in this script because **`dots setup` had
+the same question and answered it the other way**: `installer.sh` stamped the anchor
+even while `INSTALL_WARNINGS` held "Some base packages failed to install", so a
+package that failed during setup was never offered by any later delta — the delta
+only looks forward from the anchor. Marking the shortfall where it happens and
+reading it in the single writer of the anchor is what stops the two commands
+disagreeing. It is per-process on purpose: it describes this run, and the next run
+that installs everything it was asked to has nothing to report.
+
+The commonest reason that install fails is a stale pacman database: only `dots
+setup` guarantees a fresh one (it opens with `update_system`), so the paths you run
+months later ask the mirrors for versions they have already rebuilt and every one
+404s. `install_packages` recovers by offering the upgrade — see
+`_recover_stale_db`/`_install_with_db_recovery` in `install/distros/arch.sh`, which
+own it for all three install entry points. Offered on the failure that proves it is
+needed, never run up front, so the rule that pacman/AUR upgrades belong to
+cachy-update still holds.
+
+**Anything other than taking that upgrade ends the run** — the button, Esc,
+Ctrl+C, a failed upgrade, or no TTY to ask on. `_recover_stale_db` returns 0 or
+does not return, and every `install_packages` call site is a plain call in the main
+shell, so its `exit` really does end the process. A stale database is not a
+shortfall the machine can carry like a broken AUR build: it means none of the
+repo's packages can be installed here, so continuing would apply the configs, the
+tool refresh and the reloads around a hole and then report success. That is the
+state to avoid at all costs — a machine that looks synced and is missing what the
+configs it just applied were written for. `DELTA_APPLIED` covers the shortfalls
+that *are* carryable; this one is not one of them.
+
+Prompts go through `confirm_or_abort`, and pickers through `choose_or_abort`, not
+the bare gum commands: gum reports "no" and "cancelled" both as a non-zero status,
+and cancelling with Esc sends no signal at all, so the interrupt trap never sees it
+and bare `gum confirm` reads a cancel as a deliberate "no". Where the two answers
+differ ("Install them?", the stash prompt) that let a cancel skip a phase the user
+meant to stop; where the answer is persisted it was worse — a cancelled group-flag
+prompt recorded the group as disabled permanently, since answering either way
+writes the flag and never asks again. The one deliberate exception is
+`installer.sh`'s "Cancel installation?", where stopping *is* the yes answer.
+
+`choose_or_abort` returns its choice through a **variable name**, like
+`spin_capture`, and that is not a style preference: a helper whose output is
+captured (`sel=$(… | choose_or_abort …)`) runs inside a command substitution, so
+its `exit` would end that subshell only and leave the caller going with an empty
+selection. Feed its options in with a redirect, never a pipe, for the same reason.
+
+`install_interrupt_trap` installs a trap in **every** shell. It used to skip when it
+found its own exported marker already set, which meant no script `dots` runs ever
+had one — `dots` installs the first, and every tool is its child. gum exits 130
+rather than dying from the signal, and bash only exits by itself when the foreground
+command was *killed*, so those shells carried on with an answer nobody gave. The
+marker still decides who prints: inner shells stop silently, the outermost one
+announces (`tools/manage-external-apps.py` reads it for the same reason).
+
 Two states are deliberately not errors, because both are routine in a repo whose
 history is kept linear by rebasing: **no anchor** (first run after this landed —
 re-anchors silently and points at `dots packages sync` for the catch-up) and

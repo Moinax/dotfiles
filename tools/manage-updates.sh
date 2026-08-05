@@ -765,12 +765,12 @@ do_update() {
     if [ "$apply_all" = true ]; then
         selected=$(printf '%s\n' "${labels[@]}")
     else
-        selected=$(printf '%s\n' "${labels[@]}" \
-            | gum choose --no-limit --cursor.foreground="212" \
-                --header "Select updates to apply (space to select, enter to confirm):") || {
-            echo "Cancelled."
-            return 0
-        }
+        # Redirect, not a pipe: choose_or_abort has to run in this shell to be able
+        # to end the run on a cancel. See its comment in common.sh.
+        choose_or_abort selected --no-limit --cursor.foreground="212" \
+            --header "Select updates to apply (space to select, enter to confirm):" \
+            <<< "$(printf '%s\n' "${labels[@]}")" \
+            || { print_info "Nothing selected"; return 0; }
     fi
 
     if [ -z "$selected" ]; then
@@ -834,7 +834,7 @@ do_refresh() {
         return 0
     fi
 
-    if ! gum confirm "Update ${#rows[@]} already-installed tool(s) now?"; then
+    if ! confirm_or_abort "Update ${#rows[@]} already-installed tool(s) now?"; then
         print_info "Keeping the installed versions — 'dots update' applies them later"
         footers "$REPORT"
         return 0

@@ -20,26 +20,6 @@ load_distro_lib || exit 1
 
 # ── YAML helpers ─────────────────────────────────────────────────────────────
 
-# Get group name from YAML file
-get_group_name() {
-    local file="$1"
-    if command_exists yq; then
-        yq -r '.name // ""' "$file" 2>/dev/null
-    else
-        grep -m1 '^name:' "$file" | sed 's/^name:[[:space:]]*//'
-    fi
-}
-
-# Get group icon from YAML file
-get_group_icon() {
-    local file="$1"
-    if command_exists yq; then
-        yq -r '.icon // ""' "$file" 2>/dev/null
-    else
-        grep -m1 '^icon:' "$file" | sed 's/^icon:[[:space:]]*//'
-    fi
-}
-
 # Update a chezmoi flag value and confirm it to the user
 update_chezmoi_flag() {
     if [ ! -f "$CHEZMOI_CONF" ]; then
@@ -51,21 +31,6 @@ update_chezmoi_flag() {
 }
 
 # ── Package list helpers ─────────────────────────────────────────────────────
-
-# Build a descriptions associative array (pkg -> desc) from a group file
-# Usage: load_descriptions "file.yaml"
-# Sets global DESCRIPTIONS associative array
-load_descriptions() {
-    local file="$1"
-    declare -gA DESCRIPTIONS=()
-    local line
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        local key="${line%%=*}"
-        local val="${line#*=}"
-        DESCRIPTIONS["$key"]="$val"
-    done < <(parse_descriptions "$file")
-}
 
 # ── Display helpers ──────────────────────────────────────────────────────────
 
@@ -86,13 +51,23 @@ extract_package_name() {
     echo "$line" | sed 's/ — .*//'
 }
 
-# Check if a custom_install entry is installed using its check command.
-# Returns 0 if installed, 1 otherwise. Returns 1 if not a custom_install package.
+# Whether a package name is one of a group's custom_install entries.
+#
+# Memoised per file because the callers ask per *package*: the two apply flows and
+# is_group_package_installed below all loop over a selection, and the read behind
+# this is 65ms, so a 20-package apply spent 1.3s re-deriving one file's answer. The
+# cache lives for the run, which is safe here — nothing in this tool writes a group
+# yaml (packages are installed and removed on the machine; group flags go to
+# chezmoi.toml), so a file's custom_install list cannot change under us.
+declare -A _CUSTOM_NAMES=()
 is_custom_install_pkg() {
     local file="$1" pkg="$2"
-    local names
-    names=$(parse_custom_install_names "$file" 2>/dev/null)
-    echo "$names" | grep -qxF "$pkg"
+    if [ -z "${_CUSTOM_NAMES[$file]+set}" ]; then
+        _CUSTOM_NAMES["$file"]=$'\n'"$(parse_custom_install_names "$file" 2>/dev/null)"$'\n'
+    fi
+    # "$pkg" is quoted inside the pattern so its own glob characters stay literal;
+    # the surrounding newlines keep this an exact whole-name match, as grep -qxF was.
+    [[ "${_CUSTOM_NAMES[$file]}" == *$'\n'"$pkg"$'\n'* ]]
 }
 
 is_group_package_installed() {
@@ -118,14 +93,16 @@ choose_group() {
     build_installed_index
     for file in "${group_files[@]}"; do
         local name icon installed=0 total=0
-        name=$(get_group_name "$file")
-        icon=$(get_group_icon "$file")
+        # One read for the name, the icon and the rows the states are counted from.
+        load_group_meta "$file"
+        name="$GROUP_NAME"
+        icon="$GROUP_ICON"
 
         local pkg state
         while IFS=$'\t' read -r pkg state; do
             total=$((total + 1))
             [ "$state" = true ] && installed=$((installed + 1))
-        done < <(group_package_states "$file")
+        done < <(group_package_states "$file" "$GROUP_ROWS")
 
         # Skip groups with no packages for this distro
         [ "$total" -eq 0 ] && continue
@@ -159,8 +136,8 @@ show_add() {
     file=$(choose_group "Add packages from group") || return
 
     local name
-    name=$(get_group_name "$file")
-    load_descriptions "$file"
+    load_group_meta "$file"
+    name="$GROUP_NAME"
 
     # Build list of NOT-installed packages
     build_installed_index
@@ -168,7 +145,7 @@ show_add() {
     local pkg state
     while IFS=$'\t' read -r pkg state; do
         [ "$state" = false ] && available+=("$(format_package "$pkg")")
-    done < <(group_package_states "$file")
+    done < <(group_package_states "$file" "$GROUP_ROWS")
 
     if [ ${#available[@]} -eq 0 ]; then
         print_success "All packages in ${name} are already installed"
@@ -197,7 +174,7 @@ show_add() {
 
     echo ""
     print_info "Will install: ${to_install[*]}"
-    if ! gum confirm "Proceed with installation?"; then
+    if ! confirm_or_abort "Proceed with installation?"; then
         echo "Cancelled."
         return
     fi
@@ -213,8 +190,11 @@ show_add() {
         fi
     done
 
+    # Guarded for the reason do_sync's call is: under `set -e` a bare failure here
+    # would skip the custom_install loop and sync_group_after_change below it.
     if [ ${#distro_packages[@]} -gt 0 ]; then
-        install_packages "${distro_packages[@]}"
+        install_packages "${distro_packages[@]}" \
+            || print_warning "Some packages could not be installed"
     fi
 
     # Install custom_install packages via their own commands
@@ -232,8 +212,8 @@ show_remove() {
     file=$(choose_group "Remove packages from group") || return
 
     local name
-    name=$(get_group_name "$file")
-    load_descriptions "$file"
+    load_group_meta "$file"
+    name="$GROUP_NAME"
 
     # Build list of installed packages
     build_installed_index
@@ -241,7 +221,7 @@ show_remove() {
     local pkg state
     while IFS=$'\t' read -r pkg state; do
         [ "$state" = true ] && removable+=("$(format_package "$pkg")")
-    done < <(group_package_states "$file")
+    done < <(group_package_states "$file" "$GROUP_ROWS")
 
     if [ ${#removable[@]} -eq 0 ]; then
         print_info "No packages from ${name} are currently installed"
@@ -289,7 +269,7 @@ show_remove() {
     if [ ${#custom_to_remove[@]} -gt 0 ]; then
         print_warning "Custom packages (${custom_to_remove[*]}) must be removed manually"
     fi
-    if ! gum confirm "Proceed with removal?"; then
+    if ! confirm_or_abort "Proceed with removal?"; then
         echo "Cancelled."
         return
     fi
@@ -304,27 +284,26 @@ show_remove() {
 # ── Unified manage view ──────────────────────────────────────────────────────
 
 # Emit "pkg<TAB>true|false" installed-state lines for every package in a group.
-# Uses the batch INSTALLED_SET index (call build_installed_index first) and one
-# custom-name parse per group, instead of forking yq + pacman per package.
+# Uses the batch INSTALLED_SET index (call build_installed_index first) and takes
+# the custom flag from group_declared_packages, which already worked it out — the
+# separate parse_custom_install_names this used to do was a second yq over the
+# same file, per group, on a path the user waits at behind a spinner.
 group_package_states() {
-    local file="$1"
-    local -A custom_set=()
-    local cn
-    while IFS= read -r cn; do
-        [ -n "$cn" ] && custom_set["$cn"]=1
-    done < <(parse_custom_install_names "$file")
-
-    local pkg installed
-    while IFS= read -r pkg; do
+    local file="$1" rows="${2:-}"
+    local pkg flag installed
+    while IFS=$'\t' read -r pkg flag; do
         [ -z "$pkg" ] && continue
         installed=false
-        if [ -n "${custom_set[$pkg]:-}" ]; then
+        if [ -n "$flag" ]; then
             is_custom_install_installed "$file" "$pkg" && installed=true
         elif [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ]; then
             installed=true
         fi
         printf '%s\t%s\n' "$pkg" "$installed"
-    done < <(get_group_packages "$file")
+        # A caller that already read the file (load_group_meta) passes its rows in,
+        # so the whole view costs one yq per group instead of one per question.
+    done < <(if [ -n "$rows" ]; then classify_declared_rows <<< "$rows"
+             else group_declared_packages "$file"; fi)
 }
 
 # Build the installed index and the catalogue JSON together, so the whole scan
@@ -353,38 +332,34 @@ build_manage_json() {
         # Skip groups whose required hardware is absent (e.g. biometric with no
         # fingerprint reader), using the same gate the installer consults so the
         # manage view matches what was actually installable on this machine.
+        # Cheap enough to keep ahead of the read: requires_hardware is grepped, not
+        # parsed, so an absent-hardware group costs no yq at all.
         if ! group_hardware_available "$file"; then
             continue
         fi
 
-        name=$(get_group_name "$file")
-        icon=$(get_group_icon "$file")
-        load_descriptions "$file"
-
-        # Custom-install names for this group (one yq call, not one per package).
-        local -A custom_set=()
-        local cn
-        while IFS= read -r cn; do
-            [ -n "$cn" ] && custom_set["$cn"]=1
-        done < <(parse_custom_install_names "$file")
+        # Name, icon, descriptions and the package rows out of ONE read of the file.
+        load_group_meta "$file"
+        name="$GROUP_NAME"
+        icon="$GROUP_ICON"
 
         local items=()
-        local pkg
-        while IFS= read -r pkg; do
+        local pkg flag
+        while IFS=$'\t' read -r pkg flag; do
             [ -z "$pkg" ] && continue
             [ -n "${pkg_seen[$pkg]:-}" ] && continue
             pkg_seen["$pkg"]=1
 
-            local installed=false is_custom=false
-            if [ -n "${custom_set[$pkg]:-}" ]; then
-                is_custom=true
+            local installed=false custom=false
+            if [ -n "$flag" ]; then
+                custom=true
                 is_custom_install_installed "$file" "$pkg" && installed=true
             elif [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ]; then
                 installed=true
             fi
 
-            items+=("{\"name\":\"$(_json_escape "$pkg")\",\"desc\":\"$(_json_escape "${DESCRIPTIONS[$pkg]:-}")\",\"installed\":${installed},\"selected\":${installed},\"custom\":${is_custom}}")
-        done < <(get_group_packages "$file")
+            items+=("{\"name\":\"$(_json_escape "$pkg")\",\"desc\":\"$(_json_escape "${DESCRIPTIONS[$pkg]:-}")\",\"installed\":${installed},\"selected\":${installed},\"custom\":${custom}}")
+        done < <(classify_declared_rows <<< "$GROUP_ROWS")
 
         [ ${#items[@]} -eq 0 ] && continue
 
@@ -490,14 +465,18 @@ apply_manage_diff() {
     fi
     echo ""
 
-    if ! gum confirm "Apply these changes?"; then
+    if ! confirm_or_abort "Apply these changes?"; then
         echo "Cancelled."
         return
     fi
 
     # ── Installs ─────────────────────────────────────────────────────────────
+    # Guarded: under `set -e` a bare failure here would abandon the removals and the
+    # group-flag/service reconciliation below, leaving the yaml and the machine
+    # disagreeing about what the user just applied.
     if [ ${#install_distro[@]} -gt 0 ]; then
-        install_packages "${install_distro[@]}"
+        install_packages "${install_distro[@]}" \
+            || print_warning "Some packages could not be installed"
     fi
 
     local pkg
@@ -531,7 +510,8 @@ sync_group_after_change() {
 
     local group_id name
     group_id=$(get_group_id "$file")
-    name=$(get_group_name "$file")
+    load_group_meta "$file"
+    name="$GROUP_NAME"
 
     # Packages just changed — re-index once and scan the group in one pass
     # instead of forking yq + pacman per package.
@@ -543,25 +523,29 @@ sync_group_after_change() {
         else
             all_installed=false
         fi
-    done < <(group_package_states "$file")
+    done < <(group_package_states "$file" "$GROUP_ROWS")
 
     local flag flag_val
     flag=$(get_chezmoi_flag "$group_id")
     flag_val=$(chezmoi_data_get "$flag")
 
+    # confirm_or_abort matters most on these two: the answer is written to
+    # chezmoi.toml, so a cancel read as "no" would record the flag against a
+    # machine whose packages say the opposite — and the next apply would then
+    # template the configs for a group it has, or drop the ones it no longer has.
     if [ "$all_installed" = true ] && [ "$flag_val" = "false" ]; then
         echo ""
-        if gum confirm "All ${name} packages are installed. Enable ${flag} in chezmoi.toml?"; then
+        if confirm_or_abort "All ${name} packages are installed. Enable ${flag} in chezmoi.toml?"; then
             update_chezmoi_flag "$flag" "true"
-            if gum confirm "Apply dotfiles now?"; then
+            if confirm_or_abort "Apply dotfiles now?"; then
                 apply_dotfiles
             fi
         fi
     elif [ "$any_installed" = false ] && [ "$flag_val" = "true" ]; then
         echo ""
-        if gum confirm "No ${name} packages remain installed. Disable ${flag} in chezmoi.toml?"; then
+        if confirm_or_abort "No ${name} packages remain installed. Disable ${flag} in chezmoi.toml?"; then
             update_chezmoi_flag "$flag" "false"
-            if gum confirm "Apply dotfiles now?"; then
+            if confirm_or_abort "Apply dotfiles now?"; then
                 apply_dotfiles
             fi
         fi
@@ -580,7 +564,7 @@ sync_group_after_change() {
         if [ ${#stopped[@]} -gt 0 ]; then
             echo ""
             print_info "Associated services not enabled: ${stopped[*]}"
-            if gum confirm "Enable these services?"; then
+            if confirm_or_abort "Enable these services?"; then
                 for svc in "${stopped[@]}"; do enable_service "$svc"; done
             fi
         fi
@@ -593,7 +577,7 @@ sync_group_after_change() {
         if [ ${#active[@]} -gt 0 ]; then
             echo ""
             print_info "Associated services still enabled: ${active[*]}"
-            if gum confirm "Disable these services?"; then
+            if confirm_or_abort "Disable these services?"; then
                 for svc in "${active[@]}"; do disable_service "$svc"; done
             fi
         fi
@@ -623,23 +607,21 @@ scan_missing_packages() {
     for file in "$GROUPS_DIR"/*.yaml; do
         group_enabled "$file" || continue
 
-        # Custom-install names for this group (one yq call, not one per package).
-        local -A custom_set=()
-        local cn
-        while IFS= read -r cn; do
-            [ -n "$cn" ] && custom_set["$cn"]=1
-        done < <(parse_custom_install_names "$file")
-
-        while IFS= read -r pkg; do
+        # The custom flag comes off the row rather than from a second read: the rows
+        # group_declared_packages already returns carry it in field 2, so the extra
+        # parse_custom_install_names pass this used to do was a 65ms yq per group
+        # spent re-deriving what was in hand.
+        local flag
+        while IFS=$'\t' read -r pkg flag; do
             if [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ]; then continue; fi
             seen["$pkg"]=1
-            if [ -n "${custom_set[$pkg]:-}" ]; then
+            if [ -n "$flag" ]; then
                 is_custom_install_installed "$file" "$pkg" \
                     || printf 'custom\t%s\t%s\n' "$pkg" "$file"
             else
                 [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || printf 'distro\t%s\n' "$pkg"
             fi
-        done < <(get_group_packages "$file")
+        done < <(group_declared_packages "$file")
     done
 }
 
@@ -669,10 +651,15 @@ do_sync() {
     print_info "Missing packages (${n_missing}):"
     printf '  %s\n' "${missing_distro[@]}" "${missing_custom[@]}"
     echo ""
-    gum confirm "Install these packages?" || { echo "Cancelled."; return 0; }
+    confirm_or_abort "Install these packages?" || { echo "Cancelled."; return 0; }
 
+    # Guarded: a bare failing install_packages is what `set -e` exits the whole
+    # script on, which left the custom_install loop below unrun and printed no
+    # explanation — in the very command the installer points users at to repair a
+    # shortfall. install_packages has already marked it and said what failed.
     if [ ${#missing_distro[@]} -gt 0 ]; then
-        install_packages "${missing_distro[@]}"
+        install_packages "${missing_distro[@]}" \
+            || print_warning "Some packages could not be installed"
     fi
 
     for pkg in "${missing_custom[@]}"; do

@@ -24,6 +24,11 @@ packages:
     - btop
     - jq
     - yq
+    - expac  # list_installed_packages reads names+provides+replaces from it in one
+             # 48ms call; the pacman -Qi fallback costs 830ms, and every `dots
+             # packages`/`dots update` scan pays it. Was present only as a
+             # cachyos-fish-config dependency, so a package change could have
+             # dropped it and silently un-done that.
     - socat  # talk to herdr's unix-socket API (tab.move, etc.) from dev scripts
     - rsync
     - unzip
