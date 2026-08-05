@@ -9,9 +9,9 @@ if ! is_hyprland; then
     exit 1
 fi
 
-# kded6 StatusNotifierWatcher is required for system tray on standalone WMs.
-dbus-send --session --print-reply --dest=org.kde.kded6 /kded \
-    org.kde.kded6.loadModule string:statusnotifierwatcher >/dev/null 2>&1 || true
+# The watcher provides the system tray; gtkconfig continuously mirrors KDE's
+# palette into GTK settings, CSS, GSettings and XSettings.
+kded_load_module statusnotifierwatcher gtkconfig
 
 CONFIG_FILE="$HOME/.config/waybar/config-hyprland"
 

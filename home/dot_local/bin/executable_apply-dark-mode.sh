@@ -5,8 +5,9 @@
 # If no argument given, reads from state file (defaults to dark)
 #
 # Design: KDE/Qt is the canonical source of truth for dark/light mode.
-# plasma-apply-colorscheme updates the system appearance, and this script only
-# manages repo-local theme files in addition to that KDE scheme switch.
+# plasma-apply-colorscheme updates the system appearance and the KDE Settings
+# portal publishes it to applications. kde-gtk-config mirrors the same KDE
+# settings into GTK's settings.ini, GSettings and Wayland XSettings surfaces.
 
 . "$HOME/.local/lib/compositor.sh"
 # Owns the list of surfaces that read a copy, shared with post-apply.sh so the
@@ -89,30 +90,61 @@ fi
 
 # ---------- KDE color scheme ----------
 KDE_SCHEME=$( [ "$MODE" = "dark" ] && echo "BreezeDark" || echo "BreezeLight" )
+KDE_ICON_THEME=$( [ "$MODE" = "dark" ] && echo "breeze-dark" || echo "breeze" )
+
+# Without the bridge loaded, kde-gtk-config's generated settings.ini/colors.css
+# stay frozen at the mode from the last Plasma session. Asked for here rather
+# than assumed from session start, because the load has to precede the scheme
+# change below for the module to see it and every change after it.
+kded_load_module gtkconfig
+
 if command -v plasma-apply-colorscheme &>/dev/null; then
     plasma-apply-colorscheme "$KDE_SCHEME" 2>/dev/null || true
 fi
 
+# Color schemes do not select an icon theme. Keep the KDE value in step too;
+# --notify is important because kde-gtk-config listens through KConfigWatcher
+# and then propagates the change to GTK and running Qt applications.
+if command -v kwriteconfig6 &>/dev/null; then
+    kwriteconfig6 --file kdeglobals --group Icons --key Theme --notify \
+        "$KDE_ICON_THEME" 2>/dev/null || true
+fi
+
 # ---------- GTK / GNOME appearance ----------
-# gsettings org.gnome.desktop.interface is the authoritative GTK config
-# source — it overrides ~/.config/gtk-{3,4}.0/settings.ini. GTK4/libadwaita
-# apps follow the portal color-scheme on their own, but GTK3 apps (e.g.
-# nm-connection-editor) have no portal-driven dark switch: the theme NAME
-# must flip. Breeze and Breeze-Dark ship as separate themes, so switching
-# the name is unambiguous and needs no prefer-dark variant juggling.
+# kde-gtk-config is the primary bridge and updates GTK's settings.ini, CSS,
+# GSettings and XSettings. Keep these GSettings writes for GLib consumers which
+# read org.gnome.desktop.interface directly, and as a fallback on a machine
+# without that package (the hyprland group declares it, so that is now only a
+# machine set up before it did).
 GNOME_SCHEME=$( [ "$MODE" = "dark" ] && echo "prefer-dark" || echo "prefer-light" )
+# The theme *name* carries the mode, rather than leaving Breeze in both modes and
+# relying on the scheme: GTK3 does not read org.gnome.desktop.interface color-scheme
+# at all — it needs gtk-application-prefer-dark-theme from settings.ini, which only
+# the bridge writes. Pinning Breeze therefore left GTK3 apps light in dark mode
+# wherever the bridge is absent or kded is not running, which is exactly the
+# fallback this block claims to be. breeze-gtk (base.yaml) ships both names.
 GTK_THEME_NAME=$( [ "$MODE" = "dark" ] && echo "Breeze-Dark" || echo "Breeze" )
-GTK_ICON_THEME=$( [ "$MODE" = "dark" ] && echo "breeze-dark" || echo "breeze" )
 # Cursor tone is inverted relative to background: white-toned cursor on
 # dark mode, black-toned on light mode (Catppuccin's -light/-dark suffix
 # names the cursor color, NOT the palette it pairs with).
 CURSOR_TONE=$( [ "$MODE" = "dark" ] && echo "dark" || echo "light" )
 CURSOR_THEME="catppuccin-${FLAVOR}-${CURSOR_TONE}-cursors"
 CURSOR_SIZE=24
+# KDE's copy of the cursor theme has to move too, and before the GSettings write
+# below. With the bridge loaded, kde-gtk-config mirrors kcminputrc's cursorTheme
+# into settings.ini and GSettings, so leaving KDE on its old value meant KDE won and
+# the cursor stopped inverting with the mode — the bridge overwrote the two writes
+# below within the same run. Setting the source it reads makes them agree instead.
+if command -v kwriteconfig6 &>/dev/null; then
+    kwriteconfig6 --file kcminputrc --group Mouse --key cursorTheme --notify \
+        "$CURSOR_THEME" 2>/dev/null || true
+    kwriteconfig6 --file kcminputrc --group Mouse --key cursorSize --notify \
+        "$CURSOR_SIZE" 2>/dev/null || true
+fi
 if command -v gsettings &>/dev/null; then
     gsettings set org.gnome.desktop.interface color-scheme "$GNOME_SCHEME" 2>/dev/null || true
     gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_NAME" 2>/dev/null || true
-    gsettings set org.gnome.desktop.interface icon-theme "$GTK_ICON_THEME" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface icon-theme "$KDE_ICON_THEME" 2>/dev/null || true
     gsettings set org.gnome.desktop.interface cursor-theme "$CURSOR_THEME" 2>/dev/null || true
     gsettings set org.gnome.desktop.interface cursor-size "$CURSOR_SIZE" 2>/dev/null || true
 fi

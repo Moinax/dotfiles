@@ -1,5 +1,13 @@
-[Module-device_automounter]
-autoload=false
+# KDED module autoload, KDE 5 only — kded6 reads kded6rc and ignores this file
+# (there is no kded5rc literal in /usr/bin/kded6), so it governs nothing on a
+# current install and is kept only for a KDE5-era session.
+#
+# The [Module-gtkconfig] autoload=false that used to be here was removed rather
+# than flipped to true: gtkconfig is now wanted, and it is loaded explicitly by
+# kded_load_module in ~/.local/lib/compositor.sh, because a standalone Hyprland
+# session has nothing that autoloads KDED modules at all — autoload is not the
+# mechanism either way. Leaving it would have left the repo stating the opposite
+# of what it does, in the first file someone debugging GTK theming opens.
 
-[Module-gtkconfig]
+[Module-device_automounter]
 autoload=false

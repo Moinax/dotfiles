@@ -43,6 +43,7 @@ descriptions:
   blueman: Bluetooth device manager
   bluez-utils: Bluetooth utilities
   network-manager-applet: NetworkManager tray applet (nm-applet)
+  kde-gtk-config: KDE service that synchronizes Plasma appearance into GTK
   xorg-xhost: X server access control
   inotify-tools: File system event monitor
   cmatrix: Terminal matrix rain animation
@@ -86,6 +87,9 @@ packages:
 
     # Network tray applet (SNI icon in Waybar tray)
     - network-manager-applet
+
+    # Keep GTK settings/colors synchronized with the KDE appearance source
+    - kde-gtk-config
 
     # On-screen display (volume, brightness, caps-lock)
     - swayosd
