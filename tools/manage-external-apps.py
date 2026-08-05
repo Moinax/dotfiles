@@ -147,6 +147,21 @@ class Cancelled(Exception):
     """User cancelled an interactive prompt; flows unwind quietly."""
 
 
+class NotPublished(AppError):
+    """The release carries nothing installable for this platform (exit 3).
+
+    Distinct from a pattern that no longer matches, because the two need opposite
+    reactions. Upstream publishing macOS and Windows first — an Electron nightly
+    does this routinely — is not a fault of ours to report: it resolves itself with
+    the next release, and treating it as a failure meant every `dots update` printed
+    an error and a "1 failed" tally for a version that simply has no Linux build
+    yet. A pattern that matches nothing *among Linux assets* is the opposite: it
+    stays broken until someone fixes it, so it keeps the loud error.
+
+    Its own exit code so the shell tally can count it as skipped rather than failed.
+    """
+
+
 class Spinner:
     """Terminal spinner on stderr while a blocking operation runs."""
 
@@ -1433,6 +1448,16 @@ def pick_release_asset(asset_urls, pattern, type_filter, interactive):
     candidates = filter_release_assets(asset_urls, pattern, type_filter)
 
     if not candidates:
+        # Nothing installable at all — every asset is for another OS, or metadata —
+        # means this release has no build for us yet, not that anything is wrong.
+        # Judged before the pattern and the arch filters, since neither can matter
+        # when there is no AppImage or package in the release to match.
+        installable = [u for u in asset_urls
+                       if not u.rsplit("/", 1)[-1].lower().endswith(SIDECAR_SUFFIXES)
+                       and matches_mode(u.rsplit("/", 1)[-1].lower(), "all")]
+        if not installable:
+            raise NotPublished("no Linux build in this release yet")
+
         suffix = f" pattern '{pattern}'" if pattern else ""
         print_error(f"No release asset matches{suffix} (type: {type_filter or 'any'})", file=sys.stderr)
         print_info("Assets in this release:", file=sys.stderr)
@@ -1873,6 +1898,11 @@ def cmd_update_app(argv):
             name = read_env(f).get("APP_NAME", "")
             try:
                 execute_update_from_source(name)
+            except NotPublished as e:
+                # A release with no build for us is a skip, not a failure: it must
+                # not colour the exit status, or `update --all` reports a fault
+                # every run until upstream publishes.
+                print_info(f"{name}: {e}")
             except AppError as e:
                 if str(e):
                     print_error(str(e))
@@ -2109,6 +2139,8 @@ def interactive_check_updates():
         name = outdated[labels.index(label)][0]
         try:
             execute_update_from_source(name)
+        except NotPublished as e:
+            print_info(f"{name}: {e}")
         except AppError as e:
             if str(e):
                 print_error(str(e))
@@ -2298,6 +2330,8 @@ def main_menu():
             handler()
         except Cancelled:
             pass
+        except NotPublished as e:
+            print_info(str(e))
         except AppError as e:
             if str(e):
                 print_error(str(e))
@@ -2341,6 +2375,11 @@ if __name__ == "__main__":
     except Cancelled:
         print_info("Cancelled.")
         sys.exit(0)
+    # Before AppError, which it subclasses: an upstream release that has no build
+    # for us is reported as a skip, at info level and with its own status.
+    except NotPublished as e:
+        print_info(str(e) or "no Linux build in this release yet")
+        sys.exit(3)
     except AppError as e:
         if str(e):
             print_error(str(e))

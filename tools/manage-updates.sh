@@ -652,13 +652,24 @@ apply_row() {
             ;;
     esac
 
+    # 3 from the external-apps tool means the release carries no build for this
+    # platform yet, which is upstream's schedule and not a failure of this run — it
+    # would otherwise print an error and a "1 failed" tally on every update until
+    # they publish. Reported as a skip and returned as 2, which the two tallies
+    # count separately from a real failure.
     print_info "Updating $name..."
-    if ! "${argv[@]}"; then
-        print_error "Failed to update $name"
-        return 1
+    local rc=0
+    "${argv[@]}" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        print_success "$name updated"
+        return 0
     fi
-    print_success "$name updated"
-    return 0
+    if [ "$rc" -eq 3 ] && [ "$kind" = app ]; then
+        print_warning "Skipped $name — nothing to install for this platform yet"
+        return 2
+    fi
+    print_error "Failed to update $name"
+    return 1
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -783,7 +794,7 @@ do_update() {
     # label (a name declared in both common.yaml and a group) apply once each
     # instead of applying the first one twice.
     local -A used=()
-    local failed=0 applied=0 label i
+    local failed=0 applied=0 skipped=0 label i
     while IFS= read -r label; do
         [ -n "$label" ] || continue
         for i in "${!labels[@]}"; do
@@ -792,21 +803,25 @@ do_update() {
             used["$i"]=1
             IFS="$US" read -r "${REPORT_FIELDS[@]}" <<< "${rows[$i]}"
             echo ""
-            if apply_row "$name" "$kind" "$file" "$payload"; then
-                applied=$((applied + 1))
-            else
-                failed=$((failed + 1))
-            fi
+            local rc=0
+            apply_row "$name" "$kind" "$file" "$payload" || rc=$?
+            case "$rc" in
+                0) applied=$((applied + 1)) ;;
+                2) skipped=$((skipped + 1)) ;;
+                *) failed=$((failed + 1)) ;;
+            esac
             break
         done
     done <<< "$selected"
 
     echo ""
+    local skip_note=""
+    [ "$skipped" -gt 0 ] && skip_note=", ${skipped} skipped"
     if [ "$failed" -gt 0 ]; then
-        print_warning "${applied} updated, ${failed} failed"
+        print_warning "${applied} updated, ${failed} failed${skip_note}"
         return 1
     fi
-    print_success "${applied} item(s) updated"
+    print_success "${applied} item(s) updated${skip_note}"
     footers "$REPORT"
 }
 
@@ -840,23 +855,27 @@ do_refresh() {
         return 0
     fi
 
-    local row failed=0 applied=0
+    local row failed=0 applied=0 skipped=0
     for row in "${rows[@]}"; do
         IFS="$US" read -r "${REPORT_FIELDS[@]}" <<< "$row"
         echo ""
-        if apply_row "$name" "$kind" "$file" "$payload"; then
-            applied=$((applied + 1))
-        else
-            failed=$((failed + 1))
-        fi
+        local rc=0
+        apply_row "$name" "$kind" "$file" "$payload" || rc=$?
+        case "$rc" in
+            0) applied=$((applied + 1)) ;;
+            2) skipped=$((skipped + 1)) ;;
+            *) failed=$((failed + 1)) ;;
+        esac
     done
 
     echo ""
+    local skip_note=""
+    [ "$skipped" -gt 0 ] && skip_note=", ${skipped} skipped"
     if [ "$failed" -gt 0 ]; then
-        print_warning "${applied} updated, ${failed} failed"
+        print_warning "${applied} updated, ${failed} failed${skip_note}"
         return 1
     fi
-    print_success "${applied} tool(s) updated"
+    print_success "${applied} tool(s) updated${skip_note}"
     footers "$REPORT"
 }
 
