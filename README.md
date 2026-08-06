@@ -212,10 +212,6 @@ After running the installer:
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (flat Catppuccin-matched theme, dark/light switched), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
 
-## Credits
-
-Hyprland configuration originally inspired by [ml4w](https://www.ml4w.com/) starter kit.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
