@@ -1,2 +1,47 @@
 # Rendered by chezmoi from display-server.conf.tmpl — see kitty.conf.
+{{- if eq .chezmoi.hostname "moinax-desktop" }}
+
+# XWayland on the NVIDIA desktop, deliberately.
+#
+# kitty's Wayland backend stops rendering for good after a DPMS-off cycle
+# (Mod+Alt+M, screen fully off, then woken). The process stays alive and still
+# accepts input — only the rendering is dead, so the only recovery is reopening
+# the window.
+#
+# Measured 2026-08-06 with a per-second clock running in each window, over one
+# Mod+Alt+M cycle: the Wayland kitty froze at 00:34:39 while the XWayland one
+# still read 00:36:48 at 00:36:49. An earlier run of the same test killed three
+# Kitty windows at once (one lone, two in a Hyprland group) while an Alacritty
+# sitting beside them was untouched — so the fault is kitty's forked GLFW
+# Wayland backend, not the compositor, the driver, or the DP link.
+#
+# kitty's own documented lever for NVIDIA freezes, `sync_to_monitor no`, is
+# already set in kitty.conf and does not help.
+#
+# Upstream: kovidgoyal/kitty#9026 — kitty's Wayland backend misbehaves on
+# Hyprland while foot and alacritty are fine; X11 is the reporter's workaround.
+# (hyprwm/Hyprland#7191 and #6417 are the same symptom family but were fixed in
+# Hyprland 0.43.0, and this machine runs 0.56.1.)
+#
+# Verified to cost nothing here: window transparency, `--class` matching (so the
+# herdr-* classes and window rules still apply), the kitty graphics protocol
+# (yazi previews), `kitty @ send-text`, and kitten ssh all survive XWayland.
+linux_display_server x11
+
+# XWayland's resize path is expensive: every intermediate geometry during a drag
+# reallocates buffers, and enough of them back to back can stall the whole
+# compositor for seconds — which is why this x11 workaround was tried and
+# reverted once before. Snapping to whole cells cuts the number of distinct
+# geometries per drag by roughly the cell width (~10x on this monitor), so far
+# fewer reallocations. The cost is a slightly "stepped" resize.
+#
+# If stalls persist, measure before changing anything else: watch
+# `nvidia-smi --query-gpu=memory.used --format=csv -l 1` through a resize
+# session. Monotonically climbing VRAM means the driver is not freeing buffers
+# and no kitty setting will help. Two dead ends already ruled out on
+# Hyprland 0.56.1 / kitty 0.48 — `render:explicit_sync` and `misc:vfr` no longer
+# exist, and there is no `resize_draw_strategy`.
+resize_in_steps yes
+{{- else }}
 linux_display_server wayland
+{{- end }}
