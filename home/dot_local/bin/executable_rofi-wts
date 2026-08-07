@@ -19,7 +19,7 @@ set -euo pipefail
 notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a rofi-wts "$@" || true; }
 fail() { notify -u critical "rofi-wts" "$1"; exit 1; }
 
-for cmd in rofi wt git dev-projects wtstart-launch; do
+for cmd in rofi wt git dev-projects wtstart-launch wt-switch-args; do
   command -v "$cmd" >/dev/null 2>&1 || fail "$cmd not found"
 done
 
@@ -50,13 +50,45 @@ while IFS= read -r line; do
   esac
 done < <(git worktree list --porcelain)
 
-other_branches=()
+declare -A is_local=()
+local_branches=()
 while IFS= read -r b; do
-  if [[ -z "${has_wt[$b]:-}" ]]; then other_branches+=("$b"); fi
+  is_local[$b]=1
+  if [[ -z "${has_wt[$b]:-}" ]]; then local_branches+=("$b"); fi
 done < <(git for-each-ref refs/heads --sort=-committerdate --format='%(refname:short)')
 
+# Branches that exist only on origin. They belong in the menu because they are
+# just as openable as a local one — the switch below checks them out tracking
+# origin/<branch> — and listing them is what makes a colleague's branch
+# reachable without having to type it blind.
+# lstrip=3 drops the refs/remotes/origin/ prefix, which %(refname:short) cannot
+# be trusted to do here: it shortens refs/remotes/origin/HEAD to a bare "origin",
+# so trimming the prefix by hand left that symref in the menu as a branch named
+# "origin" that nothing could ever check out.
+remote_branches=()
+while IFS= read -r b; do
+  [[ "$b" == HEAD ]] && continue
+  if [[ -z "${is_local[$b]:-}" ]]; then remote_branches+=("$b"); fi
+done < <(git for-each-ref refs/remotes/origin --sort=-committerdate --format='%(refname:lstrip=3)')
+
+# Rows carry rofi's dmenu icon metadata — the same `\0icon\x1f…` protocol
+# rofi-killwindow uses — so the icon is metadata rather than text: rofi still
+# returns the bare branch name, leaving nothing to strip and no interaction
+# with the whitespace squeeze below. Passing an icon *name* is also what keeps
+# this away from inline nerd-font glyphs, which degrade to spaces on the way
+# into a file. One icon family for the three states so they read as a set.
+rows() { # $1: icon name; $2+: branches
+  local icon="$1" b
+  shift
+  for b in "$@"; do printf '%s\0icon\x1f%s\n' "$b" "$icon"; done
+}
+
 ret=0
-branch=$(printf '%s\n' "${wt_branches[@]}" "${other_branches[@]}" | sed '/^$/d' |
+branch=$({
+  rows folder-open "${wt_branches[@]}"
+  rows folder "${local_branches[@]}"
+  rows folder-remote "${remote_branches[@]}"
+} |
   rofi -dmenu -i -p "Worktree: ${dir##*/}" \
     -mesg "Enter: open · Ctrl+Enter: open + /start · Shift+Enter: force typed text" \
     -kb-accept-alt "" -kb-accept-custom "Shift+Return" -kb-custom-1 "Control+Return") || ret=$?
@@ -65,17 +97,21 @@ branch="${branch//[[:space:]]/}"
 [[ -z "$branch" ]] && exit 0
 case "$ret" in 0 | 10) ;; *) exit 0 ;; esac
 
-create=false
-git show-ref --verify --quiet "refs/heads/$branch" || create=true
+# A branch picked from the menu is already known, but Shift+Enter forces the
+# typed text through, so this may still be a name git has never seen.
+# wt-switch-args (shared with wtstart) fetches origin when the branch is
+# unknown and prints --create only when it is genuinely new, so a remote-only
+# branch checks out tracking origin/<branch>. -n reports the fetch via
+# notify-send: there is no terminal here for stderr to reach.
+mapfile -t switch_args < <(wt-switch-args -n "$branch")
 
 # Creation (worktree, copy-ignored, pre/post-start hooks) takes a few
-# seconds; without a notification the keypress feels swallowed.
+# seconds; without a notification the keypress feels swallowed. Any branch
+# without a worktree gets one here, whichever way the switch below goes.
 if [[ -z "${has_wt[$branch]:-}" ]]; then
   notify -h int:transient:1 "rofi-wts" "Creating worktree for $branch…"
 fi
 
-switch_args=()
-if $create; then switch_args+=(--create); fi
 # Project hooks from .config/wt.toml need a one-time approval per repo, and
 # there is no terminal here to answer the prompt in — point at the fix rather
 # than surfacing wt's "cannot prompt in non-interactive environment".
@@ -97,6 +133,5 @@ send_start=false
 if [[ "$ret" -eq 10 ]]; then send_start=true; fi
 
 launch_args=(-d "$wt_path" -b "$branch")
-if $create; then launch_args+=(--new); fi
 if $send_start; then launch_args+=(-s); fi
 wtstart-launch "${launch_args[@]}"

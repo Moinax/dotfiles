@@ -15,19 +15,16 @@ function wtstart
     if test -z "$branch"
         wt switch; or return 1
         test "$PWD" = "$orig_dir"; and return 0
-    else if git show-ref --verify --quiet refs/heads/$branch
-        wt switch $branch
+    else
+        # wt-switch-args (shared with zsh and rofi-wts) fetches origin when the
+        # branch is unknown and prints --create only when it is genuinely new,
+        # so a remote-only branch checks out tracking origin/<branch>.
+        set -l switch_args (wt-switch-args $branch)
+        wt switch $switch_args $branch
         or begin
             echo "error: failed to switch to worktree for '$branch'" >&2
             return 1
         end
-    else
-        wt switch --create $branch
-        or begin
-            echo "error: failed to create worktree for '$branch'" >&2
-            return 1
-        end
-        set -a pass --new
     end
 
     set -q _flag_n; and test -n "$_flag_n"; and set -a pass -n $_flag_n

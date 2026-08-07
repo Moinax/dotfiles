@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# gbs — link a branch to its origin counterpart (defaults to the current
+# branch). The repair for a local branch that was created before — or without
+# knowing about — its remote: wt-switch-args now routes remote branches through
+# a tracking checkout, so this is for the leftovers and for a stale origin/*.
+set -euo pipefail
+
+branch="${1:-$(git branch --show-current)}"
+[[ -n "$branch" ]] || { echo "gbs: no branch checked out (detached HEAD?)" >&2; exit 1; }
+exec git branch --set-upstream-to="origin/$branch" "$branch"

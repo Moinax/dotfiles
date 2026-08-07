@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# wt-switch-args — decide how `wt switch` should reach BRANCH: prints --create
+# when the branch is genuinely new, nothing when it already exists locally or
+# on origin. Only `wt switch` *without* --create checks a remote branch out
+# tracking origin/<branch>; --create would fork an empty branch off main and
+# drop the remote work — this decision is what routes between the two.
+#
+# The decide half of wtstart and rofi-wts, shared across zsh, fish and bash the
+# same way wtstart-launch shares the launch half — only the `wt switch` call
+# itself stays per-shell (it needs shell integration to cd the parent shell).
+#
+# An unknown branch is worth one fetch before deciding — a stale origin/* is
+# otherwise indistinguishable from a name nobody has ever pushed. It costs
+# ~650ms and is RTT-bound rather than size-bound (a 173MB repo fetches as fast
+# as a 15MB one), so --prune over every ref costs what fetching the single
+# branch would and leaves the whole index fresh. Paid only when the branch is
+# unknown: deciding for a branch git already knows about stays instant.
+#
+#   -n  report the fetch via notify-send instead of stderr (rofi-wts has no tty)
+set -euo pipefail
+
+use_notify=false
+[[ "${1:-}" == -n ]] && { use_notify=true; shift; }
+branch="${1:-}"
+[[ -n "$branch" ]] || { echo "wt-switch-args: branch required" >&2; exit 1; }
+
+# Local branch (with or without a worktree): plain `wt switch` handles it.
+git show-ref --verify --quiet "refs/heads/$branch" && exit 0
+
+if ! git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+  if $use_notify; then
+    command -v notify-send >/dev/null 2>&1 &&
+      notify-send -a wt-switch-args -h int:transient:1 \
+        "wt-switch-args" "Fetching origin for $branch…" || true
+  else
+    echo "wt-switch-args: '$branch' is unknown here, fetching origin…" >&2
+  fi
+  git fetch --prune --quiet origin 2>/dev/null || true
+  git show-ref --verify --quiet "refs/remotes/origin/$branch" || echo "--create"
+fi

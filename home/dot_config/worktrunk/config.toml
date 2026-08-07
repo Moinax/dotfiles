@@ -6,6 +6,24 @@
 [commit.generation]
 command = "CLAUDECODE= MAX_THINKING_TOKENS=0 claude -p --no-session-persistence --model=haiku --tools='' --disable-slash-commands --setting-sources='' --system-prompt=''"
 
-# Exclude node_modules from copy-ignored (permissions break when copied, yarn install is more reliable)
+# Copy gitignored files (.env.development.local and friends) into every freshly
+# created worktree. wt already knows exactly when that is — pre-start fires on a
+# new worktree however it was reached: `--create`, checking out a remote branch,
+# or giving an existing local branch its first worktree, and never on reopening
+# one. That is the whole reason this lives here rather than in wtstart: the
+# scripts used to carry a hand-computed `--new` flag through three shells, and
+# each copy could disagree with the other two (the rofi one did).
+#
+# pre-start rather than the post-start the docs suggest, because it blocks: the
+# dev environment launches the moment `wt switch` returns, and a background copy
+# would race it to the .env files it needs. User hooks also run before project
+# ones, so the env files land before a project's `pnpm install`.
+[pre-start]
+copy-ignored = "wt step copy-ignored"
+
+# node_modules permissions break when copied (yarn install is more reliable),
+# and a copied venv is worse than none: its scripts hardcode the source path.
+# Rust worktrees don't copy target/ either — they share the main checkout's via
+# a gitignored .cargo/config.toml (see vibewatch), which this copy carries over.
 [step.copy-ignored]
-exclude = ["node_modules/"]
+exclude = ["node_modules/", ".venv/", "target/"]

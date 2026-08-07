@@ -29,17 +29,15 @@ wtstart() {
   if [[ -z "$branch" ]]; then
     wt switch || return 1
     [[ "$PWD" == "$orig_dir" ]] && return 0
-  elif git show-ref --verify --quiet "refs/heads/$branch"; then
-    wt switch "$branch" || {
+  else
+    # wt-switch-args (shared with fish and rofi-wts) fetches origin when the
+    # branch is unknown and prints --create only when it is genuinely new, so
+    # a remote-only branch checks out tracking origin/<branch>.
+    local -a switch_args=($(wt-switch-args "$branch"))
+    wt switch "${switch_args[@]}" "$branch" || {
       echo "error: failed to switch to worktree for '$branch'" >&2
       return 1
     }
-  else
-    wt switch --create "$branch" || {
-      echo "error: failed to create worktree for '$branch'" >&2
-      return 1
-    }
-    pass+=(--new)
   fi
 
   wtstart-launch -d "$PWD" -b "$branch" "${pass[@]}"
