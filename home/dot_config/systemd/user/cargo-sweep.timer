@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly sweep of stale cargo target/ artifacts
+
+[Timer]
+OnCalendar=weekly
+# Catch up after a week where the machine was off at the scheduled moment,
+# and smear the start so it never lands exactly at login.
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

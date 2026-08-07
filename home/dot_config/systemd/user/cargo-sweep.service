@@ -1,0 +1,8 @@
+[Unit]
+Description=Trim stale cargo target/ artifacts in dev projects
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/cargo-sweep-projects
+Nice=19
+IOSchedulingClass=idle

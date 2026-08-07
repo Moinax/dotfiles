@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# cargo-sweep-projects — trim stale build artifacts from every Cargo project
+# under the dev root. Driven weekly by cargo-sweep.timer; safe to run by hand.
+#
+# `cargo sweep --time N` deletes only artifacts untouched for N days and keeps
+# the warm cache — unlike `cargo clean`, the next build stays incremental.
+# cargo has no native target/ GC (`cargo clean gc` covers ~/.cargo only), so
+# this is the standard tool for the job. 30 days ≈ what let vibewatch's
+# target/ grow to 20GB in a month of never sweeping: 17GB of it was dead
+# incremental sessions and superseded artifacts.
+set -euo pipefail
+
+# No cargo (or no sweep subcommand) on this machine: a quiet no-op, so the
+# systemd unit never shows as failed on hosts without the development group.
+command -v cargo >/dev/null 2>&1 || exit 0
+cargo sweep --version >/dev/null 2>&1 || exit 0
+
+root="$(dev-projects root 2>/dev/null)" || root="$HOME/Projects"
+[[ -d "$root" ]] || exit 0
+
+# Same two-levels-deep convention as dev-projects list. Worktrees are skipped
+# structurally (their .git is a file): with the shared target-dir setup they
+# have no target/ of their own, and sweeping the main checkout covers them —
+# the shared dir lives at the main checkout's target/, so that one test also
+# skips never-built (or just-cleaned) projects without a cargo-sweep WARN.
+while IFS= read -r manifest; do
+  dir="$(dirname "$manifest")"
+  [[ -d "$dir/.git" && -d "$dir/target" ]] || continue
+  echo "sweeping $dir"
+  cargo sweep --time 30 "$dir" || echo "warning: sweep failed in $dir" >&2
+done < <(find "$root" -mindepth 2 -maxdepth 3 -name Cargo.toml -not -path "*/target/*" 2>/dev/null)
