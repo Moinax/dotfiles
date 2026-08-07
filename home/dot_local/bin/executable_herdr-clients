@@ -234,7 +234,7 @@ revive_panes() {
   local session="$1" panes tabs workspaces
   local pane label ws_label tab_label agent has_session slot single role rc name cmd
   local -a learned=() live=() titles=()
-  local -A roles=()
+  local -A roles=() pins=()
   panes="$(herdr --session "$session" pane list 2>/dev/null \
     | jq -c '.result.panes // []')" || return 0
   tabs="$(herdr --session "$session" tab list 2>/dev/null \
@@ -250,13 +250,24 @@ revive_panes() {
     [[ -n "$pane" ]] && roles["$pane"]="$role"
   done < <(herdr-pane-role list -s "$session")
 
+  # Which panes wear a name the *user* typed, for the `-n` decision below. One
+  # read for the session, same shape as the roles above, and it has to happen
+  # before the loop because the loop is where the launch command is built.
+  # Non-fatal: a missing answer only means no agent is handed a name, which is
+  # the conservative half of the rule.
+  while IFS=$'\x1f' read -r pane name; do
+    [[ -n "$pane" ]] && pins["$pane"]="$name"
+  done < <(jq -rn --argjson panes "$panes" '$panes[].pane_id' \
+             | herdr-agent-title pins -s "$session" 2>/dev/null || true)
+
   # Agent panes with a recorded agent_session are skipped: herdr resumes those
   # itself (see the note above), so only agents it never registered get a fresh
-  # conversation. The agent's display name is the tab label when that says
-  # something — tabs carry task names ("fix-flaky-updater-tests"), and a fresh
-  # conversation in that tab is still about that task — and the workspace label
-  # otherwise, matching how dev-herdr launched it. "Says something" means
-  # anything but the generated "<provider>[ N]" placeholder.
+  # conversation. $name — the tab label when it says something, the workspace
+  # label otherwise, "says something" meaning anything but the generated
+  # "<provider>[ N]" placeholder — is what such a pane's border is restored to.
+  # It is deliberately NOT what the relaunched agent is handed as `claude -n`;
+  # only a `pin` is. See the launch site below and herdr-agent-layout for why
+  # that flag is sharp enough to need the distinction.
   # Panes revive concurrently: each waits up to ~3s for its shell, so serial
   # cost would grow with pane count.
   # Fields are \x1f-separated, NOT tab: tab is an IFS *whitespace* character, so
@@ -298,9 +309,8 @@ revive_panes() {
     # herdr-agent-title reports it without recording it.
     #
     # Before the has_session gate on purpose: a pane herdr resumes itself lost
-    # its title just the same. $name is the relaunch display name below too —
-    # one derivation, two readers. "Says something" means anything but the
-    # generated "<provider>[ N]" placeholder herdr-nav hands an unnamed tab.
+    # its title just the same. "Says something" means anything but the generated
+    # "<provider>[ N]" placeholder herdr-nav hands an unnamed tab.
     if [[ "$role" == agent:* ]]; then
       name="$ws_label"
       [[ -n "$tab_label" && ! "$tab_label" =~ ^"${role#agent:}"( [0-9]+)?$ ]] \
@@ -315,7 +325,15 @@ revive_panes() {
       # silent skip. "" is the latter — a pane the user made, nothing to run.
       shell | "") continue ;;
       agent:*)
-        cmd="$(dev-agent-argv -q "${role#agent:}" "$name")" || continue ;;
+        # The name goes in only when the user typed it. `claude -n` writes its
+        # argument into the new session's transcript as a `custom-title`, so
+        # handing a relaunch the name this script derived would make a brand-new
+        # conversation answer to the finished one's name forever — and feed that
+        # name back to herdr-agent-title as if the agent had chosen it. A pin is
+        # the user's own words and is meant to survive into the new session; a
+        # `set` name is only our reading of a conversation that is now over, so
+        # the fresh one starts untitled and names itself.
+        cmd="$(dev-agent-argv -q "${role#agent:}" "${pins[$pane]:-}")" || continue ;;
       *) cmd="$(herdr-pane-cmd "$role")" \
            || { echo "$session: pane $pane has role '$role', which resolves to no command" >&2
                 continue ;} ;;

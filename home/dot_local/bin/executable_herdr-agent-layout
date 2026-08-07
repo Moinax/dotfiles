@@ -16,12 +16,16 @@
 #        pin does and does not survive; don't restate it here.
 set -euo pipefail
 
-usage="usage: herdr-agent-layout [-s SESSION] [-k seed|pin] PANE_ID DIR PROVIDER LABEL [PROMPT]"
-session=""; kind=seed
-while [[ "${1:-}" == -[sk] ]]; do
+usage="usage: herdr-agent-layout [-s SESSION] [-k seed|pin] [-l TAB_LABEL] PANE_ID DIR PROVIDER LABEL [PROMPT]"
+session=""; kind=seed; tab_label=""
+while [[ "${1:-}" == -[skl] ]]; do
   case "$1" in
     -s) session="${2:?$usage}" ;;
     -k) kind="${2:?$usage}" ;;
+    # What the tab wears, when the caller gave it something shorter than the
+    # name going on the border. Passed straight to `seed`, which owns why the
+    # recorded name has to be the tab's and not the border's.
+    -l) tab_label="${2:?$usage}" ;;
   esac
   shift 2
 done
@@ -79,14 +83,38 @@ h pane run "$p_review" "$(herdr-pane-cmd review)" >/dev/null
 # Non-fatal, because a name must never break a tab; not silent, because this is
 # now the only thing that fills that slot and a pane stuck on its bare provider
 # is otherwise indistinguishable from one that simply has no task yet.
-herdr-agent-title seed "${sess[@]}" "$p_agent" "$kind" "$label" \
+lbl=()
+[[ -n "$tab_label" ]] && lbl=(-l "$tab_label")
+herdr-agent-title seed "${sess[@]}" "${lbl[@]}" "$p_agent" "$kind" "$label" \
   || echo "herdr-agent-layout: could not name pane $p_agent" >&2
+
+# `-n` carries only what a human wrote — the one rule that keeps the naming
+# machine honest, and the reason this passes $agent_name and not $label.
+#
+# `claude -n NAME` is not a decoration: Claude Code persists NAME as the
+# session's own `custom-title`, which is the exact record herdr-agent-title reads
+# back as "the title the agent chose for its work". Handing it a generated label
+# closed a loop — launch label -> custom-title -> read back as evidence ->
+# re-applied to the tab -> re-read at the next relaunch. A wtstart run launched
+# `socle.OCT-719` therefore re-titled itself `socle.OCT 719` at every turn end,
+# overwrote any name typed on the tab, and came back as the worktree name after
+# a restart. Worse, Claude never titled the work at all: it does not overwrite a
+# custom title that already exists, so `/rename` was the only way out.
+#
+# So: a `pin` (the words the user typed in the ctrl+alt+a picker) is worth
+# pushing into Claude's resume picker and terminal title, and cannot poison
+# anything — it *is* the name meant to hold. A `seed` (project, worktree, or
+# provider + number) launches nameless and lets the agent title itself after the
+# first exchange; the border still reads the seed until then, from the call
+# above. codex and opencode take no name flag at all and never had the problem.
+agent_name=""
+[[ "$kind" == pin ]] && agent_name="$label"
 
 # Agent command comes from dev-agent-argv (single source of truth; -q emits
 # it %q-quoted so prompts with spaces/quotes survive the pane's shell). The
 # installed herdr integration hooks the agent CLI itself, so detection and
 # session restore work no matter how the agent is launched.
-h pane run "$p_agent" "$(dev-agent-argv -q "$provider" "$label" "$prompt")" >/dev/null
+h pane run "$p_agent" "$(dev-agent-argv -q "$provider" "$agent_name" "$prompt")" >/dev/null
 
 # Bottom row: two plain terminals — "dev" (run your dev server by hand)
 # and "logs" (tail logs, one-off commands). No auto-typed dev command.

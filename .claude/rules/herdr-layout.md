@@ -132,11 +132,96 @@ name and every command still comes back.
 
 **Every name a pane wears is written by a verb of `herdr-agent-title`**, one per
 moment: `seed` at tab creation (herdr-agent-layout), `restore` at boot
-(herdr-clients revive-panes), `sync` at turn end (the Claude Code hook). Reporting
-the title and recording what the hook may replace are one act, so `seed` does
-both in one call. `herdr-agent-layout` used to open-code the `report-metadata
---source dots:agent-title --title X --token task=X` triple itself, which put the
-contract in a second file, and revive-panes would have made a third.
+(herdr-clients revive-panes), `rename` on ctrl+shift+t (herdr-nav rename-tab),
+`sync` at turn end (the Claude Code hook). Reporting the title and recording what
+the hook may replace are one act, so `seed` does both in one call.
+`herdr-agent-layout` used to open-code the `report-metadata --source
+dots:agent-title --title X --token task=X` triple itself, which put the contract
+in a second file, and revive-panes would have made a third.
+
+## `-n` carries only what a human wrote
+
+`claude -n NAME` is not a display option: Claude Code **persists NAME into the
+transcript as a `custom-title`**, which is the exact record `sync` reads back as
+the agent's own account of its work. Handing it a generated label therefore
+closed a loop — launch label → custom-title → read back as evidence → applied to
+the tab → re-read as `-n` at the next relaunch. Observed on
+`jacket.CI-5480`: Claude had settled on `employee-api-refactor-cleanup`, a
+relaunch fed the tab label back in, and the two sessions after it are titled
+`jacket.CI 5480`. Worse, Claude never titled that work at all — it does not
+overwrite a custom title that already exists, so `/rename` was the only way out.
+
+So `-n` is passed only for a name a human wrote: `herdr-agent-layout` gates it on
+`-k pin`, and `revive-panes` asks `herdr-agent-title pins` rather than reusing
+the tab label it restores the border from. A `set` name is only this machine's
+reading of a conversation that has ended; writing it into a *new* session's title
+would make the fresh work answer to the old work's name forever. codex and
+opencode take no name flag and never had the problem.
+
+## A rename is one act, not four surfaces catching up
+
+herdr's native `rename_tab` writes the tab label and nothing else. Everything
+downstream — the pane border, the sidebar `$task` token, vibewatch — moved only
+when `sync`'s drift check next ran, which needs the agent to end a turn: on an
+idle pane, never. And the check was gated on a `set`/`pin` entry, so with a
+`seed` (every wtstart run, for its first turn) or no entry at all it never ran,
+and the agent's title was re-applied straight over the name the user had typed.
+
+Both are fixed at their own level: the drift check is ungated and lifted above
+every other arm, so "a hand rename means pin" is written once (a pane whose agent
+had not titled itself used to `exit 0` before reaching it, and the pin gate
+carried a second copy that banked SEEN differently). ctrl+shift+t goes through
+`herdr-nav rename-tab` → `herdr-agent-title rename`, which writes all four in one
+call and pins. `prefix+shift+t` keeps herdr's native rename as an escape hatch,
+still covered by the slower path.
+
+**A writer with no transcript in hand writes SEEN empty.** `rename` runs from a
+keypress and cannot see the agent's title, and empty is already what this machine
+means by "unknown, adopt the next sighting" — `moved` needs a non-empty SEEN, so
+the pin holds, and the pin arm's `banked="${seen:-$title}"` fills it at the next
+turn end. Carrying the previous SEEN across looks more careful and is the
+opposite: Claude's `/rename` fires no hook, so a title that moved since the last
+sync is invisible from out here, and carrying that stale sighting made the next
+turn end compute `moved=1`, skip the pin gate, and apply the agent's title
+straight over the name just typed. Everything before a hand rename is settled by
+definition.
+
+The agent session id vibewatch keys its override by is **banked in the entry**,
+out of the hook payload, on every sync. herdr's own `pane.agent_session` is a
+fallback and not the source: it exists only for agents herdr's integration
+registered, which was 6 of 19 agent panes when this was measured, so sourcing it
+from there left `rename`'s vibewatch leg dead on two thirds of them.
+
+**The record is US-separated (`0x1f`), not tab** — the same lesson as
+`herdr-workspace`, re-learned here. Tab is IFS *whitespace*, so `read` collapses a
+run of them and an empty field between two tabs disappears, shifting every later
+field left. It was harmless while SEEN was last and only ever trailing-empty; the
+moment SID went after it, a pane renamed by hand read its own session id back as
+SEEN, `moved` went true, and the pin fell through the gate that exists to hold
+it. `cache_read` and `write_cache` are the only two things that know the layout,
+precisely so this is one decision and not four. The `pins` stdout protocol and
+the hook payload's own `jq` join follow the same rule, for the same reason.
+
+**The recorded NAME is the label the *tab* wears, never the one the border
+shows.** It is what the drift check compares the live label against, so recording
+anything the tab never wore makes the first sync read as a hand rename.
+`herdr-nav agent-tab` diverges the two on purpose for an unnamed tab — "claude 2"
+on the tab, "ws (claude 2)" on the border, to tell two of them apart — and
+recording the border name pinned every such tab to its own placeholder on its
+first turn, froze it there, and made it `-n`-eligible at the next boot, reopening
+the custom-title loop with the placeholder as the poison. Hence `seed -l`.
+
+**Our own `-n` coming back is not the agent's title moving.** A revived pin
+relaunches as `claude -n "<pin name>"`, which Claude persists as the new session's
+custom-title; comparing that against the SEEN banked from the *previous*
+conversation makes `moved` true and demotes the pin to `set` on the first turn
+after every boot. `moved` therefore also requires `title != applied`.
+
+**A name is only recorded once it has actually been applied.** `rename`'s herdr
+calls are all swallowed — a name must never be fatal — so a timed-out `pane get`
+used to leave the entry claiming a label the tab never took, which the next turn
+end read as a hand rename in the opposite direction and reverted. It now fails
+loudly and writes nothing, leaving the pane exactly as it was.
 
 **The seed/pin/set entries are durable, and that is what makes boot safe.** They
 live beside `herdr-pane-role`'s sidecar under `$XDG_STATE_HOME/dots/`, keyed by

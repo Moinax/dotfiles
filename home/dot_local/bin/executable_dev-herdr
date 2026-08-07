@@ -129,11 +129,15 @@ else
   [[ -n "$ws" && "$ws" != null ]] || die "workspace create returned no id: $ws_json"
 fi
 
-# One name for the run, across the three slots it can be read from: the tab
-# label here, and — through herdr-agent-layout — the agent's display name
-# (`claude -n`, so its resume picker and terminal title agree with the tab) and
-# the reported pane title. One variable, because they are one value: they used to
-# differ, the tab carrying "$provider" while the agent carried the project name.
+# One name for the run, across the two slots it can be read from: the tab label
+# here, and — through herdr-agent-layout — the reported pane title. One variable,
+# because they are one value: they used to differ, the tab carrying "$provider"
+# while the agent carried the project name.
+# Deliberately NOT the agent's own display name (`claude -n`): that flag writes
+# its argument into the transcript as a `custom-title`, so a label derived from
+# the worktree came straight back to herdr-agent-title as the agent's account of
+# the work and was re-applied over everything, forever. herdr-agent-layout owns
+# that rule — `-n` only for a `pin` — and this path is a seed.
 # The sidebar's row 2 *is* the tab label and is meant to say what the work is,
 # while row 1 already dims the provider — so a tab reading "claude" repeated row
 # 1 and said nothing. herdr-nav agent-tab labels a *named* tab the same way; only

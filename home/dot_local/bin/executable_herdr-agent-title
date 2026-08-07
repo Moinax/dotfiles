@@ -9,29 +9,49 @@
 #                                            SessionStart); hook JSON on stdin
 #        herdr-agent-title codex-notify JSON Codex `notify` callback; payload
 #                                            is the first argv as documented
-#        herdr-agent-title seed [-s SESSION] PANE KIND NAME
+#        herdr-agent-title seed [-s SESSION] [-l TAB_LABEL] PANE KIND NAME
 #                                            report the launch name and record
-#                                            what the hook may replace
+#                                            what the hook may replace; -l when
+#                                            the tab wears something shorter
+#        herdr-agent-title rename [-s SESSION] PANE NAME
+#                                            the user renaming a tab by hand:
+#                                            all four surfaces at once, pinned
 #        herdr-agent-title restore [-s SESSION]
 #                                            boot: put back the titles a server
 #                                            restart wiped. PANE<TAB>FALLBACK
 #                                            lines on stdin; reads, never writes
+#        herdr-agent-title pins [-s SESSION]  PANE ids on stdin, PANE<US>NAME
+#                                            back for the pinned ones only
 #        herdr-agent-title prune [-s SESSION] PANE [PANE ...]
 #                                            drop entries for panes that are gone
 #
 # Where the name comes from, in order:
-#   1. Claude Code's own session title — the `custom-title` record it keeps in
-#      the transcript. It is what `/rename` writes, what Claude regenerates as
-#      the work drifts, and what it pushes to the terminal title (which is why
-#      the sidebar's terminal_title_stripped row already tracks it live).
+#   1. The agent's own session title — Claude Code's `custom-title` transcript
+#      record, Codex's `threads` row. It is what `/rename` writes, what the agent
+#      regenerates as the work drifts, and what Claude pushes to the terminal
+#      title (which is why the sidebar's terminal_title_stripped row already
+#      tracks it live).
 #   2. A slug of the first user prompt, until (1) says anything other than the
 #      launch label — this is what makes a brand-new tab self-name after one
 #      exchange instead of sitting on "claude 2" for the first ten minutes.
 #
+# (1) is only trustworthy because of a rule that lives in herdr-agent-layout:
+# `claude -n NAME` does not merely decorate a pane, it *writes* NAME into that
+# transcript as a `custom-title`. Handing it a generated launch label therefore
+# fed this script its own guess back as evidence, and re-applied it forever: a
+# wtstart run launched `socle.OCT-719` re-titled itself `socle.OCT 719` at every
+# turn end, and Claude never named the work at all, because a custom title
+# already existed and it does not overwrite one. So `-n` now carries only what a
+# human wrote, and (1) is the agent speaking rather than an echo of us.
+#
 # Seed kinds (written by the `seed` verb at tab creation, one line
-# KIND<TAB>NAME<TAB>SEEN under $cache_root, where SEEN is the raw agent
+# KIND<US>NAME<US>SEEN<US>SID under $cache_root, where SEEN is the raw agent
 # title this script last observed on the pane — banked on every write, read
-# only to decide whether a `pin` has been overtaken):
+# only to decide whether a `pin` has been overtaken — and SID is the agent
+# session id, banked out of the hook payload for the sake of `rename`, which
+# runs from a keypress and has no payload to read it from. cache_read/write_cache
+# are the only two things that know this layout; nothing else may open-code it,
+# because `read` hands its last variable every remaining field at once:
 #   seed  launched with a generated label (project / provider + number) — the
 #         hook is free to replace it
 #   pin   launched from a task the user typed, or renamed by hand since. Their
@@ -46,6 +66,14 @@
 #   set   written by this script: the last name it applied, and therefore the
 #         tab label it expects to find. A different live label means the user
 #         renamed the tab by hand, which flips the entry back to `pin`.
+# `pin` now has two provenance grades, and only one of them is `-n`-eligible.
+# Every pin but one is human-authored *by construction* — typed into the
+# ctrl+alt+a picker or the ctrl+shift+t rename popup — which is what makes
+# herdr-agent-layout's "`-n` carries only what a human wrote" safe. The Codex
+# arm below infers one instead, from `title != first_user_message`. That is
+# harmless today only because codex takes no name flag at all; a provider that
+# grows one must not take the token on trust, or the loop closed above reopens
+# through the gate that closed it.
 # With no entry at all — a pane from before this existed — the live tab label is
 # adopted as the baseline: a name that is already right then costs a re-report,
 # not a rename. That case is now rare, because the entries outlive the machine:
@@ -71,7 +99,9 @@
 set -euo pipefail
 
 usage="usage: herdr-agent-title sync | codex-notify JSON
-       | seed [-s SESSION] PANE KIND NAME | restore [-s SESSION] | prune [-s SESSION] PANE..."
+       | seed [-s SESSION] [-l TAB_LABEL] PANE KIND NAME
+       | rename [-s SESSION] PANE NAME
+       | restore [-s SESSION] | pins [-s SESSION] | prune [-s SESSION] PANE..."
 
 # Durable, under $XDG_STATE_HOME beside herdr-pane-role's own sidecar — NOT
 # $XDG_RUNTIME_DIR, where this used to live. Nothing about these entries is
@@ -149,18 +179,45 @@ session_from_socket() {
 # A name must never end a turn — nor print, which on a Stop hook lands in the
 # agent's own output, so `2>/dev/null` goes first: redirections are applied in
 # order and a failing target reports on whatever stderr is at that moment.
-write_cache() { # $1: file, $2: kind, $3: name, $4: agent title last seen
-  printf 2>/dev/null '%s\t%s\t%s\n' "$2" "$3" "${4:-}" >"$1" || return 0
+write_cache() { # $1: file, $2: kind, $3: name, $4: agent title last seen, $5: sid
+  printf 2>/dev/null '%s\x1f%s\x1f%s\x1f%s\n' "$2" "$3" "${4:-}" "${5:-}" >"$1" || return 0
 }
 
-# The NAME field of a pane's entry, empty when there is none. The one reader
-# that wants just the name; the sync arm below reads all three fields at once.
-cached_name() { # $1: pane id
-  local f kind name
-  f="$(cache_path "$1")"
-  [[ -r "$f" ]] || return 0
-  IFS=$'\t' read -r kind name _ <"$f" || return 0
-  printf '%s\n' "$name"
+# ...and the one reader, so the record layout is spelled out in exactly two
+# places that sit next to each other. Sets c_kind / c_name / c_seen / c_sid and
+# returns non-zero only when the pane has no entry at all, which is what lets a
+# caller tell "no record" from "a record whose fields are empty". Entries written
+# before a field existed simply read back empty for it — `read` leaves the
+# trailing variables unset, hence the reset up front.
+#
+# It has to be a reader and not four: `read` gives its LAST variable everything
+# remaining in the line, tabs included, so a three-field read against a
+# four-field record silently returns "SEEN<TAB>SID" as the seen value. Adding
+# $c_sid below would have introduced that bug in each of the four places the
+# layout used to be open-coded.
+cache_read() { # $1: pane id
+  c_kind=""; c_name=""; c_seen=""; c_sid=""
+  local f line; f="$(cache_path "$1")"
+  [[ -r "$f" ]] || return 1
+  IFS= read -r line <"$f" || true
+  # US (0x1f), not tab, and for the reason this repo has already paid for once
+  # (.claude/rules/herdr-layout.md): tab is IFS *whitespace*, so bash collapses a
+  # run of them into one delimiter and an empty field between two tabs vanishes,
+  # shifting every later field left. Harmless while SEEN was last and only ever
+  # trailing-empty; the moment SID went after it, a pane renamed by hand read its
+  # own session id back as SEEN, which made `moved` true and dropped the pin
+  # straight through the gate that exists to hold it. US is not IFS whitespace,
+  # so it delimits exactly one field however empty its neighbours are.
+  #
+  # Records written before this are tab-separated and are read as such — they
+  # cannot carry an empty middle field, so the collapse cannot bite them, and
+  # the first write upgrades them.
+  if [[ "$line" == *$'\x1f'* ]]; then
+    IFS=$'\x1f' read -r c_kind c_name c_seen c_sid <<<"$line"
+  else
+    IFS=$'\t' read -r c_kind c_name c_seen <<<"$line"
+  fi
+  return 0
 }
 
 # The tab's current label, empty on any failure.
@@ -194,10 +251,13 @@ report_title() { # $1: session (may be empty), $2: pane id, $3: name
 # below settles the label question first: a sidebar row reading one name beside
 # a tab reading another is worse than either name alone.
 #
-# vibewatch is told too, for the same reason — see tell_vibewatch.
+# vibewatch is told too, for the same reason — see tell_vibewatch. The sync arm's
+# shorthand for the pane it is running inside; `rename` acts on a pane from
+# outside it and calls the two halves with its own values rather than assigning
+# to the globals this reads, which is how a helper stops being borrowable.
 report_metadata() { # $1: name
   report_title "" "$HERDR_PANE_ID" "$1"
-  tell_vibewatch "$1"
+  tell_vibewatch "$1" "${session_id:-}" "${vibewatch_stamp:-}"
 }
 
 # vibewatch's panel and its waybar pill name sessions off Claude's own title, so
@@ -223,10 +283,10 @@ report_metadata() { # $1: name
 #
 # Time-boxed like every herdr call here, and skipped outright when vibewatch is
 # not installed: a name must never cost a turn.
-tell_vibewatch() { # $1: name
-  [[ -n "${session_id:-}" && -n "${1:-}" ]] || return 0
+tell_vibewatch() { # $1: name, $2: agent session id, $3: stamp path
+  [[ -n "${2:-}" && -n "${1:-}" ]] || return 0
   command -v vibewatch >/dev/null 2>&1 || return 0
-  vw rename "$session_id" "$1" >/dev/null 2>&1 || true
+  vw rename "$2" "$1" >/dev/null 2>&1 || true
   # Builtin redirect, no fork — but a redirect into a directory that is not
   # there yet fails, and under `set -e` that failure ended the script right
   # here: after the report above, before the tab rename and the cache write
@@ -238,7 +298,7 @@ tell_vibewatch() { # $1: name
   # this runs; the `|| true` is the second belt, because nothing about a name may
   # be fatal. `2>/dev/null` goes first: redirections are applied in
   # order, so a failing target reports on whatever stderr is at that moment.
-  : 2>/dev/null >"${vibewatch_stamp:-}" || true
+  : 2>/dev/null >"${3:-}" || true
   return 0
 }
 
@@ -265,14 +325,33 @@ claude_title() { # $1: transcript
           | map(select(length > 0)) | first // empty' 2>/dev/null )
 }
 
-# Codex keeps the thread title in the durable index used by its resume picker.
-# Read only that stable field; the rollout format is explicitly unstable and
-# this hook does not need its path.
+# Codex keeps its thread index in the sqlite state used by the resume picker.
+# `title` is the one field to read: Codex fills it with the raw opening user
+# message, never shortened (one of these is a whole paragraph about card
+# issuing), and `/rename <name>` overwrites it in place. The rollout format is
+# explicitly unstable and this hook still does not need its path.
+#
+# Which of the two it is matters — an opening prompt is a guess, a `/rename` is
+# the user's own words — and the tell is `first_user_message`, the column Codex
+# derives the auto title from and then leaves alone. Measured across the local
+# index: 47 of 50 threads have title == first_user_message, and the exceptions
+# are exactly the threads renamed by hand. Not the `name` column, which reads
+# like the obvious slot (it is the key `codex archive|delete <session name>`
+# takes) but is empty on all 50 — `/rename` does not write it. Verified against
+# Codex 0.146.1 by renaming a live thread and diffing the row.
+#
+# Prints SOURCE<US>TITLE so the caller can tell the two apart. US (0x1f) and
+# not a tab: this value is a user message and may contain tabs, and the field
+# split below has to land in the same place whatever is inside it — the same
+# reason herdr-workspace joins jq's fields with it.
 codex_title() { # $1: session id
   [[ "$1" =~ ^[[:alnum:]_-]+$ ]] || return 1
   command -v sqlite3 >/dev/null 2>&1 || return 1
-  sqlite3 "$HOME/.codex/state_5.sqlite" \
-    "select title from threads where id = '$1' limit 1" 2>/dev/null
+  sqlite3 -separator $'\x1f' "$HOME/.codex/state_5.sqlite" \
+    "select case when title <> coalesce(first_user_message, '')
+                 then 'named' else 'auto' end,
+            title
+       from threads where id = '$1' limit 1" 2>/dev/null
 }
 
 # The opening prompt. A few user records, not just the first: a session opened
@@ -299,24 +378,140 @@ first_prompt() { # $1: transcript
           | first // empty' 2>/dev/null )
 }
 
-case "${1:-sync}" in
+# The bare invocation means `sync`, so the arms below compare against $verb and
+# never $1: with no argument at all the case matched while `$1` itself stayed
+# unset, and `set -u` then killed the script inside the arm rather than at the
+# top. Only a hand invocation could reach it — the hook always passes `sync` —
+# but a usage message that dies on an unbound variable is a poor way to learn it.
+verb="${1:-sync}"
+case "$verb" in
   seed)
     shift
+    # -l is what the *tab* wears when that differs from what the border shows.
+    # The entry's NAME field means "the label we last applied to the tab" — it is
+    # what the drift check compares the live label against — so recording
+    # anything the tab never wore makes the very first sync read as a hand
+    # rename. herdr-nav's unnamed agent tabs do exactly that on purpose: the tab
+    # gets "claude 2" and the border the longer "ws (claude 2)", to tell two of
+    # them apart. Recording the border name pinned every such tab to its own
+    # placeholder on its first turn, froze it there, and made it `-n`-eligible at
+    # the next boot — reopening the custom-title loop with the placeholder as the
+    # poison. Defaults to NAME, which is every other caller.
+    tab_label=""
     # Without -s the session is the one this call inherited (herdr-agent-layout
     # runs inside a pane for the agent-tab path); dev-herdr passes it explicitly
     # because it can create a workspace in a session other than the pane it was
     # launched from. Resolved after the flag, so the common case does not pay a
     # subshell for a value it is about to overwrite.
-    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    while [[ "${1:-}" == -[sl] ]]; do
+      case "$1" in
+        -s) session="${2:?$usage}" ;;
+        -l) tab_label="${2:?$usage}" ;;
+      esac
+      shift 2
+    done
     session="${session:-$(session_from_socket)}"
     pane="${1:?$usage}"; kind="${2:?$usage}"; name="${3:?$usage}"
     [[ "$kind" == seed || "$kind" == pin ]] || { echo "$usage" >&2; exit 2; }
     cache_ready "$session"
-    write_cache "$(cache_path "$pane")" "$kind" "$name"
+    write_cache "$(cache_path "$pane")" "$kind" "${tab_label:-$name}"
     # The launch name belongs on the border as well as in the entry, and the one
     # caller wants both in the same breath: recording what the hook may replace
     # and saying what the pane is called are one act, so they are one call.
     report_title "$session" "$pane" "$name"
+    ;;
+
+  rename)
+    shift
+    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    session="${session:-$(session_from_socket)}"
+    pane="${1:?$usage}"; new_name="${2:?$usage}"
+    cache_ready "$session"
+
+    # The user renaming a tab by hand, done in one act instead of four surfaces
+    # catching up one turn later. `sync` still detects a rename made through
+    # herdr's own `rename_tab` (the drift check), but it can only run when the
+    # agent next ends a turn — so on an idle pane the border and the bar kept
+    # the old name indefinitely, which read as the rename having half-worked.
+    # This is the verb ctrl+shift+t goes through; prefix+shift+t stays on
+    # herdr's native rename and is still covered by the slower path.
+    #
+    # The entry first: it carries the agent session id vibewatch keys its
+    # override by, banked by every sync out of the hook payload. herdr's own
+    # `pane.agent_session` is the fallback and not the source, because it exists
+    # only for agents its integration registered — 13 of 19 agent panes on this
+    # desktop have none, so sourcing it from there alone left the vibewatch leg
+    # of this verb dead on two thirds of them.
+    cache_read "$pane" || true
+    cache="$(cache_path "$pane")"
+
+    # One IPC for the rest: the tab to relabel (the bind runs in the *focused*
+    # pane, which may be the dev or review pane of the tab), plus the session id
+    # when the entry had none to give.
+    # Into temporaries, never straight back into $c_sid: `read` assigns its
+    # variables before it knows whether there was anything to read, so a `pane
+    # get` that times out (h is `timeout 2 herdr`) emptied the session id
+    # cache_read had just loaded — killing the vibewatch leg this field exists
+    # for, on exactly the busy server where the rename matters most.
+    tab=""; got_sid=""
+    IFS=$'\x1f' read -r tab got_sid < <(hs "$session" pane get "$pane" 2>/dev/null \
+      | jq -r '[.result.pane.tab_id // "",
+                .result.pane.agent_session.value // ""] | join("\u001f")' \
+           2>/dev/null) || true
+    [[ -n "$got_sid" ]] && c_sid="$got_sid"
+
+    # [3] Nothing is recorded for a rename that did not land. The tab lookup and
+    # the rename are both swallowed (a name must never be fatal), so without this
+    # a timed-out `pane get` left the entry claiming a name the tab never took —
+    # and the next turn end read that disagreement as a hand rename in the
+    # opposite direction and put the old label back. Failing visibly and writing
+    # nothing leaves the pane exactly as it was.
+    if [[ -z "$tab" ]] || ! hs "$session" tab rename "$tab" "$new_name" >/dev/null 2>&1; then
+      echo "herdr-agent-title: could not rename tab of pane $pane; nothing recorded" >&2
+      exit 1
+    fi
+
+    report_title "$session" "$pane" "$new_name"
+    tell_vibewatch "$new_name" "$c_sid" "$cache.vw"
+
+    # SEEN written empty, always — one rule for a writer with no transcript in
+    # hand, rather than a second convention for out-of-process writers. Empty is
+    # already what this machine means by "unknown, adopt the next sighting":
+    # `moved` needs a non-empty SEEN, so the pin holds, and the pin arm's own
+    # `banked="${seen:-$title}"` fills it in at the next turn end.
+    #
+    # Carrying the previous SEEN across looked more careful and was the opposite.
+    # Claude's `/rename` fires no hook, so a title that moved since the last sync
+    # is unseen from out here; carrying that stale sighting made the next turn end
+    # compute moved=1, skip the pin gate, and apply the agent's title straight
+    # over the name just typed. Everything before a hand rename is settled by
+    # definition, which is exactly what an empty SEEN says.
+    write_cache "$cache" pin "$new_name" "" "$c_sid"
+    ;;
+
+  pins)
+    shift
+    [[ "${1:-}" == -s ]] && { session="${2:?$usage}"; shift 2; }
+    session="${session:-$(session_from_socket)}"
+    cache_ready "$session"
+    # PANE ids on stdin, one per line; PANE<US>NAME back for the pinned ones
+    # only. US and not tab, matching the record it reads and herdr-workspace
+    # before it — a name is user text and may carry anything. Pane ids in rather than a directory listing out, because the entry
+    # filename is a *sanitized* pane id (`w1:p1` -> `w1_p1`) and that mapping
+    # does not invert — same reason `restore` and `prune` are fed ids too.
+    #
+    # The one caller is revive-panes, deciding whether a relaunched agent should
+    # be handed its name as `claude -n`. Only a pin may be: a `set` name is this
+    # script's own reading of a conversation that is now over, and writing it
+    # into a brand-new session's title would make the fresh work answer to the
+    # old work's name forever (herdr-agent-layout owns why `-n` is that sharp).
+    while read -r pane; do
+      [[ -n "$pane" ]] || continue
+      cache_read "$pane" || continue
+      [[ "$c_kind" == pin && -n "$c_name" ]] || continue
+      printf '%s\x1f%s\n' "$pane" "$c_name"
+    done
+    exit 0
     ;;
 
   restore)
@@ -338,8 +533,8 @@ case "${1:-sync}" in
     # sync's ordinary no-entry adoption instead of a guess made from out here.
     while IFS=$'\t' read -r pane fallback; do
       [[ -n "$pane" ]] || continue
-      name="$(cached_name "$pane")"
-      [[ -n "$name" ]] || name="$fallback"
+      cache_read "$pane" || true
+      name="${c_name:-$fallback}"
       [[ -n "$name" ]] || continue
       # Only panes that actually lost their title. A resumed agent fires its own
       # SessionStart, which re-reports for itself; stamping a name over that would
@@ -385,42 +580,104 @@ case "${1:-sync}" in
     command -v jq >/dev/null 2>&1 || exit 0
 
     # Cache first: it decides how much of the rest is allowed to run. Reading
-    # it costs no process at all, and a third field on old two-field lines just
-    # reads back empty (handled where `seen` is used).
+    # it costs no process at all, and a field an older entry does not have just
+    # reads back empty (handled where each is used).
     cache_ready "$(session_from_socket)"
     cache="$(cache_path "$HERDR_PANE_ID")"
     vibewatch_stamp="$cache.vw"  # see tell_vibewatch
-    kind=""; applied=""; seen=""
-    if [[ -r "$cache" ]]; then
-      IFS=$'\t' read -r kind applied seen <"$cache" || true
-    fi
+    cache_read "$HERDR_PANE_ID" || true
+    kind="$c_kind"; applied="$c_name"; seen="$c_seen"
 
-    if [[ "$1" == codex-notify ]]; then
+    # What the settled name is worth once applied. `set` is this script's own
+    # doing and stays open to revision; `pin` is a name the user wrote, and only
+    # Codex can report one from in here — its `/rename` takes the name as an
+    # argument, while Claude's bare `/rename` asks *it* to pick, so what comes
+    # back from Claude is the agent's account of the work and not the user's
+    # words. Either still replaces an earlier pin: whoever spoke last wins.
+    settled="set"
+    title=""
+    if [[ "$verb" == codex-notify ]]; then
       payload="${2:-}"
       session_id="$(jq -r 'select(.type == "agent-turn-complete")
                               | .["thread-id"] // empty' <<<"$payload" 2>/dev/null)" || session_id=""
       [[ -n "$session_id" ]] || exit 0
-      title="$(codex_title "$session_id")" || title=""
+      row="$(codex_title "$session_id")" || row=""
       # Cache records are one-line TSV. Codex titles are opening prompts and
       # may be paragraphs; only their first line can be banked and compared
       # without turning the rest into bogus cache records on the next sync.
-      title="${title%%$'\n'*}"
+      row="${row%%$'\n'*}"
+      # sqlite3 always emits the separator between the two columns, so the only
+      # row without one is the empty string of "no such thread" — on which both
+      # expansions below already yield empty. No guard needed.
+      [[ "${row%%$'\x1f'*}" == named ]] && settled=pin
+      title="${row#*$'\x1f'}"
       event=Stop
     else
       # All three payload fields in one jq: the hook JSON is a handful of
       # lines and this runs at every turn end, on every pane.
-      IFS=$'\t' read -r transcript event session_id \
+      # US, not @tsv, and for the reason cache_read spells out: tab is IFS
+      # whitespace, so an empty middle field (a payload with no hook_event_name)
+      # collapses and shifts `session_id` into `event` and empties the id. That
+      # id is now banked into the record `rename` depends on, so the shift would
+      # both skip the SessionStart re-report and quietly wipe a good SID.
+      IFS=$'\x1f' read -r transcript event session_id \
         < <(jq -r '[.transcript_path // "", .hook_event_name // "",
-                    .session_id // ""] | @tsv' 2>/dev/null) || true
+                    .session_id // ""] | join("\u001f")' 2>/dev/null) || true
       [[ -n "$transcript" && -r "$transcript" ]] || exit 0
       title="$(claude_title "$transcript")" || title=""
     fi
 
-    if [[ -z "$kind" && -n "${HERDR_TAB_ID:-}" ]]; then
+    # The tab's live label, read once here because every arm below wants it —
+    # as the baseline for a pane with no entry, and as the drift signal (a label
+    # that no longer matches what we applied was typed by the user) for one that
+    # has an entry. It used to be read separately on the pin and `set` paths and
+    # *not at all* on the other two, which is what let a hand rename be silently
+    # undone: with a `seed` entry — every wtstart run, for its first turn — or
+    # with none, the drift check below was skipped and the agent's own title was
+    # re-applied straight over the name the user had just typed. Reading it here
+    # costs no extra IPC on the paths that already read it and one on the paths
+    # that were getting this wrong.
+    live=""
+    [[ -n "${HERDR_TAB_ID:-}" ]] && { live="$(tab_label "$HERDR_TAB_ID")" || live=""; }
+
+    if [[ -z "$kind" ]]; then
       # No entry: this pane predates the cache, or `restore` reported a fallback
       # onto it without recording one. Adopt the live tab label as the baseline
-      # (header) — which is exactly why restore leaves this case to us.
-      applied="$(tab_label "$HERDR_TAB_ID")" || applied=""
+      # (header) — which is exactly why restore leaves this case to us. This also
+      # keeps the drift check below quiet on the first turn, since `applied` is
+      # `live` by construction until we write something else.
+      applied="$live"
+    fi
+
+    # Whether the tab is still ours to name — first, and above every other arm.
+    # A label that has drifted from what we last applied was typed by the user,
+    # and their name has to reach the sidebar and vibewatch too, not just survive
+    # on the tab. This is the one place that transition is written: the pin gate
+    # below used to carry a second copy of it, and the two had already drifted
+    # apart in how they banked SEEN.
+    #
+    # It answers a question that needs no name computed, so it sits above the
+    # `herdr-task-name` fork and the transcript scan — and above the "nothing
+    # usable" exit that used to swallow it entirely on a pane whose agent had not
+    # titled itself yet. Past this branch `live` is either empty or equal to
+    # `applied`, which is what lets everything below compare against `applied`
+    # alone.
+    if [[ -n "$live" && "$live" != "$applied" ]]; then
+      # Renamed by hand since our last write — hand the tab back, and report the
+      # name it is actually wearing. The title goes in as SEEN, spending the move
+      # that got us this far: a fresh pin must not be undone on the next turn by
+      # the change that preceded it. Plain `$title`, empty included: carrying the
+      # old SEEN forward here is the same trap the `rename` verb documents. That
+      # state is reachable now that this branch runs before the "nothing usable"
+      # exit — a revived `set` pane relaunches with no `-n`, so its fresh
+      # transcript has no title yet while the entry still holds the previous
+      # conversation's SEEN. Banking that stale sighting made the agent's first
+      # real title read as a move two turns later, which drops the pin and
+      # overwrites the hand-typed name. Empty means "adopt the next sighting",
+      # which is exactly right for everything before a hand rename.
+      report_metadata "$live"
+      write_cache "$cache" pin "$live" "$title" "${session_id:-$c_sid}"
+      exit 0
     fi
 
     task_name="${0%/*}/herdr-task-name"
@@ -432,48 +689,45 @@ case "${1:-sync}" in
     # past the pin gate — a held pin is the common case and never needs them.
     # Has the agent's own title moved since this pane was pinned (see header)?
     moved=0
-    [[ -n "$title" && -n "$seen" && "$title" != "$seen" ]] && moved=1
+    [[ -n "$title" && -n "$seen" && "$title" != "$seen" && "$title" != "$applied" ]] \
+      && moved=1
 
     # A pin holds the name the user chose against the guess, not against the
     # agent's own account of the work — so it stops here unless the title moved.
     if [[ "$kind" == pin && "$moved" == 0 ]]; then
-      # The label, not $applied. This path exits before the `live != applied`
-      # check below, so a tab renamed by hand while pinned leaves $applied
-      # stale — and pushing that outwards would actively overwrite the user's
-      # name with the one they replaced.
-      pinned=""; pane_live=""
-      [[ -n "${HERDR_TAB_ID:-}" ]] && { pinned="$(tab_label "$HERDR_TAB_ID")" || pinned=""; }
-      [[ -n "$pinned" ]] || pinned="$applied"
+      # $applied, with no label fallback: the hand rename is settled above, so
+      # `live` here is either empty or equal to it. This arm used to run before
+      # that check and needed its own `${live:-$applied}` to see a rename.
       pane_live="$(pane_title "" "$HERDR_PANE_ID")" || pane_live=""
 
-      # A tab label that has drifted from the last reported name is a hand
-      # rename, and this path is the only one that can see it: the `live !=
-      # applied` check further down is past the gate we are about to exit
-      # through. The pane title and the sidebar token have to follow it too — a
-      # pane header reading the name the user just replaced is the same defect
-      # as a stale bar, one surface over. The comparison is against the pane's
-      # reported *title*, not its label: the label is the provider now, so
-      # matching on it would mismatch on every single turn and pay the
-      # tell_vibewatch spawn the stamp below exists to avoid.
+      # The pane title and the sidebar token still have to be caught up when they
+      # have fallen behind the name — a pane header reading something the tab
+      # does not is the same defect as a stale bar, one surface over. The
+      # comparison is against the pane's reported *title*, not its label: the
+      # label is the provider now, so matching on it would mismatch on every
+      # single turn and pay the tell_vibewatch spawn the stamp below exists to
+      # avoid.
       #
       # A server restart drops reported metadata while keeping labels, hence the
       # SessionStart arm as well. Otherwise only vibewatch is pinged, and only
       # when its stamp says this daemon has not already been told (see
       # tell_vibewatch) — `report_metadata` covers it on the arm above, hence the
       # elif rather than both.
-      if [[ -n "$pinned" ]] \
-         && [[ "$pinned" != "$applied" || "$pane_live" != "$pinned" || "$event" == SessionStart ]]; then
-        report_metadata "$pinned"
-      elif [[ -n "$pinned" && "$vibewatch_sock" -nt "$vibewatch_stamp" ]]; then
-        tell_vibewatch "$pinned"
+      if [[ -n "$applied" ]] \
+         && [[ "$pane_live" != "$applied" || "$event" == SessionStart ]]; then
+        report_metadata "$applied"
+      elif [[ -n "$applied" && "$vibewatch_sock" -nt "$vibewatch_stamp" ]]; then
+        tell_vibewatch "$applied" "$session_id" "$vibewatch_stamp"
       fi
 
       # Banked only now: the entry records what has been reported, so writing it
       # before the report above would erase the very drift that triggers it and
-      # leave the stale name in place for good.
+      # leave the stale name in place for good. The session id is banked on the
+      # same write — it is what lets `rename` reach vibewatch from a keypress.
       banked="${seen:-$title}"
-      [[ "$pinned" != "$applied" || "$banked" != "$seen" ]] \
-        && write_cache "$cache" pin "$pinned" "$banked"
+      keep_sid="${session_id:-$c_sid}"
+      [[ "$banked" != "$seen" || "$keep_sid" != "$c_sid" ]] \
+        && write_cache "$cache" pin "$applied" "$banked" "$keep_sid"
       exit 0
     fi
 
@@ -485,16 +739,19 @@ case "${1:-sync}" in
     name="$title"
     [[ -n "$name" ]] && name="$("$task_name" "$name" 2>/dev/null || true)"
 
-    # Nothing better than the launch label yet — no title at all, or still the
-    # one we passed as `claude -n`: name it after the opening prompt instead.
-    # Every gate here is narrow on purpose. Once a real name has been applied a
+    # Nothing better than the launch label yet — no title at all, or one that
+    # says nothing the label did not: name it after the opening prompt instead.
+    # The "no title at all" arm is the ordinary case for a generated launch now,
+    # by design: herdr-agent-layout hands `-n` only a name a human wrote, so a
+    # seeded agent starts untitled and this guess carries the tab until it names
+    # itself. Every gate here is narrow on purpose. Once a real name has been applied a
     # stale first prompt must not undo a title Claude has since sharpened, and
     # a title that merely matches an adopted tab label is not a seed. `pin` is
     # named rather than left to fall out of the branch above: a pin never
     # guesses is an invariant, and it should read as one.
     if [[ "$kind" != set && "$kind" != pin ]] \
        && [[ -z "$name" || ( "$kind" == seed && "$name" == "$applied" ) ]]; then
-      if [[ "$1" == codex-notify ]]; then
+      if [[ "$verb" == codex-notify ]]; then
         # The Codex thread title is derived from its opening prompt. If the
         # index did not have one yet, the notification payload is the only
         # stable interface left; use its first input message as the seed.
@@ -505,28 +762,6 @@ case "${1:-sync}" in
       [[ -n "$first" ]] && name="$("$task_name" "$first" 2>/dev/null || true)"
     fi
     [[ -n "$name" ]] || exit 0
-
-    # Whether the tab is still ours to name, settled before anything is
-    # reported: a label that has drifted from what we last applied was typed by
-    # the user, and their name has to reach the sidebar and vibewatch too, not
-    # just survive on the tab.
-    live=""
-    if [[ -n "${HERDR_TAB_ID:-}" && ( "$kind" == set || "$kind" == pin ) ]]; then
-      live="$(tab_label "$HERDR_TAB_ID")" || live=""
-    fi
-
-    # The hand rename comes first, so the no-op exit below needs no clause about
-    # the label: past this branch `live` is either empty or equal to `applied`,
-    # which is exactly what such a clause would have to say.
-    if [[ -n "$live" && "$live" != "$applied" ]]; then
-      # Renamed by hand since our last write — hand the tab back, and report the
-      # name it is actually wearing. The title goes in as SEEN, spending the
-      # move that got us this far: a fresh pin must not be undone on the next
-      # turn by the change that preceded it.
-      report_metadata "$live"
-      write_cache "$cache" pin "$live" "$title"
-      exit 0
-    fi
 
     # Nothing to do: the name has not moved, and neither has the label. A server
     # restart wipes reported metadata (herdr only persists labels), so
@@ -545,8 +780,11 @@ case "${1:-sync}" in
 
     # `set` from here even if we arrived pinned: the tab now carries the agent's
     # own name, so the ordinary follow-and-watch rules apply — the guess stays
-    # shut out, and a hand rename pins it again.
-    write_cache "$cache" set "$name" "$title"
+    # shut out, and a hand rename pins it again. The exception is a Codex
+    # `/rename`, which unlike Claude's takes the name as an argument and so
+    # reports the user's own words back to us: $settled carries that across from
+    # where the title was read, and re-pins rather than reopening the name.
+    write_cache "$cache" "$settled" "$name" "$title" "${session_id:-$c_sid}"
     ;;
 
   *)

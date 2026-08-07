@@ -5,6 +5,9 @@
 #
 # Usage: herdr-nav tab N            focus the Nth tab of the focused workspace
 #        herdr-nav resize DIR       resize the focused pane (left|right|up|down)
+#        herdr-nav rename-tab       rename the focused tab everywhere at once —
+#                                   tab label, agent pane border, sidebar token
+#                                   and vibewatch — and pin the name (ctrl+shift+t)
 #        herdr-nav agent-picker     pick an agent provider and name it, then
 #                                   add it as a tab to the focused workspace
 #        herdr-nav agent-tab [PROV [NAME]]
@@ -108,6 +111,18 @@ tool_tab() {
 # validates by asking it to resolve the provider. Nothing here has to hold the
 # list, so nothing can hold a stale copy of it.
 
+# "Is this pane an agent pane?" — a jq fragment, interpolated by every query
+# below that has to answer it: which provider a workspace runs, where the agent
+# block ends (agent-tab), and which pane of a tab carries the agent (rename-tab).
+# At file scope rather than inside one arm because those answers must never
+# drift apart — they did, briefly: rename-tab arrived with a third definition
+# that ranked `agent_session` first and consulted the role sidecar only as a
+# fallback, so a tab whose agent had stopped could resolve to a different pane
+# here than in agent-tab. Reading the roles is what makes a stopped agent still
+# count; `.agent` alone used to make a whole workspace of stopped agents look
+# agent-less. Needs `--argjson roles` from herdr-pane-role in scope.
+is_agent='((.agent // "") != "") or (($roles[.pane_id] // "") | startswith("agent:"))'
+
 case "${1:-}" in
   tab)
     n="${2:?usage: herdr-nav tab N}"
@@ -125,6 +140,56 @@ case "${1:-}" in
       | jq -re '.result.panes[] | select(.focused) | .pane_id')" \
       || die "no focused pane"
     herdr pane resize --direction "$dir" --pane "$pane" >/dev/null
+    ;;
+  rename-tab)
+    # ctrl+shift+t. herdr has a native rename_tab, and it renames the tab and
+    # nothing else — the pane border, the sidebar's $task token and vibewatch
+    # only catch up when herdr-agent-title's drift check next runs, which needs
+    # the agent to end a turn. On an idle pane that is never, so the rename read
+    # as half-applied: the tab said one thing and the border beside it another,
+    # indefinitely. Going through herdr-agent-title makes all four one act, and
+    # pins the name in the same breath. prefix+shift+t keeps herdr's native
+    # rename as the escape hatch; the slow drift check still covers it.
+    command -v gum >/dev/null 2>&1 || die "rename-tab: gum is not installed"
+    ws="$(focused_workspace)"
+    panes="$(herdr pane list --workspace "$ws")"
+    tab="$(jq -re '.result.panes[] | select(.focused) | .tab_id' <<<"$panes")" \
+      || die "no focused pane"
+
+    # The agent pane of this tab, never the focused one: the bind fires wherever
+    # the cursor happens to be, which is as often the dev or review pane. Asked
+    # of the panes themselves and never of a label, through the shared $is_agent
+    # above. A tab it matches nothing in is an ordinary utility tab (nvim, git,
+    # files) and just gets its label renamed.
+    roles="$(herdr-pane-role list --json 2>/dev/null || echo '{}')"
+    agent_pane="$(jq -r --arg tab "$tab" --argjson roles "$roles" \
+      '[.result.panes[] | select(.tab_id == $tab) | select('"$is_agent"')][0].pane_id
+       // empty' <<<"$panes")"
+
+    # Unguarded, this aborted the whole popup under `set -e`: a `herdr tab get`
+    # that fails (tab closed since the pane list, socket hiccup) makes the
+    # pipeline non-zero and the assignment ends the script — the popup flashes
+    # open and shut with no prompt and no message, so the chord reads as dead.
+    # An empty prefill is a fine degradation; not prompting at all is not.
+    current="$(herdr tab get "$tab" 2>/dev/null \
+      | jq -r '.result.tab.label // empty' 2>/dev/null)" || current=""
+    # Prefilled and selected-on-open: a rename is usually an edit of what is
+    # there, and Esc must leave the old name alone rather than clear it.
+    name="$(gum input --header "Rename tab" --char-limit 0 \
+      --value "$current" --placeholder "Name this tab" </dev/tty)" || exit 0
+    # Through herdr-task-name like every other name in this repo: it folds
+    # accents (these labels are often French and herdr renders them in a cell
+    # grid where wide glyphs misalign), caps the length, and strips control
+    # characters — a pasted tab or US byte would otherwise land verbatim in the
+    # cache record and split it into the wrong number of fields.
+    [[ -n "$name" ]] && name="$(herdr-task-name "$name" || true)"
+    [[ -n "$name" && "$name" != "$current" ]] || exit 0
+
+    if [[ -n "$agent_pane" ]]; then
+      herdr-agent-title rename "$agent_pane" "$name"
+    else
+      herdr tab rename "$tab" "$name" >/dev/null
+    fi
     ;;
   agent-picker)
     command -v tv >/dev/null 2>&1 || die "agent-picker: television is not installed"
@@ -171,10 +236,6 @@ case "${1:-}" in
     # `.agent` alone used to make a whole workspace of stopped agents look
     # agent-less, silently defaulting the new tab to claude.
     roles="$(herdr-pane-role list --json)"
-    # "Is this pane an agent pane?", written once and shared by both queries
-    # below: the two answers it feeds — which provider this workspace runs, and
-    # where the agent block ends — must never drift apart.
-    is_agent='((.agent // "") != "") or (($roles[.pane_id] // "") | startswith("agent:"))'
     src="$(jq -c --argjson roles "$roles" \
              '[.result.panes[] | select('"$is_agent"')][0] // empty' <<<"$panes")"
     if [[ -n "$src" ]]; then
@@ -232,7 +293,14 @@ case "${1:-}" in
     # session comes from the inherited HERDR_SOCKET_PATH, like every other
     # herdr call in this script. Unnamed tabs keep the old display name
     # ("ws (claude 2)") until the agent has a title of its own.
-    herdr-agent-layout -k "$kind" "$p_agent" "$dir" "$provider" "$display"
+    # -l when the tab wears something other than the border name: an unnamed tab
+    # gets the short "claude 2" while the border gets "ws (claude 2)", and the
+    # recorded name has to be the tab's or the first sync reads the difference as
+    # a hand rename and pins the placeholder (herdr-agent-title's seed verb owns
+    # why). A named tab sets both from $label, so it passes nothing.
+    lbl=()
+    [[ "$display" != "$label" ]] && lbl=(-l "$label")
+    herdr-agent-layout -k "$kind" "${lbl[@]}" "$p_agent" "$dir" "$provider" "$display"
 
     # tab create does not switch the workspace's active tab — land on the
     # new agent explicitly.
@@ -278,6 +346,6 @@ case "${1:-}" in
     setsid -f herdr-clients "$action" "$session" >/dev/null 2>&1 </dev/null
     ;;
   *)
-    die "unknown command: ${1:-<none>} (expected: tab | resize | agent-picker | agent-tab | files | git | review | review-run | detach | quit)"
+    die "unknown command: ${1:-<none>} (expected: tab | resize | rename-tab | agent-picker | agent-tab | files | git | review | review-run | detach | quit)"
     ;;
 esac

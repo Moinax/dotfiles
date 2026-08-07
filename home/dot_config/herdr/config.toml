@@ -49,19 +49,14 @@ close_tab = ["prefix+shift+x", "ctrl+alt+w"]
 next_tab = ["prefix+n", "ctrl+tab"]
 previous_tab = ["prefix+p", "ctrl+shift+tab"]
 
-# Renaming the tab is the action that names an agent session everywhere: the
-# sidebar's row 2 renders this very label, and herdr-agent-title picks the drift
-# up at the next turn end to push it to the pane border and to vibewatch — where
-# it also *pins* the name, so Claude's own title stops replacing it. Worth a
-# direct chord and not just the prefix.
-# ctrl+shift+t rather than the ctrl+alt+* tab family above because ctrl+alt+t is
-# already new_tab and browser muscle memory puts rename on shift. It needs two
-# halves: kitty's own new_tab sits on kitty_mod+t (= this chord) and would
-# swallow it, so kitty.conf hands it to the application — and herdr only sees
-# ctrl+shift+letter at all because its client pushes the kitty keyboard protocol
-# (\e[>7u, verified on 0.7.5), which is what disambiguates it from ctrl+t.
-# Unrelated to kitty's ctrl+shift+alt+t, which renames a *kitty* tab.
-rename_tab = ["prefix+shift+t", "ctrl+shift+t"]
+# Renaming the tab is the action that names an agent session everywhere, so the
+# direct chord goes through herdr-nav rather than this binding — see the
+# rename-tab popup further down. herdr's native rename touches the tab label and
+# nothing else, and everything else (the pane border, the sidebar's $task token,
+# vibewatch) only follows when herdr-agent-title's drift check next runs, which
+# needs the agent to end a turn: on an idle pane, never. The prefix chord keeps
+# the native rename as an escape hatch, still covered by that slower path.
+rename_tab = "prefix+shift+t"
 
 # X closes a Herdr context: without Shift it only closes the active space;
 # Ctrl+Shift+X removes a linked worktree checkout too (with Herdr's native
@@ -84,6 +79,25 @@ command = "herdr-nav agent-picker"
 width = "60%"
 height = "35%"
 description = "New agent tab (provider + name)"
+
+# Rename the focused tab — and with it the agent pane's border, the sidebar's
+# $task token and vibewatch's panel/bar, in one act instead of whenever the
+# agent next ends a turn. It also pins the name, so the agent's own title stops
+# replacing it. herdr's native rename_tab stays on prefix+shift+t.
+# ctrl+shift+t rather than the ctrl+alt+* tab family above because ctrl+alt+t is
+# already new_tab and browser muscle memory puts rename on shift. It needs two
+# halves: kitty's own new_tab sits on kitty_mod+t (= this chord) and would
+# swallow it, so kitty.conf hands it to the application — and herdr only sees
+# ctrl+shift+letter at all because its client pushes the kitty keyboard protocol
+# (\e[>7u, verified on 0.7.5), which is what disambiguates it from ctrl+t.
+# Unrelated to kitty's ctrl+shift+alt+t, which renames a *kitty* tab.
+[[keys.command]]
+key = "ctrl+shift+t"
+type = "popup"
+command = "herdr-nav rename-tab"
+width = "60%"
+height = "20%"
+description = "Rename tab (everywhere)"
 
 # Stop the current session and close its client window — the in-herdr
 # equivalent of `hss <session>` (kills the agents; the saved layout
