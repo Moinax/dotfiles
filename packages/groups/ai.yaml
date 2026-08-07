@@ -7,6 +7,9 @@ environment: desktop
 # Dotfiles to install when this group is selected
 dotfiles:
   - dot_config/hyprvoice
+  # Only content is the RNNoise filter-chain feeding the dictation mic, so it
+  # rides with this group rather than the desktop base.
+  - dot_config/pipewire
 
 descriptions:
   hyprvoice-bin: Speech-to-text dictation tool (AUR)
@@ -14,6 +17,7 @@ descriptions:
   vibewatch: AI agent status bar & overlay for Hyprland (built from source via cargo)
   python-gobject: Python GTK bindings (dictation overlay)
   gtk4-layer-shell: Layer-shell surfaces for GTK4 (dictation overlay)
+  noise-suppression-for-voice: RNNoise denoising for the dictation mic
 
 # Tools installed via custom commands (not available in package managers).
 # These appear in the package selector alongside distro packages.
@@ -66,6 +70,10 @@ packages:
     # (gtk4 itself comes in as a dependency of gtk4-layer-shell.)
     - python-gobject
     - gtk4-layer-shell
+    # LADSPA plugin behind dot_config/pipewire/pipewire.conf.d/99-input-denoising.conf.
+    # The filter-chain module carries `flags = [ nofail ]`, so without this package
+    # the denoised source just never appears in the mic picker — no error anywhere.
+    - noise-suppression-for-voice
     # NOTE: whisper.cpp (the local engine) is intentionally NOT listed here.
     # On NVIDIA systems paru resolves it to whisper.cpp-cuda, which pulls the
     # full CUDA toolkit and compiles ggml-cuda-git — a long, heavy build that is

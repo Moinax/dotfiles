@@ -51,6 +51,10 @@ LICENSE
 .config/hyprvoice/**
 .local/bin/toggle-dictation.sh
 .local/bin/hyprvoice-widget.py
+# Only ever holds the RNNoise filter feeding the dictation mic — nothing else
+# here configures PipeWire, so the whole tree goes when dictation does.
+.config/pipewire
+.config/pipewire/**
 {{- end }}
 
 # vibewatch drop-in + enable symlink only when vibewatch is installed

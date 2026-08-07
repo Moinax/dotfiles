@@ -7,13 +7,65 @@
 #
 # Config hot-reloads automatically when saved.
 
+# ── Vocabulary ──────────────────────────────────────────────────
+# Top-level key, and it MUST stay above the first [table]: a bare TOML key
+# lands in whatever table precedes it, so moving this down silently turns it
+# into `recording.keywords` and it stops being read.
+#
+# This is the single biggest accuracy lever available here. The list is fed
+# twice: to Whisper as its `prompt` (a spelling prior, ~224 tokens max — keep
+# the list short) and to the LLM pass as "context keywords". The dictation is
+# French prose carrying English tool names, and with no prior Whisper spells
+# those names the way a French speaker would hear them — worktree became
+# "WordTree", pane "pays", tab "table", Claude "Cloud", vibewatch "time watch",
+# `wt switch` "WTS". Every one of those is a name that appears nowhere in the
+# model's training data, which is exactly what a prompt hint is for.
+keywords = [
+  # Desktop stack
+  "Hyprland", "Waybar", "chezmoi", "CachyOS", "PipeWire", "kitty", "yazi",
+  "nvim", "rofi", "starship", "lazygit",
+  # Missing from this list, "RNNoise" came back as "hermose" — and the cleanup
+  # pass then "fixed" that to Hyprland, which IS listed. A name absent here is
+  # not merely left alone; it gets pulled toward whichever name is present.
+  "RNNoise",
+  # Home-grown commands — no language model has ever seen these
+  "herdr", "hunk", "tuicr", "vibewatch", "worktrunk", "hyprvoice", "dotfiles",
+  # As a phrase, not just "chezmoi": spoken /ʃemwa/ it lands one vowel from
+  # "schéma", and that is a far commoner French word — the bare term lost to it
+  # in a real dictation. The two-word form gives Whisper a longer target.
+  "chezmoi apply",
+  # Git / worktree
+  "worktree", "wt switch", "wt remove", "branch", "commit", "rebase", "diff",
+  "pull request", "repo", "checkout",
+  # Multiplexer
+  "pane", "tab", "workspace", "layout", "session", "daemon", "socket",
+  # Agents
+  "Claude Code", "Claude", "agent", "subagent", "prompt", "transcript",
+  "hook", "Linear", "ticket",
+  # Config
+  "TOML", "YAML", "template", "keybinding", "dispatch", "statusline",
+]
+
 # ── Recording ──────────────────────────────────────────────────
 [recording]
 sample_rate = 16000              # 16 kHz — standard for Whisper speech recognition
 channels = 1                     # Mono
 format = "s16"                   # 16-bit signed integers
 buffer_size = 8192               # Internal buffer size in bytes
-device = ""                      # Empty = default PipeWire microphone
+device = ""                      # Empty = follow the PipeWire default source, and
+                                 # it has to stay empty: the Mod+D overlay's mic
+                                 # picker works by calling `pactl
+                                 # set-default-source`, so pinning a node here
+                                 # overrides the picker and makes it a no-op.
+                                 # hyprvoice-widget.py's pinned_device() checks
+                                 # for exactly that and greys the picker out.
+                                 #
+                                 # Whichever mic is picked is a deliberate
+                                 # choice, not a misconfiguration — but a
+                                 # far-field one (the webcam) does cost real
+                                 # accuracy, and no model setting recovers a
+                                 # word the mic never captured. That is what the
+                                 # LLM pass below is there to absorb.
 channel_buffer_size = 30         # Audio frame buffer size
 timeout = "5m"                   # Maximum recording duration per toggle
 
@@ -25,7 +77,20 @@ timeout = "5m"                   # Maximum recording duration per toggle
 {{- end }}
 provider = {{ $provider | quote }}
 model = {{ .hyprvoice_model | quote }}    # Multilingual model (EN+FR).
-language = ""                    # Empty = auto-detect. Set "en" or "fr" to force a language.
+language = ""                    # Auto-detect, deliberately. Whisper detects once per
+                                 # clip from the audio, so switching to English is just
+                                 # a matter of speaking English — and the log shows it
+                                 # holding French correctly even on openers like
+                                 # "Hello comment ça va". Pinning "fr" would buy nothing
+                                 # (language was never what garbled the tool names) and
+                                 # would cost every English dictation.
+                                 #
+                                 # This is also why `keywords` above is a bare
+                                 # comma-separated term list and not an English
+                                 # sentence: Whisper's prompt joins the decoder context,
+                                 # and English *prose* there can drag a borderline clip
+                                 # into English output. Proper nouns carry no such
+                                 # sentence-level language signal.
 streaming = false
 {{- if eq $provider "whisper-cpp" }}
 threads = 0                      # 0 = auto (NumCPU - 1)
@@ -41,8 +106,65 @@ api_key = ""                     # Set GROQ_API_KEY env var instead (recommended
 {{- end }}
 
 # ── LLM Post-Processing (requires API key) ─────────────────────
+# The second half of what a Wispr Flow does: Whisper hears, an LLM then repairs.
+# Reuses GROQ_API_KEY (same key as the transcription provider), and costs one
+# extra round trip — ~0.5-1.5s on top of the ~1s transcription. Drop to
+# "llama-3.1-8b-instant" if that tail is felt; it fixes the obvious phonetic
+# mistakes but reconstructs truncated words far less well.
+#
+# Note this only ever repairs what Whisper produced. It cannot recover a word
+# that was never captured, which is why `keywords` above and a close mic matter
+# more than anything set here.
 [llm]
-enabled = false                  # Set to true + configure a provider below for text cleanup
+enabled = true
+provider = "groq"
+model = "llama-3.3-70b-versatile"
+
+  [llm.post_processing]
+  remove_stutters = true         # "avec avec le renommage" → "avec le renommage"
+  remove_filler_words = true
+  add_punctuation = true         # Whisper drops it entirely on long clips
+  fix_grammar = true             # Also what repairs mis-heard words from context
+
+  [llm.custom_prompt]
+  enabled = true                 # Without this the prompt below is loaded and ignored
+  # Written in English on purpose, and it is not a style preference. An earlier
+  # draft of this prompt was in French and it translated every English dictation
+  # into French — verified, both directions. The prompt's own language is a far
+  # stronger signal to the model than any "never translate" it contains, so the
+  # instruction has to sit in a language that favours neither input. It matches
+  # hyprvoice's built-in system prompt, which is English too.
+  #
+  # The mis-hearings below are real ones lifted from ~/.local/state/hyprvoice.log.
+  # Add to that list rather than generalising it: concrete pairs correct far more
+  # reliably than a description of the failure.
+  #
+  # "never delete a word you cannot fix" is not padding. Caught live: Whisper
+  # heard "chezmoi apply" as "schéma Apply", and the model's response was to drop
+  # "Apply" and emit a fluent "le schéma" — turning a repairable mis-hearing into
+  # a clean sentence that had lost the point. Deleting always reads as better
+  # prose than guessing, so left to itself the cleanup pass optimises for
+  # fluency over fidelity. hyprvoice's built-in "Do not remove meaningful
+  # content" did not stop it; this does.
+  #
+  # What it does NOT stop is the opposite failure: on a garbled name the model
+  # now substitutes rather than deletes, reaching into the keyword list for
+  # something plausible ("le hermose" → Hyprland). Two stricter prompts were
+  # measured against this and both cost more than they saved — forbidding
+  # substitution outright also stopped the explicit pairs above from applying,
+  # and on heavily clipped input the model destabilised (it once emitted
+  # Cyrillic mid-sentence). So the substitution stays, bounded by measurement:
+  # a name Whisper transcribes CORRECTLY is never touched, listed or not.
+  # Only already-garbled words get replaced. That makes this a transcription
+  # problem, not a cleanup one — the fix for a new tool name is to add it to
+  # `keywords` above so Whisper hears it, never to fight the model here.
+  #
+  # 520 chars, deliberately past the 500 the `hyprvoice configure` TUI enforces
+  # on this field. Nothing validates it on load, and the config is edited here
+  # rather than in the TUI — worth knowing only if that screen is ever opened.
+  prompt = """
+A developer dictating about their dev setup (terminal, git, Claude Code). French or English — write it back in the language spoken, never translate. English tool names get transcribed phonetically as French; restore the real spelling (WordTree → worktree, pays/pain → pane, à table → the tab, Cloud → Claude, WTS → wt switch, time watch → vibewatch, linéaire → Linear, schéma apply → chezmoi apply). Rebuild clipped words from context; never delete a word you cannot fix. Keep the spoken tone; never answer or summarise.
+"""
 
 # ── Text Injection ──────────────────────────────────────────────
 [injection]
