@@ -6,12 +6,17 @@
 # built to be re-run: it re-asks every question, so a laptop that has never
 # wanted the gaming group has to say so again every single time.
 #
-# This asks the much smaller question "what has the repo gained since this
+# This asks the much smaller question "what has the repo changed since this
 # machine last agreed with it?" — anchored on SYNCED_COMMIT in the machine
 # profile. That anchor is what makes the difference: without it the only
 # question available is "what is missing here?", which cannot tell a package
 # that is new from one that was removed on purpose, and so re-offers the removed
 # one forever.
+#
+# The anchor is what makes the *other* direction possible too. Knowing which
+# commit this machine agreed with is what turns "the repo no longer declares
+# rofi" into a question worth asking, where a plain audit of everything
+# undeclared would sweep up half of what you ever installed by hand.
 set -e
 set -o pipefail
 
@@ -209,17 +214,26 @@ reconcile_group_flags() {
     done
 }
 
-# The delta scan: everything between "what has the repo gained?" and the answer.
-# Emits "pkg<TAB>group-file" per candidate, carrying the custom_install split out
-# so the caller does not walk the yaml a second time to rebuild it.
+# The delta scan: everything between "what has the repo changed?" and the answer.
+# Emits one "op<TAB>pkg<TAB>detail" row per candidate, op being `add` or `drop`.
+# `detail` is the declaring group file for an `add` (empty for a distro package,
+# so the caller does not walk the yaml again to rebuild the custom_install split)
+# and the literal `custom` for a `drop` — the file that declared a dropped entry
+# is in the export below, which is gone by the time the caller reads this.
+#
+# Both directions come off the same export and the same pair of walks. They are
+# each other's complement, so asking the question backwards a second time would
+# mean paying the whole scan twice for an answer already in memory. That is also
+# why `drop` rows carry the *installed* name rather than the declared one: the
+# resolution needs the alias index this pass already builds.
 #
 # Silent and several seconds long — a `git archive` export, two full yq walks over
 # packages/, a package-manager query and one installed-check per custom entry — so
 # it is meant to be run through spin_capture. That is also why it prints nothing
 # itself: a failure to read the anchor comes back as exit status 1 and the caller
-# words the warning, since the spinner swallows this pass's stderr. INSTALLED_SET
-# stays local to the background pass, and nothing after the scan needs it.
-new_package_candidates() {
+# words the warning, since the spinner swallows this pass's stderr. The indexes
+# stay local to the background pass, and nothing after the scan needs them.
+package_delta() {
     local tmp
     tmp=$(mktemp -d)
     # shellcheck disable=SC2064  # $tmp must expand now, not at trap time
@@ -228,14 +242,28 @@ new_package_candidates() {
     git -C "$DOTFILES_DIR" archive "$BASE_COMMIT" packages 2>/dev/null \
         | tar -x -C "$tmp" || return 1
 
-    local -A was=()
+    local -A was=() was_file=()
     local pkg group_file
     while IFS=$'\t' read -r pkg group_file; do
-        [ -n "$pkg" ] && was["$pkg"]=1
+        [ -n "$pkg" ] || continue
+        was["$pkg"]=1
+        was_file["$pkg"]="$group_file"
     done < <(declared_packages_at "$tmp")
 
+    # `real_of` answers both halves at once: a declared name that maps to nothing
+    # is not on this machine (which is what the install side asks), and one that
+    # maps to something yields the name pacman actually holds (which is what the
+    # removal side needs). It replaces ensure_installed_index here for that reason
+    # — the flat set could only answer the first question.
+    # One row per name, collisions already settled by the distro lib — a plain
+    # fold is all that is left here.
+    local -A real_of=()
+    local alias real
+    while IFS=$'\t' read -r alias real; do
+        [ -n "$alias" ] && real_of["$alias"]="$real"
+    done < <(installed_package_aliases)
+
     # New = declared now, not declared then, not already on the machine.
-    ensure_installed_index
     local -A seen=()
     while IFS=$'\t' read -r pkg group_file; do
         [ -z "$pkg" ] && continue
@@ -245,16 +273,55 @@ new_package_candidates() {
         if [ -n "$group_file" ]; then
             is_custom_install_installed "$group_file" "$pkg" && continue
         else
-            [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] && continue
+            [ -n "${real_of[${pkg#*/}]:-}" ] && continue
         fi
-        printf '%s\t%s\n' "$pkg" "$group_file"
+        printf 'add\t%s\t%s\n' "$pkg" "$group_file"
     done < <(declared_packages_at "$DOTFILES_DIR")
+
+    # Dropped = declared then, not declared now, and still here. `seen` holds the
+    # whole current declaration by now, so inverting the test costs no third walk.
+    #
+    # Which names left the yaml is pure array work, so it is settled before the
+    # install-reason query rather than after: a run where the repo only *gained*
+    # packages — the common one by far — then never spawns that query at all.
+    local -a maybe_dropped=()
+    for pkg in "${!was[@]}"; do
+        [ -n "${seen[$pkg]:-}" ] || maybe_dropped+=("$pkg")
+    done
+    [ ${#maybe_dropped[@]} -gt 0 ] || return 0
+
+    local -A explicit=()
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] && explicit["$pkg"]=1
+    done < <(list_explicit_packages)
+
+    for pkg in "${maybe_dropped[@]}"; do
+        group_file="${was_file[$pkg]}"
+        if [ -n "$group_file" ]; then
+            # A custom_install entry has an install_cmd and no counterpart, so it
+            # is reported and never removed — the same call `dots packages` makes
+            # when its manage view is asked to remove one.
+            is_custom_install_installed "$group_file" "$pkg" && printf 'drop\t%s\tcustom\n' "$pkg"
+            continue
+        fi
+        real="${real_of[${pkg#*/}]:-}"
+        [ -n "$real" ] || continue
+        # Installed as a dependency means something else is holding it here, and
+        # a yaml no longer naming it is not a reason to take it away.
+        [ -n "${explicit[$real]:-}" ] || continue
+        printf 'drop\t%s\t\n' "$real"
+    done
 }
 
-# Install what the repo gained and this machine does not have. Deliberately not
-# "everything missing": that is `dots packages sync`, and it cannot distinguish
-# a new package from one you removed.
-sync_new_packages() {
+# Both halves of the delta: install what the repo gained, offer to remove what it
+# dropped. Deliberately not "everything missing / everything not declared" —
+# that is `dots packages sync` and a whole-machine audit respectively, and
+# neither can tell a package the repo changed its mind about from one you
+# installed by hand.
+#
+# One scan, two questions, in that order: a replacement lands before the thing it
+# replaces leaves, so a machine is never briefly without either.
+sync_packages() {
     [ -n "$BASE_COMMIT" ] || return 0
 
     # Nothing under packages/ moved — skip the worktree export entirely.
@@ -268,7 +335,7 @@ sync_new_packages() {
 
     local found=""
     if ! spin_capture found "Comparing packages against ${BASE_COMMIT:0:8}..." \
-            new_package_candidates; then
+            package_delta; then
         print_warning "Could not read packages/ at ${BASE_COMMIT:0:8} — skipping the delta"
         # A shortfall, not a clean skip: the scan is what decides whether anything
         # is missing, so a scan that did not run leaves that unknown. Advancing the
@@ -278,6 +345,30 @@ sync_new_packages() {
         return 0
     fi
 
+    # Split by op and hand each half its own rows. Nothing more is done here:
+    # the two questions parse what they were given, so neither reaches into this
+    # scope for it. Bash would have allowed that — `local` is dynamically scoped,
+    # so an argument-less callee can read a caller's arrays — but it is a
+    # contract living only in a comment, and renaming an array here would leave
+    # the other half silently reading nothing.
+    local add_rows="" drop_rows=""
+    local op pkg detail
+    while IFS=$'\t' read -r op pkg detail; do
+        [ -n "$pkg" ] || continue
+        case "$op" in
+            add)  add_rows+="${pkg}"$'\t'"${detail}"$'\n' ;;
+            drop) drop_rows+="${pkg}"$'\t'"${detail}"$'\n' ;;
+        esac
+    done <<< "$found"
+
+    install_new_packages "$add_rows"
+    remove_dropped_packages "$drop_rows"
+}
+
+# The "add" half: what the repo gained and this machine does not have. Takes the
+# scan's `add` rows verbatim — "pkg<TAB>group-file", the file set only for a
+# custom_install entry, which is the split the walk already carried out.
+install_new_packages() {
     local -A custom_of=()
     local -a candidates=()
     local pkg group_file
@@ -285,7 +376,7 @@ sync_new_packages() {
         [ -n "$pkg" ] || continue
         candidates+=("$pkg")
         [ -n "$group_file" ] && custom_of["$pkg"]="$group_file"
-    done <<< "$found"
+    done <<< "$1"
 
     if [ ${#candidates[@]} -eq 0 ]; then
         print_success "No new packages since ${BASE_COMMIT:0:8}"
@@ -331,6 +422,98 @@ sync_new_packages() {
     return 0
 }
 
+# The "drop" half: packages the repo declared at the anchor, declares no longer,
+# and this machine still has. Takes the scan's `drop` rows verbatim —
+# "pkg<TAB>kind", kind being `custom` for an entry installed by a bespoke
+# command and empty for a distro package.
+#
+# **A declined removal does not mark a shortfall, and that asymmetry is the
+# point.** The flag means "this machine is missing something the repo asks for",
+# which a kept package is not; and holding the anchor back would re-ask the
+# question at every single update. For an install "not now" is a fair reading of
+# no — the package is still wanted and will be offered again. For a removal, no
+# means *keep it*, and that is an answer, not a postponement. Letting the anchor
+# advance past the commit that dropped the package is what makes it stick.
+remove_dropped_packages() {
+    local -a dropped=() dropped_custom=()
+    local pkg kind
+    while IFS=$'\t' read -r pkg kind; do
+        [ -n "$pkg" ] || continue
+        if [ "$kind" = custom ]; then dropped_custom+=("$pkg"); else dropped+=("$pkg"); fi
+    done <<< "$1"
+
+    if [ ${#dropped[@]} -eq 0 ] && [ ${#dropped_custom[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    print_header "Dropped Packages"
+
+    # Reported rather than skipped silently: a curl-installed binary that nothing
+    # declares any more is exactly the thing nobody remembers to clean up.
+    if [ ${#dropped_custom[@]} -gt 0 ]; then
+        warn_custom_uninstall "${dropped_custom[@]}"
+        echo ""
+    fi
+
+    [ ${#dropped[@]} -gt 0 ] || return 0
+
+    # pacman decides what is actually removable, not us. A first pass over the
+    # whole set is the common case; when it refuses, the retry finds which
+    # package is the one something else still requires instead of dropping the
+    # entire batch on its account.
+    local plan="" blocked=() keep=() p
+    if ! plan=$(plan_removal "${dropped[@]}"); then
+        for p in "${dropped[@]}"; do
+            if plan_removal "$p" >/dev/null 2>&1; then keep+=("$p"); else blocked+=("$p"); fi
+        done
+        dropped=("${keep[@]}")
+        plan=""
+        if [ ${#dropped[@]} -gt 0 ]; then
+            plan=$(plan_removal "${dropped[@]}") || plan=""
+        fi
+    fi
+
+    if [ ${#blocked[@]} -gt 0 ]; then
+        print_warning "Still required by something else, left alone (${#blocked[@]}): ${blocked[*]}"
+    fi
+
+    if [ ${#dropped[@]} -eq 0 ]; then
+        print_info "Nothing removable"
+        return 0
+    fi
+
+    # What -Rs would cascade to on top of the named packages. Shown separately
+    # because it is the part the user did not ask for and cannot predict, and a
+    # removal is the one thing here that cannot be undone by re-running.
+    local -A named=()
+    local -a extra=()
+    for p in "${dropped[@]}"; do named["$p"]=1; done
+    while IFS= read -r p; do
+        [ -n "$p" ] && [ -z "${named[$p]:-}" ] && extra+=("$p")
+    done <<< "$plan"
+
+    print_info "Dropped from the dotfiles since ${BASE_COMMIT:0:8} (${#dropped[@]}):"
+    printf '  %s\n' "${dropped[@]}"
+    if [ ${#extra[@]} -gt 0 ]; then
+        local noun="dependencies"
+        if [ ${#extra[@]} -eq 1 ]; then noun="dependency"; fi
+        echo ""
+        print_info "Plus ${#extra[@]} $noun nothing else needs:"
+        printf '  %s\n' "${extra[@]}"
+    fi
+    echo ""
+    if ! confirm_or_abort "Remove them?"; then
+        print_info "Kept — the anchor moves on, so this is not asked again"
+        return 0
+    fi
+
+    # Guarded for the same reason the install above is: a failing removal must
+    # not take the chezmoi apply, the tool refresh and the reloads down with it.
+    remove_packages "${dropped[@]}" \
+        || print_warning "Some packages could not be removed"
+    return 0
+}
+
 # ── Phase 4: tools ───────────────────────────────────────────────────────────
 
 update_tools() {
@@ -362,7 +545,7 @@ do_sync() {
     pull_repo
     resolve_base
     reconcile_group_flags
-    sync_new_packages
+    sync_packages
 
     print_header "Dotfiles"
     # Not apply_dotfiles: the tool refresh has to land between the apply and the
@@ -394,8 +577,8 @@ usage() {
 Usage: dots update [command]
 
 Brings this machine in line with the dotfiles repo: pulls, offers what the repo
-has gained since the last sync, applies the configs, refreshes the tools, and
-reloads the surfaces that need it.
+has gained since the last sync and what it has dropped, applies the configs,
+refreshes the tools, and reloads the surfaces that need it.
 
 Commands:
   (none)      Run the full sync

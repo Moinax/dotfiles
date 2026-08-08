@@ -360,31 +360,119 @@ package_owners() {
 # Beyond the real package names (pacman -Qq), this also emits everything those
 # packages Provide/Replace, so virtual or renamed packages resolve the same way
 # a per-package `pacman -Qi <name>` would (e.g. `vi` provides `vim`).
-# expac asks libalpm for exactly those three fields and prints them; `pacman -Qi`
-# formats every field of every package and has them parsed back out, which costs
-# 830ms against expac's 48ms on ~2600 packages. Same output, verified identical
-# line-for-line — worth the branch because every `dots packages` and `dots update`
-# scan pays this, and the fallback still has to exist for a machine whose expac is
-# not installed yet (base.yaml declares it, so that is a first run or a removal).
 list_installed_packages() {
+    installed_package_aliases | cut -f1
+}
+
+# The same three fields, kept as a mapping instead of flattened: one
+# "name<TAB>installed package" row per name a package answers to, its own
+# included.
+#
+# The flat set above can only answer "is this here?", which is all an install
+# check needs. A *removal* has to act on the answer, and there the name the
+# dotfiles declare is not necessarily the name pacman holds: the yaml said
+# `rofi-wayland` and this machine had `rofi`, which replaced it, so
+# `pacman -R rofi-wayland` is a "target not found" and the drop would have been
+# skipped in silence — on the very package that motivated the feature. Keeping
+# the mapping is what lets a caller turn a declared name into a removable one.
+#
+# The two are one parser on purpose. This used to be two, and the fallback half
+# never emitted a package's own name (`pacman -Qq` was a separate call bolted in
+# front of it), which is exactly the sort of drift that makes a rarely-taken
+# branch wrong.
+#
+# **One row per name, conflicts already resolved.** The raw emitters below are a
+# multimap — an alias can legitimately come from two packages, and a package's
+# own name can collide with another's `provides`: `dbus-broker-units` provides
+# `dbus-units`, which is itself installed here. Resolving that ("a package's own
+# name always wins") is a property of what this mapping *means*, so it happens
+# once, here, rather than in whatever fold each caller writes. Left to the
+# caller it was a three-line rule that a second caller would silently omit — and
+# omitting it means handing `pacman -Rs` the wrong package.
+#
+# expac asks libalpm for exactly these three fields and prints them; `pacman -Qi`
+# formats every field of every package and has them parsed back out, which costs
+# 830ms against expac's 48ms on ~2600 packages. Worth the branch because every
+# `dots packages` and `dots update` scan pays this, and the fallback still has to
+# exist for a machine whose expac is not installed yet (base.yaml declares it, so
+# that is a first run — or a removal this very feature offered).
+installed_package_aliases() {
+    _emit_package_aliases | awk -F'\t' '
+        # Own-name rows overwrite; among genuine aliases the first one wins.
+        { if ($1 == $2 || !($1 in real)) real[$1] = $2 }
+        END { for (a in real) print a "\t" real[a] }'
+}
+
+# The raw multimap the resolver above consumes: one "name<TAB>package" row per
+# name a package answers to, its own included, in database order.
+_emit_package_aliases() {
     if command_exists expac; then
-        # %n %S %R = name, provides, replaces. One line per package, fields and
-        # list items alike separated by spaces, so one split handles both levels.
-        expac -Q '%n %S %R' 2>/dev/null \
-            | tr ' ' '\n' | sed 's/[<>=].*$//' | grep -v '^$' || true
+        # %n %S %R = name, provides, replaces, pipe-separated so the three
+        # fields survive a split that the space-separated list items also need.
+        expac -Q '%n|%S|%R' 2>/dev/null | awk -F'|' '
+            {
+                name = $1
+                gsub(/^[ \t]+|[ \t]+$/, "", name)
+                if (name == "") next
+                print name "\t" name
+                for (f = 2; f <= 3; f++) {
+                    c = split($f, a, /[[:space:]]+/)
+                    for (i = 1; i <= c; i++) {
+                        p = a[i]
+                        sub(/[<>=].*$/, "", p)   # strip version constraints (foo=1.2)
+                        # `None` is the sentinel pacman -Qi prints for an empty
+                        # list; expac prints nothing at all. Filtered on both
+                        # paths so the two are readable as the same rule.
+                        if (p != "" && p != "None") print p "\t" name
+                    }
+                }
+            }' || true
         return
     fi
 
-    pacman -Qq 2>/dev/null
     LC_ALL=C pacman -Qi 2>/dev/null | awk -F': ' '
+        /^Name[[:space:]]*:/ {
+            name = $2
+            gsub(/^[ \t]+|[ \t]+$/, "", name)
+            if (name != "") print name "\t" name
+            next
+        }
         /^(Provides|Replaces)[[:space:]]*:/ {
-            n = split($2, a, /[[:space:]]+/)
-            for (i = 1; i <= n; i++) {
+            if (name == "") next
+            c = split($2, a, /[[:space:]]+/)
+            for (i = 1; i <= c; i++) {
                 p = a[i]
-                sub(/[<>=].*$/, "", p)   # strip version constraints (foo=1.2)
-                if (p != "" && p != "None") print p
+                sub(/[<>=].*$/, "", p)
+                if (p != "" && p != "None") print p "\t" name
             }
         }'
+}
+
+# Names this machine holds because something asked for them, as opposed to the
+# ones pacman pulled in to satisfy a dependency. The distinction is what makes an
+# automated removal safe to *offer*: `expac` itself reads as a dependency here,
+# because cachyos-fish-config requires it, so dropping it from a yaml would be no
+# reason at all to take it off the machine.
+list_explicit_packages() {
+    if command_exists expac; then
+        expac -Q '%n\t%w' 2>/dev/null | awk -F'\t' '$2 == "explicit" { print $1 }' || true
+        return
+    fi
+    pacman -Qeq 2>/dev/null || true
+}
+
+# What removing these packages would actually do: the named ones plus every
+# dependency left with nothing needing it, which is what -Rs cascades to and what
+# the user has to see before agreeing. --print makes the whole thing a query, so
+# it needs no root and changes nothing.
+#
+# Non-zero when pacman refuses to prepare the transaction at all. That is the
+# point as much as the listing is — it is how a package something else still
+# requires gets detected, and pacman's own resolver is a far better judge of that
+# than any test this repo could write.
+plan_removal() {
+    [ $# -gt 0 ] || return 0
+    LC_ALL=C pacman -Rs --print --print-format '%n' "$@" 2>/dev/null
 }
 
 # Install gum for interactive prompts

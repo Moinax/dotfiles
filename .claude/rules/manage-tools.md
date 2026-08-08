@@ -18,7 +18,7 @@ question, so a laptop that never wanted the gaming group had to say so again
 every time. This asks the smaller question: what has the repo gained since this
 machine last agreed with it?
 
-Phases: pull → new groups → new packages → `chezmoi apply` → tool refresh
+Phases: pull → new groups → package delta → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
 `run_post_apply` → re-stamp the profile.
 
@@ -50,14 +50,83 @@ carrying it out of the walk is what avoids re-parsing every group file to
 rebuild it. Group enabledness is always read from this machine's chezmoi data,
 never from the old file, so a group disabled here stays out of both sides.
 
-The delta scan runs behind `spin_capture`, which is why `new_package_candidates`
-is a separate function that prints its answer instead of filling arrays: a
+The delta scan runs behind `spin_capture`, which is why `package_delta` is a
+separate function that prints its answer instead of filling arrays: a
 `git archive` export plus two full yq walks plus the installed-checks is ~10s of
 silence otherwise. Two consequences the split forces — it prints no diagnostics
 of its own (the spinner discards that pass's stderr, so an unreadable anchor is
-exit status 1 and `sync_new_packages` words the warning), and `INSTALLED_SET`
-stays inside the background pass, which is safe only because nothing after the
-scan reads it.
+exit status 1 and `sync_packages` words the warning), and the installed indexes
+stay inside the background pass, which is safe only because nothing after the
+scan reads them.
+
+**The delta runs both ways off that one scan.** `package_delta` emits
+`op<TAB>pkg<TAB>detail`, `op` being `add` or `drop`; `sync_packages` splits the
+stream by op and passes each half its own rows — to `install_new_packages` then
+`remove_dropped_packages`, in that order, so a replacement lands before the
+thing it replaces leaves. The two sets are each other's complement — `seen` is
+the whole current declaration by the time the add loop ends — so the drop half
+costs no third walk, and asking the question backwards in a scan of its own
+would have paid the ~3s twice for an answer already in memory.
+
+Those rows are **arguments, not shared scope.** The halves were briefly two
+argument-less functions reading the caller's arrays, which bash permits since
+`local` is dynamically scoped — but it is a contract that exists only in a
+comment, and renaming an array in `sync_packages` would have left the other half
+reading nothing, silently and with no signal at the call site. Which name a
+dropped package left the yaml under is settled before `list_explicit_packages`
+runs, too: that is pure array work, so a run where the repo only *gained*
+packages — much the commoner case — never spawns the install-reason query.
+
+Four things guard the removal, because it is the one phase here that cannot be
+undone by re-running:
+
+- **A dropped `custom_install` entry is reported, never removed.** It was
+  installed by a bespoke `install_cmd` and there is no counterpart. Reported
+  rather than silently skipped: a curl-installed binary nothing declares any
+  more is exactly what no one remembers to clean up. The wording is
+  `warn_custom_uninstall` in common.sh, shared with both removal paths in
+  manage-packages.sh — the three sites used to say the same thing three
+  different ways, which reads as three rules instead of one repeated fact. If
+  these entries ever gain an `uninstall_cmd`, that helper is the single place
+  that stops being true.
+- **Installed-as-a-dependency is left alone.** `list_explicit_packages`
+  (arch.sh) is the filter. `expac` itself reads as a dependency on this machine
+  because cachyos-fish-config requires it, so a yaml dropping it would be no
+  reason at all to take it off the disk.
+- **pacman decides what is removable, not us.** `plan_removal` is
+  `pacman -Rs --print`, a query needing no root: it returns the full transaction
+  for the preview *and* fails when something else still requires a target. On
+  failure the whole batch is retried one at a time, so one blocked package does
+  not veto the rest, and the blocked ones are named in a warning.
+- **The preview shows the cascade.** `-Rs` drags in dependencies nothing else
+  needs — three of them for the rofi set — and those are listed separately,
+  because they are the part the user did not ask for and cannot predict.
+
+**A declined removal does not `mark_sync_shortfall`, and that asymmetry is
+deliberate.** The flag means "this machine is missing something the repo asks
+for", which a kept package is not. For an install, "no" fairly reads as "not
+yet" and the anchor is held back so it is offered again; for a removal, "no"
+means *keep it*, and re-asking at every update would be the exact nagging the
+anchor exists to prevent. Letting the anchor advance past the commit that
+dropped the package is what makes the answer stick.
+
+**A declared name is not necessarily a removable one.** `installed_package_aliases`
+(arch.sh) maps every name a package answers to — its own, its provides, its
+replaces — onto the installed package, and the drop rows carry that resolved
+name. The dotfiles declared `rofi-wayland` while the machine held `rofi`, which
+replaced it, and `pacman -R rofi-wayland` is a "target not found": without the
+mapping the feature would have silently skipped the very package that motivated
+it. **A package's own name always beats another package's `provides`**, and that
+rule lives in the primitive rather than in the caller's fold: the raw emitter is
+a multimap whose keys can collide — `dbus-broker-units` provides `dbus-units`,
+which is itself installed here — so `installed_package_aliases` resolves it
+before emitting, one row per name. Left to the caller it was a three-line rule a
+second caller would omit, and omitting it means handing `pacman -Rs` the wrong
+package. `list_installed_packages` is now `cut -f1` of that map rather than a second
+parser of the same three fields — the old fallback half never emitted a
+package's own name (a separate `pacman -Qq` was bolted in front of it), which is
+the drift a rarely-taken branch invites. Both branches verified line-for-line
+identical, 2696 names.
 
 **One yq call per group file, and it is not an optimisation you may undo.**
 `group_declared_lists` (common.sh) reads *everything* a caller can want from a group

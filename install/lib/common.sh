@@ -613,6 +613,21 @@ is_custom_install_installed() {
     run_entry_check "$(parse_custom_install_check "$1" "$2")"
 }
 
+# A `custom_install` entry brings its own `install_cmd` and no counterpart, so
+# no caller can uninstall one — every removal path can only say so and move on.
+#
+# Says it in one place because three of them were saying it in three different
+# wordings ("must be removed manually", "can't be auto-removed", "have no
+# uninstall step"), which reads as three separate rules rather than one repeated
+# fact, and would have to be found three times to change. If these entries ever
+# gain an `uninstall_cmd`, this is the single function that stops being right.
+warn_custom_uninstall() {
+    [ $# -gt 0 ] || return 0
+    print_warning "Custom-installed, no uninstall step ($#):"
+    printf '  %s\n' "$@"
+    print_info "  Remove them by hand if you want them gone"
+}
+
 # ── Node toolchain ───────────────────────────────────────────────────────────
 
 # Where fnm's installer (--skip-shell) drops the binary. Not on a script's PATH,

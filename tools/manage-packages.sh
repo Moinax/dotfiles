@@ -267,7 +267,7 @@ show_remove() {
     echo ""
     print_warning "Will remove: ${to_remove[*]}"
     if [ ${#custom_to_remove[@]} -gt 0 ]; then
-        print_warning "Custom packages (${custom_to_remove[*]}) must be removed manually"
+        warn_custom_uninstall "${custom_to_remove[@]}"
     fi
     if ! confirm_or_abort "Proceed with removal?"; then
         echo "Cancelled."
@@ -461,7 +461,7 @@ apply_manage_diff() {
         printf '      %s\n' "${remove_distro[@]}" "${remove_custom[@]}" | grep -v '^[[:space:]]*$' || true
     fi
     if [ ${#remove_custom[@]} -gt 0 ]; then
-        print_warning "Custom-installed (${remove_custom[*]}) can't be auto-removed — remove them manually."
+        warn_custom_uninstall "${remove_custom[@]}"
     fi
     echo ""
 
