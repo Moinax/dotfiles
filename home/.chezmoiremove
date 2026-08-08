@@ -56,3 +56,28 @@
 .local/bin/claudex
 .config/systemd/user/claude-code-proxy.service
 .local/bin/claude-code-proxy
+
+# rofi retired — vicinae draws every menu now. Deleting a file from the source
+# tree is not enough to make it leave a machine that already applied it:
+# chezmoi only prunes orphans inside an `exact_` directory, and neither
+# ~/.local/bin nor ~/.config is one. Without these lines the other machines
+# would keep a full rofi config, 25 themes and eight dead scripts on PATH —
+# including rofi-keybindings, which was renamed rather than removed and would
+# sit next to hypr-keybindings looking like a live second copy.
+# The rofi packages themselves are left alone: dropping them from hyprland.yaml
+# stops them being installed, it does not uninstall them.
+.config/rofi
+.config/rofi/**
+.local/share/rofi
+.local/share/rofi/**
+.local/bin/rofi-clipboard
+.local/bin/rofi-dev
+.local/bin/rofi-emoji
+.local/bin/rofi-filesearch
+.local/bin/rofi-keybindings
+.local/bin/rofi-killwindow
+.local/bin/rofi-quickactions
+.local/bin/rofi-wts
+# Menus that had no rofi- prefix but were rofi frontends all the same.
+.local/bin/emoji-picker.sh
+.local/bin/toggle-audio-switch.sh
