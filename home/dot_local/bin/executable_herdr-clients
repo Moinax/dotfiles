@@ -19,7 +19,7 @@
 set -euo pipefail
 
 die() { echo "herdr-clients: $*" >&2; exit 1; }
-command -v herdr >/dev/null 2>&1 || die "herdr not installed (paru -S herdr-bin)"
+command -v herdr >/dev/null 2>&1 || die "herdr not installed (dots packages)"
 command -v jq    >/dev/null 2>&1 || die "jq is required"
 
 # Transient desktop feedback for the keybind-driven *-all commands, whose

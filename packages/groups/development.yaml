@@ -43,7 +43,7 @@ descriptions:
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
-  herdr-bin: Agent multiplexer — one terminal for all coding agents (AUR)
+  herdr: Agent multiplexer — one terminal for all coding agents
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
   ccstatusline: Claude Code status line with flat Catppuccin-matched theme
@@ -86,6 +86,21 @@ custom_install:
     requires: npm
     binary: hunk
     npm: hunkdiff
+  # Agent multiplexer (dev/wts herdr backend). Was the AUR herdr-bin, but herdr
+  # only silences its in-app update prompt for Nix/mise/Homebrew — under pacman it
+  # nagged forever and its `herdr update` could not write to a root-owned
+  # /usr/bin/herdr. Its own installer drops the binary in ~/.local/bin, where
+  # self-update works and a protocol bump asks before stopping the server.
+  # The check probes the installer's own target rather than `command -v herdr`:
+  # on a machine still holding herdr-bin, PATH answers yes from /usr/bin and the
+  # entry is never offered, while the same scan offers to drop herdr-bin — which
+  # would take the only herdr away.
+  - name: herdr
+    check: '[ -x "$HOME/.local/bin/herdr" ]'
+    install: curl -fsSL https://herdr.dev/install.sh | sh
+    binary: herdr
+    source: herdrdev/herdr
+    updated_by: self
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
@@ -136,9 +151,6 @@ packages:
 
     # Worktree management
     - worktrunk-bin  # AUR
-
-    # Agent multiplexer (dev/wts herdr backend)
-    - herdr-bin  # AUR
 
     # JS runtime & per-project env
     - bun
