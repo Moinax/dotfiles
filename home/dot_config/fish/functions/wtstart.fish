@@ -16,7 +16,7 @@ function wtstart
         wt switch; or return 1
         test "$PWD" = "$orig_dir"; and return 0
     else
-        # wt-switch-args (shared with zsh and rofi-wts) fetches origin when the
+        # wt-switch-args (shared with zsh and the vicinae worktree picker) fetches origin when the
         # branch is unknown and prints --create only when it is genuinely new,
         # so a remote-only branch checks out tracking origin/<branch>.
         set -l switch_args (wt-switch-args $branch)

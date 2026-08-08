@@ -171,7 +171,7 @@ collect_section_candidates() {
             # queries directly — listing it here too would double-report it
             # against the same release source.
             app) continue ;;
-            # A deliberate opt-out (rofi-themes): nothing to compare, and the
+            # A deliberate opt-out: nothing to compare, and the
             # only "update" would clobber hand-edited files.
             none) continue ;;
         esac

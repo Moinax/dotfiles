@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# browser-launch — launch the default web browser, or pick one via rofi.
-#   browser-launch.sh        → launch the system default web browser
-#   browser-launch.sh pick   → rofi menu of installed browsers, launch the pick
+# browser-launch — launch the default web browser, or one named by desktop id.
+#   browser-launch.sh              → launch the system default web browser
+#   browser-launch.sh list         → <desktop id>\t<name>\t<icon>\t<default 0|1>
+#   browser-launch.sh launch ID    → launch that desktop id
+#
+# No menu of its own: the vicinae Browser command (Mod+Alt+B) is the frontend.
 #
 # Browsers are discovered from freedesktop .desktop entries whose Categories
 # include WebBrowser (covers pacman/AUR browsers and AppImage installs that
@@ -15,52 +18,61 @@ launch_desktop() {
     setsid -f gtk-launch "${1%.desktop}" >/dev/null 2>&1
 }
 
+# Scan freedesktop entries once, into parallel arrays.
+scan_browsers() {
+    declare -A seen
+    ids=(); names=(); icons=()
+    while IFS= read -r f; do
+        id="${f##*/}"; id="${id%.desktop}"
+        # One pass per file for the first Name=/Icon= and the hidden flag.
+        # Fields are joined with 0x1f (non-whitespace) so read preserves
+        # empty leading/middle fields instead of collapsing them.
+        IFS=$'\x1f' read -r hidden name icon < <(awk -v s=$'\x1f' '
+            /^NoDisplay=true/ || /^Hidden=true/ { hidden = 1 }
+            /^Name=/ && !name { name = substr($0, 6) }
+            /^Icon=/ && !icon { icon = substr($0, 6) }
+            END { printf "%s%s%s%s%s\n", hidden, s, name, s, icon }
+        ' "$f")
+        [ -n "$hidden" ] && continue
+        [ -z "$name" ] && name="$id"
+        key="${name,,}"
+        [ -n "${seen[$key]:-}" ] && continue   # dedupe on display name
+        seen[$key]=1
+        ids+=("$id")
+        names+=("${name^}")                    # capitalize for display (helium → Helium)
+        icons+=("$icon")
+    done < <(
+        grep -rlE '^Categories=.*WebBrowser' \
+            /usr/share/applications \
+            "$HOME/.local/share/applications" 2>/dev/null | sort
+    )
+
+    # Aborting here rather than in each caller: an empty scan is never a usable
+    # result, whichever front door asked for it.
+    if [ "${#ids[@]}" -eq 0 ]; then
+        notify-send -u critical "Browser picker" "No web browsers found"
+        exit 1
+    fi
+}
+
 case "${1:-default}" in
-    pick)
-        declare -A seen
-        # Parallel arrays rather than pre-built rofi rows: the row format below
-        # embeds a NUL byte, which bash strips from variables — so name/icon are
-        # kept raw and the row is assembled only at print time.
-        ids=(); names=(); icons=()
-        while IFS= read -r f; do
-            id="${f##*/}"; id="${id%.desktop}"
-            # One pass per file for the first Name=/Icon= and the hidden flag.
-            # Fields are joined with 0x1f (non-whitespace) so read preserves
-            # empty leading/middle fields instead of collapsing them.
-            IFS=$'\x1f' read -r hidden name icon < <(awk -v s=$'\x1f' '
-                /^NoDisplay=true/ || /^Hidden=true/ { hidden = 1 }
-                /^Name=/ && !name { name = substr($0, 6) }
-                /^Icon=/ && !icon { icon = substr($0, 6) }
-                END { printf "%s%s%s%s%s\n", hidden, s, name, s, icon }
-            ' "$f")
-            [ -n "$hidden" ] && continue
-            [ -z "$name" ] && name="$id"
-            key="${name,,}"
-            [ -n "${seen[$key]:-}" ] && continue   # dedupe on display name
-            seen[$key]=1
-            ids+=("$id")
-            names+=("${name^}")                    # capitalize for display (helium → Helium)
-            icons+=("$icon")
-        done < <(
-            grep -rlE '^Categories=.*WebBrowser' \
-                /usr/share/applications \
-                "$HOME/.local/share/applications" 2>/dev/null | sort
-        )
-
-        if [ "${#ids[@]}" -eq 0 ]; then
-            notify-send -u critical "Browser picker" "No web browsers found"
-            exit 1
-        fi
-
-        # `-format i` returns the 0-based index of the pick, so display names
-        # can collide without ambiguity when mapping back to the desktop id.
-        idx="$(
-            for i in "${!names[@]}"; do
-                printf '%s\0icon\x1f%s\n' "${names[$i]}" "${icons[$i]}"
-            done | rofi -dmenu -i -p "Browser" -show-icons -format i
-        )"
-        [ -z "$idx" ] && exit 0
-        launch_desktop "${ids[$idx]}"
+    list)
+        # Prints "<desktop id>\t<name>\t<icon name>\t<default 0|1>" and stops —
+        # the vicinae Browser command renders its own menu from that. Launching
+        # still goes through `launch`, so the gtk-launch + setsid detach is not
+        # reimplemented anywhere.
+        scan_browsers
+        def="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+        def="${def%.desktop}"
+        for i in "${!ids[@]}"; do
+            printf '%s\t%s\t%s\t%s\n' "${ids[$i]}" "${names[$i]}" "${icons[$i]}" \
+                "$([ "${ids[$i]}" = "$def" ] && echo 1 || echo 0)"
+        done
+        exit 0
+        ;;
+    launch)
+        [ -n "${2:-}" ] || { echo "browser-launch: launch requires a desktop id" >&2; exit 1; }
+        launch_desktop "$2"
         ;;
     *)
         def="$(xdg-settings get default-web-browser 2>/dev/null || true)"

@@ -2,7 +2,7 @@
 # Fuzzy-pick a project and open its dev environment. Bound to a herdr popup
 # (prefix+o, see ~/.config/herdr/config.toml) — the popup closes when this
 # exits — but works from any terminal. Candidates come from dev-projects
-# (shared with rofi-dev); `dev` owns the detached launch, which is what lets
+# (shared with the vicinae project picker); `dev` owns the detached launch, which is what lets
 # this exit immediately without killing the spawned environment.
 set -euo pipefail
 

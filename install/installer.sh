@@ -928,29 +928,6 @@ install_common_tools() {
         mark_sync_shortfall
     fi
 
-    # Install rofi themes when the Hyprland group is selected
-    if group_selected hyprland; then
-        print_info "Installing Rofi themes collection..."
-        local temp_dir="/tmp/rofi-themes-collection"
-        local themes_dir="$HOME/.local/share/rofi/themes"
-        
-        rm -rf "$temp_dir"
-        if git clone https://github.com/lr-tech/rofi-themes-collection.git "$temp_dir" 2>/dev/null; then
-            # Remove existing symlink, file, or directory if it exists (clean install)
-            if [ -L "$themes_dir" ] || [ -f "$themes_dir" ]; then
-                rm -f "$themes_dir"
-            elif [ -d "$themes_dir" ]; then
-                rm -rf "$themes_dir"
-            fi
-            mkdir -p "$themes_dir"
-            cp -r "$temp_dir/themes"/* "$themes_dir/" 2>/dev/null || true
-            rm -rf "$temp_dir"
-            print_success "Rofi themes installed"
-        else
-            track_warning "Failed to install Rofi themes"
-        fi
-    fi
-
     # Setup hyprvoice (AI group)
     if group_selected ai; then
         # Configure hyprvoice transcription provider and model

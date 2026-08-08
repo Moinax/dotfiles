@@ -1,6 +1,6 @@
 # Hyprland - Wayland compositor and related tools
 name: Hyprland
-description: Hyprland compositor with Wayland tools (waybar, rofi, swaync)
+description: Hyprland compositor with Wayland tools (waybar, vicinae, swaync)
 icon: 🪟
 environment: desktop
 
@@ -8,11 +8,11 @@ environment: desktop
 dotfiles:
   - dot_config/hypr
   - dot_config/waybar
-  - dot_config/rofi
+  - dot_config/vicinae
   - dot_config/swaync
   - dot_config/swayosd
   - dot_config/wlogout
-  - dot_local/share/rofi
+  - dot_local/share/vicinae
 
 # Services to enable
 services:
@@ -30,10 +30,8 @@ descriptions:
   swayosd: On-screen display for volume, brightness and caps-lock
   python-pywayland: Python Wayland bindings (idle inhibitor for caffeine mode)
   waybar: Highly customizable status bar
-  rofi-wayland: Application launcher (Wayland fork)
-  rofi-calc: Calculator plugin for rofi
   kcalc: KDE calculator application
-  rofimoji: Emoji picker for rofi
+  vicinae-bin: Raycast-style launcher (native Qt, React/TS extensions)
   swaync: Notification center with drawer and DND
   wlogout: Logout menu for Wayland
   cliphist: Clipboard history manager
@@ -66,9 +64,10 @@ packages:
 
     # Status bar and menus
     - waybar
-    - rofi-wayland
-    - rofi-calc
-    - rofimoji
+    # vicinae is the launcher every keybind points at. rofi and its plugins are
+    # deliberately absent from this branch: main still carries them, and that is
+    # the copy the two are compared by switching between.
+    - vicinae-bin  # AUR — prebuilt; building vicinae from source is a long Qt/C++ compile
     - kcalc
     # Notifications
     - swaync

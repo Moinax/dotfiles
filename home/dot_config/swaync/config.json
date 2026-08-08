@@ -43,10 +43,6 @@
       "state": "transient",
       "summary": "^Hyprpaper$"
     },
-    "rofi-info": {
-      "state": "transient",
-      "summary": "^Rofi$"
-    },
     "idle-warning": {
       "state": "transient",
       "summary": "Your computer will be locked"

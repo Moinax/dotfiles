@@ -11,26 +11,23 @@
 | Action | Keys | Notes |
 |---|---|---|
 | Open terminal (kitty) | `Mod+Return` | |
-| Dev workspace (main project) | `Mod+Alt+Return` | Rofi project picker (worktrees filtered out), then a persistent dev session (agent + lazygit + nvim); `Ctrl+Enter` on a project jumps to its worktree picker |
-| Dev workspace (worktree) | `Mod+Ctrl+Return` | Rofi project picker, then worktree picker (`wts`): select to reopen, type a branch name to create; nothing is ever auto-started, `Ctrl+Enter` is the explicit opt-in that sends `/start`, `Shift+Enter` forces the typed text over a highlighted match |
-| App launcher (rofi) | `Mod+Space` | |
+| Dev workspace | `Mod+Alt+Return` | Vicinae project picker (worktrees and non-repo directories filtered out), with the selected project's branch, working-tree state and herdr session in the side panel. **Enter** opens a persistent dev session on the main checkout (agent + lazygit + nvim). **Shift+Enter** pushes the worktree picker (`wts`), grouped into worktrees / local branches / origin-only branches with each branch's last commit — select to reopen, type an unknown name to get a "Create branch" row. Nothing is ever auto-started there: "Open Worktree and Run /start" (`Ctrl+Enter`) is the explicit opt-in |
+| Launcher (vicinae) | `Mod+Space` | Apps, files, window switching, snippets — and arithmetic/unit/currency conversion inline as you type. Second press closes it |
 | Open default browser | `Mod+B` | Launches the system default web browser |
-| Pick browser (rofi) | `Mod+Alt+B` | Rofi menu of all installed browsers |
+| Pick browser | `Mod+Alt+B` | Vicinae list of installed browsers (freedesktop `Categories=WebBrowser` scan, no hardcoded list); the system default is marked |
 | File manager (Dolphin) | `Mod+E` | |
-| Emoji selector | `Mod+I` | rofimoji (clipboard paste) |
-| Switch audio output | `Mod+A` | |
-| Open all herdr sessions | `Mod+Alt+A` | Revives any down servers (e.g. after a reboot) and opens every persisted session as one tabbed Hyprland group; already-open windows are left as-is |
-| Detach all herdr sessions | `Mod+Alt+D` | Closes every herdr client window; servers and agents keep running |
-| Stop all herdr sessions | `Mod+Alt+Q` | Detaches all, then stops every running server — kills the agents; saved layouts persist, so `Mod+Alt+A` starts them fresh |
-| Switch keyboard layout | `Mod+K` | |
-| Window switcher (rofi) | `Mod+Tab` | |
-| Kill window (rofi) | `Mod+Escape` | Picks window like switcher, then `kill -9` |
-| Clipboard (cliphist) | `Mod+V` | |
+| Emoji & symbol picker | `Mod+I` | Vicinae built-in |
+| Switch audio output | `Mod+A` | Vicinae sink picker; the current default is marked, and picking is by sink name rather than by matching a description substring |
+| Switch keyboard layout | `Mod+K` | Vicinae list of `input-layouts/` templates; the layout in force is marked, matched on `kb_layout`/`kb_variant` |
+| Window switcher (vicinae) | `Mod+Tab` | Vicinae built-in |
+| Close / kill window | `Mod+Escape` | Enter asks the window to close through the compositor (its normal shutdown path); `Ctrl+Shift+Enter` is `SIGKILL` for the ones that ignore it. The list refreshes in place instead of closing |
+| Clipboard history | `Mod+V` | Vicinae built-in (encrypted store, text and images) |
 | Color picker (hyprpicker) | `Mod+Shift+P` | |
-| Calculator (rofi-calc) | `Mod+C` | Quick inline calculator |
+| Calculator history | `Mod+C` | Past calculations, searchable. Arithmetic itself is not a separate command — type it straight into `Mod+Space` |
 | Calculator (kcalc) | `Mod+Alt+C` | Full calculator app |
-| Theme selector | `Mod+R` | rofi-theme-selector |
-| Toggle monitor layout | `Mod+M` | |
+| Theme selector | `Mod+R` | Vicinae "Set Theme"; `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
+| Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
+| Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
 | Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level, a microphone picker and validate/cancel buttons, so a dictation can also be finished with the pointer |
 | Cancel dictation (discard) | `Mod+Shift+D` | `hyprvoice cancel` — drops the recording with no transcription, the keyboard twin of the overlay's ✕ |
 
@@ -117,7 +114,6 @@
 | Action | Keys | Notes |
 |---|---|---|
 | Reload Waybar | `Mod+Shift+B` | |
-| Wallpaper picker (rofi) | `Mod+Shift+W` | Picks from `~/Wallpapers/`, applies via awww |
 | Reload SwayNC | `Mod+Shift+M` | `swaync-client -R && swaync-client -rs` |
 | Reload compositor | `Mod+Shift+R` | |
 
@@ -149,12 +145,9 @@
 | Toggle dark/light mode | `Mod+N` | Switches Catppuccin Mocha/Latte + portal |
 | Toggle caffeine mode | `Mod+Alt+N` | Inhibits idle (prevents lock/sleep) |
 | Toggle Tailscale VPN | `Mod+Ctrl+N` | Connect/disconnect Tailscale |
-| Quit compositor | `Mod+Shift+Q` | |
 | Lock + screen off | `Mod+Alt+M` | Locks the session, then powers the screen off; wake by mouse/key, then unlock |
 | Toggle HDR (10-bit) | `Mod+Alt+H` | Desktop only; flips DP-3 between SDR (default) and 10-bit HDR, reverts on reload |
-| Keybinding help (rofi) | `Mod+H` | rofi-keybindings |
-| Toggle notification center | `Mod+U` | `swaync-client -t` |
-| Toggle DND | `Mod+Alt+U` | `swaync-client -d` |
+| Keybinding help | `Mod+H` | Vicinae list, grouped by section with a section filter; parsed from `binds.lua` by `hypr-keybindings` |
 
 ## 14. Mouse
 

@@ -30,14 +30,45 @@ for layout_file_path in "${LAYOUT_FILES[@]}"; do
     layout_display_names+=("$display_name")
 done
 
-# --- Use Rofi to select a layout ---
-selected_display_name=$(printf "%s\n" "${layout_display_names[@]}" | rofi -dmenu -i -p "Select Keyboard Layout:")
+# --- Non-interactive modes, for the vicinae Keyboard Layout command ---
+# `list` prints "<display name>\t<active 0|1>", `set NAME` applies one. The
+# copy-and-notify below is left as the single implementation of "switch layout";
+# only the picking is done elsewhere.
+#
+# Active is decided on kb_layout + kb_variant, not by diffing the files. A
+# whole-file compare looks tempting — input.lua is written by `cp` from one of
+# these templates — but it is wrong the moment the two drift for any reason
+# unrelated to the layout: input.lua starts life as chezmoi's create_input.lua
+# seed, and today it matches 2_french.lua on kb_layout while lacking that
+# template's touchpad block, so a compare reports *nothing* active. The layout
+# keys are the only part that actually defines which layout is in force.
+kb_id() { # $1: a lua input config → "<layout>/<variant>"
+    sed -n 's/.*kb_layout  *= *"\([^"]*\)".*/\1/p' "$1" | head -1 | tr -d '\n'
+    printf '/'
+    sed -n 's/.*kb_variant  *= *"\([^"]*\)".*/\1/p' "$1" | head -1
+}
 
-# Exit if nothing was selected (Rofi was closed or ESC pressed)
-if [ -z "$selected_display_name" ]; then
-    echo "No layout selected. Exiting."
-    exit 0
-fi
+case "${1:-}" in
+    list)
+        active_id="$(kb_id "$ACTIVE_INPUT_CONF")"
+        for display_name in "${layout_display_names[@]}"; do
+            if [ "$(kb_id "${layout_paths[$display_name]}")" = "$active_id" ]; then
+                printf '%s\t1\n' "$display_name"
+            else
+                printf '%s\t0\n' "$display_name"
+            fi
+        done
+        exit 0
+        ;;
+    set)
+        [ -n "${2:-}" ] || { echo "toggle-keyboard-layout: set requires a layout name" >&2; exit 1; }
+        selected_display_name="$2"
+        ;;
+    *)
+        echo "toggle-keyboard-layout: unknown mode '${1:-<none>}' (expected: list | set NAME)" >&2
+        exit 1
+        ;;
+esac
 
 # --- Get the selected layout's file path ---
 NEXT_LAYOUT_FILE="${layout_paths[$selected_display_name]}"

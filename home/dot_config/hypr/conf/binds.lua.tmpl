@@ -4,39 +4,50 @@
 local mod  = "SUPER"
 local home = assert(os.getenv("HOME"), "HOME not set")
 
+-- Launcher: vicinae. Every menu below reaches it through a `vicinae://` deeplink
+-- rather than a script, which is the whole difference from the rofi binds these
+-- replace — a rofi bind had to spawn a process that built a menu, piped it into
+-- rofi and dispatched the result by exit code, so the menu logic lived in the
+-- keybind's script. A deeplink just names a command the running server already
+-- has; `?toggle=true` makes a second press close the window instead of
+-- reopening it, which is what makes these feel like toggles rather than launches.
+--
+-- Nothing rofi is left on this branch: the scripts, themes, config and packages
+-- all went with the binds. `main` still carries them, and switching between the
+-- two branches is how the pair is compared.
+--
 -- ── 1. Application Shortcuts ──────────────────────────────────────
-hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                  -- Open terminal
-hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd(home .. "/.local/bin/rofi-dev"))                                           -- Pick main project & open dev workspace (Ctrl+Enter in rofi → worktrees)
-hl.bind(mod .. " + CTRL + RETURN", hl.dsp.exec_cmd(home .. "/.local/bin/rofi-wts"))                                          -- Pick project, then create/reopen a worktree dev workspace (wts)
-hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("rofi -show drun"))                                                        -- App launcher
-hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/bin/browser-launch.sh"))                                   -- Open default browser
-hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd(home .. "/.local/bin/browser-launch.sh pick"))                              -- Pick browser (rofi)
-hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                                -- Open file manager
-hl.bind(mod .. " + I",            hl.dsp.exec_cmd(home .. "/.local/bin/emoji-picker.sh"))                                    -- Emoji selector
-hl.bind(mod .. " + A",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-audio-switch.sh"))                             -- Switch audio output
-hl.bind(mod .. " + ALT + A",      hl.dsp.exec_cmd(home .. "/.local/bin/herdr-clients open-all"))                             -- Open all herdr sessions (revive down servers, tabbed group)
-hl.bind(mod .. " + ALT + D",      hl.dsp.exec_cmd(home .. "/.local/bin/herdr-clients detach-all"))                           -- Detach all herdr sessions (servers/agents keep running)
-hl.bind(mod .. " + ALT + Q",      hl.dsp.exec_cmd(home .. "/.local/bin/herdr-clients stop-all"))                             -- Stop all herdr sessions (kills servers & agents)
-hl.bind(mod .. " + K",            hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-keyboard-layout.sh"))                -- Switch keyboard layout
-hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("rofi -show window -window-thumbnail"))                                    -- Window switcher
-hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd([[rofi -show "Select App to Kill" -modi "Select App to Kill:rofi-killwindow"]])) -- Kill window (rofi)
-hl.bind(mod .. " + V",            hl.dsp.exec_cmd([[bash -c 'cliphist list | rofi -dmenu -p "Clipboard" | cliphist decode | wtype -']])) -- Clipboard
-hl.bind(mod .. " + C",            hl.dsp.exec_cmd("rofi -show calc"))                                                        -- Calculator (rofi)
-hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("kcalc"))                                                                  -- Open calculator
-hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                             -- Color picker
-hl.bind(mod .. " + R",            hl.dsp.exec_cmd("rofi-theme-selector"))                                                    -- Theme selector
-hl.bind(mod .. " + M",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-monitors.sh"))                                 -- Toggle monitors on/off
-hl.bind(mod .. " + ALT + M",      hl.dsp.exec_cmd(home .. "/.local/bin/lock-dpms-off.sh"))                                    -- Lock + screen off
+hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                 -- Open terminal
+hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/dev?toggle=true'"))             -- Pick main project & open dev workspace (Shift+Enter → worktrees)
+hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("vicinae vicinae://toggle"))                                              -- Launcher (apps, files, maths, everything)
+hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/bin/browser-launch.sh"))                                 -- Open default browser
+hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/browser?toggle=true'"))         -- Pick browser (default marked)
+hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                               -- Open file manager
+hl.bind(mod .. " + I",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/core/search-emojis?toggle=true'"))             -- Emoji & symbol picker
+hl.bind(mod .. " + A",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/audio-output?toggle=true'"))    -- Switch audio output
+hl.bind(mod .. " + K",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/keyboard-layout?toggle=true'")) -- Switch keyboard layout
+hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("vicinae 'vicinae://launch/wm/switch-windows?toggle=true'"))              -- Window switcher
+hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/kill-window?toggle=true'"))     -- Close or force-kill a window
+hl.bind(mod .. " + V",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/clipboard/history?toggle=true'"))              -- Clipboard history
+-- Arithmetic is not a command in vicinae: the root search evaluates as you type
+-- (Mod+Space, then "2+2" or "40 EUR in USD"). What is a command is the history
+-- of past calculations, which rofi-calc had no equivalent for at all.
+hl.bind(mod .. " + C",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/calculator/history?toggle=true'"))             -- Calculator history
+hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("kcalc"))                                                                 -- Open calculator
+hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                            -- Color picker
+hl.bind(mod .. " + R",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/theme/set?toggle=true'"))                      -- Theme selector
+hl.bind(mod .. " + M",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/monitors?toggle=true'"))        -- Toggle monitors on/off
+hl.bind(mod .. " + ALT + M",      hl.dsp.exec_cmd(home .. "/.local/bin/lock-dpms-off.sh"))                                  -- Lock + screen off
 {{- if eq .chezmoi.hostname "moinax-desktop" }}
-hl.bind(mod .. " + ALT + H",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-hdr.sh"))                                       -- Toggle 10-bit HDR on DP-3
+hl.bind(mod .. " + ALT + H",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-hdr.sh"))                                     -- Toggle 10-bit HDR on DP-3
 {{- end }}
 {{- if .install_ai }}
-hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh"))                                -- Toggle dictation
+hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh"))                               -- Toggle dictation
 -- Discard, the keyboard twin of the overlay's ✕. Safe to leave always live:
 -- cancelling while idle is a no-op the daemon just logs and ignores. It cannot
 -- live in the overlay itself — a layer surface that takes keyboard focus becomes
 -- hyprvoice's injection target, so the dictation would land in the pill.
-hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("hyprvoice cancel"))                                                       -- Cancel dictation (discard)
+hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("hyprvoice cancel"))                                                      -- Cancel dictation (discard)
 {{- end }}
 
 -- ── 2. Window Management ──────────────────────────────────────────
@@ -145,7 +156,7 @@ hl.bind(mod .. " + CTRL + S",  hl.dsp.window.move({ workspace = "special", follo
 
 -- ── 11. Reload Configs ───────────────────────────────────────────
 hl.bind(mod .. " + SHIFT + B", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-waybar.sh"))                      -- Reload Waybar
-hl.bind(mod .. " + SHIFT + W", hl.dsp.exec_cmd(home .. "/.local/bin/wallpaper-picker.sh"))                            -- Wallpaper picker (rofi)
+hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/wallpaper?toggle=true'"))                  -- Wallpaper picker (grid preview)
 hl.bind(mod .. " + SHIFT + M", hl.dsp.exec_cmd("swaync-client -R && swaync-client -rs"))                               -- Reload SwayNC
 hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-hyprland.sh"))                    -- Reload hyprland
 
@@ -166,14 +177,11 @@ hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lo
 hl.bind(mod .. " + N",         hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dark-mode.sh"))                 -- Toggle dark/light mode
 hl.bind(mod .. " + ALT + N",   hl.dsp.exec_cmd(home .. "/.local/bin/toggle-caffeine.sh"))                  -- Toggle caffeine mode
 hl.bind(mod .. " + CTRL + N",  hl.dsp.exec_cmd(home .. "/.local/bin/toggle-tailscale.sh"))                 -- Toggle Tailscale VPN
-hl.bind(mod .. " + SHIFT + Q", hl.dsp.exit())                                                              -- Exit Hyprland
 hl.bind(mod .. " + L",         hl.dsp.exec_cmd("wlogout-wrapper.sh"))                                      -- Power menu (wlogout)
 hl.bind(mod .. " + ALT + L",   hl.dsp.exec_cmd("loginctl lock-session"))                                   -- Lock screen
 hl.bind(mod .. " + CTRL + L",  hl.dsp.exec_cmd("systemctl suspend"))                                       -- Suspend
 hl.bind(mod .. " + SHIFT + L", hl.dsp.exec_cmd(home .. "/.local/bin/compositor-logout.sh"))                -- Logout
-hl.bind(mod .. " + H",         hl.dsp.exec_cmd("rofi-keybindings"))                                        -- Keybinding help
-hl.bind(mod .. " + U",         hl.dsp.exec_cmd("swaync-client -t"))                                        -- Toggle notification center
-hl.bind(mod .. " + ALT + U",   hl.dsp.exec_cmd("swaync-client -d"))                                        -- Toggle DND
+hl.bind(mod .. " + H",         hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/keybindings?toggle=true'")) -- Keybinding help
 
 -- ── 15. Mouse ────────────────────────────────────────────────────
 hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })                   -- Move window

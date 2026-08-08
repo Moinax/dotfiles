@@ -359,7 +359,7 @@ package_owners() {
 #
 # Beyond the real package names (pacman -Qq), this also emits everything those
 # packages Provide/Replace, so virtual or renamed packages resolve the same way
-# a per-package `pacman -Qi <name>` would (e.g. `rofi` provides `rofi-wayland`).
+# a per-package `pacman -Qi <name>` would (e.g. `vi` provides `vim`).
 # expac asks libalpm for exactly those three fields and prints them; `pacman -Qi`
 # formats every field of every package and has them parsed back out, which costs
 # 830ms against expac's 48ms on ~2600 packages. Same output, verified identical

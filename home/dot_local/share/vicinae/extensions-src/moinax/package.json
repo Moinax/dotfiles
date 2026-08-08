@@ -1,0 +1,115 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "moinax",
+  "title": "Moinax",
+  "description": "The desktop surfaces that had no native equivalent: dev workspaces, worktrees, system toggles, windows, audio, wallpapers and keybindings.",
+  "icon": "extension_icon.png",
+  "author": "moinax",
+  "categories": [
+    "Developer Tools",
+    "System"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "dev",
+      "title": "Dev Project",
+      "subtitle": "Moinax",
+      "description": "Pick a project and open its herdr dev workspace.",
+      "mode": "view"
+    },
+    {
+      "name": "kill-window",
+      "title": "Kill Window",
+      "subtitle": "Moinax",
+      "description": "List open windows and close or force-kill one.",
+      "mode": "view"
+    },
+    {
+      "name": "audio-output",
+      "title": "Audio Output",
+      "subtitle": "Moinax",
+      "description": "Switch the default audio sink.",
+      "mode": "view"
+    },
+    {
+      "name": "keyboard-layout",
+      "title": "Keyboard Layout",
+      "subtitle": "Moinax",
+      "description": "Switch the compositor keyboard layout; the active one is marked.",
+      "mode": "view"
+    },
+    {
+      "name": "monitors",
+      "title": "Monitors",
+      "subtitle": "Moinax",
+      "description": "Enable or disable connected outputs, one per action.",
+      "mode": "view"
+    },
+    {
+      "name": "browser",
+      "title": "Browser",
+      "subtitle": "Moinax",
+      "description": "Pick an installed browser to open; the system default is marked.",
+      "mode": "view"
+    },
+    {
+      "name": "wallpaper",
+      "title": "Wallpaper",
+      "subtitle": "Moinax",
+      "description": "Pick a wallpaper from ~/Wallpapers and apply it through awww.",
+      "mode": "view"
+    },
+    {
+      "name": "keybindings",
+      "title": "Keybindings",
+      "subtitle": "Moinax",
+      "description": "Search the compositor keybindings, grouped by section.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "provider",
+      "title": "Agent Provider",
+      "description": "Which AI agent wtstart-launch starts in the workspace's agent pane. Only claude auto-submits /start.",
+      "required": false,
+      "type": "dropdown",
+      "default": "claude",
+      "data": [
+        {
+          "title": "Claude",
+          "value": "claude"
+        },
+        {
+          "title": "Codex",
+          "value": "codex"
+        },
+        {
+          "title": "OpenCode",
+          "value": "opencode"
+        }
+      ]
+    },
+    {
+      "name": "wallpaperDir",
+      "title": "Wallpaper Directory",
+      "description": "Directory the Wallpaper command lists images from.",
+      "required": false,
+      "type": "directory"
+    }
+  ],
+  "scripts": {
+    "build": "vici build",
+    "dev": "vici develop",
+    "lint": "vici lint"
+  },
+  "dependencies": {
+    "@vicinae/api": "^0.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.9.2"
+  }
+}

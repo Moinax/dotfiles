@@ -27,9 +27,9 @@ repos=()
 names=()
 while IFS= read -r entry; do
   repo=$(dev-projects resolve "$entry")
-  # Keep this command scoped to the project tree and skip linked worktrees
-  # (.git is a file there, whereas it is a directory in the main checkout).
-  if [[ "$repo" == "$root"/* && -d "$repo/.git" ]]; then
+  # `--main-only` already guarantees a .git directory; all that is left is to
+  # keep this command scoped to the project tree.
+  if [[ "$repo" == "$root"/* ]]; then
     repos+=("$repo")
     # Keep the entry `dev-projects` gave us rather than deriving a name back out
     # of the path: the entry↔path mapping is that command's business, and

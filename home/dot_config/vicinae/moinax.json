@@ -1,0 +1,47 @@
+// Canonical vicinae settings, imported by ~/.config/vicinae/settings.json.
+//
+// Why this is a separate file rather than settings.json itself: the vicinae GUI
+// writes to settings.json every time a preference is changed there, and a
+// chezmoi-managed file that a running application rewrites is a file that is
+// permanently "modified" and gets clobbered on the next apply. Imports are the
+// escape hatch vicinae documents for exactly this — imported files are merged
+// before the user config and are never touched by vicinae.
+//
+// The consequence, and it is the right way round: anything set through the GUI
+// lands in settings.json and therefore *overrides* what is here. This file is
+// the machine's starting position, not a cage.
+//
+// It is deliberately short. Everything else is left at the vicinae default,
+// including the window geometry and decorations — an earlier version forced a
+// 24px radius and disabled client-side decorations to imitate the rofi window,
+// which is not what we are aiming for. `vicinae config default` prints the full
+// annotated set of options to pick from when something does need changing.
+{
+  // Vicinae maps a theme to each system appearance and follows the XDG portal's
+  // colour-scheme, so Mod+N moves it with the rest of the desktop without
+  // anything having to tell it to — apply-dark-mode.sh flips the portal and
+  // stops there.
+  //
+  // These are vicinae's own bundled themes, used as shipped. There is
+  // deliberately no local override: a wrapper theme that only declared
+  // `inherits` still did not render identically to the built-in it inherited
+  // from (visible on hover in the Mod+R theme selector), so wrapping costs
+  // fidelity and buys nothing until there is an actual colour to change.
+  //
+  // Mocha/Latte rather than Frappé or Macchiato because that is the pairing the
+  // rest of the desktop already uses — see the cursor themes
+  // (catppuccin-mocha-dark-cursors / catppuccin-latte-light-cursors).
+  //
+  // Ids are the filenames under /usr/share/vicinae/themes/ without the .toml,
+  // not the `[meta] name` inside them ("Catppuccin Mocha").
+  "theme": {
+    "dark": {
+      "name": "catppuccin-mocha",
+      "icon_theme": "auto"
+    },
+    "light": {
+      "name": "catppuccin-latte",
+      "icon_theme": "auto"
+    }
+  }
+}

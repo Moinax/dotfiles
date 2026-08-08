@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Single source of truth for the dev project tree: the root directory, the
 # "directories up to two levels deep" listing convention, and the directory →
-# Herdr session mapping. The pickers (dev-pick, rofi-dev) list it; dev-herdr
+# Herdr session mapping. The pickers (dev-pick, vicinae) list it; dev-herdr
 # asks it which session group a directory belongs to.
 # Override the root with DEV_PROJECTS_ROOT.
 #
 # Usage: dev-projects root                 print the projects root directory
 #        dev-projects list [--main-only]   print candidate project entries;
-#                                          --main-only hides linked worktrees
-#                                          (detected structurally: a worktree
-#                                          has a .git *file*, a repo a .git dir)
+#                                          --main-only keeps only main checkouts
+#                                          (a .git *directory*), so both linked
+#                                          worktrees and the intermediate group
+#                                          directories drop out
 #        dev-projects resolve ENTRY        print the absolute path for an entry
 #        dev-projects session DIR          print the Herdr session for a directory
 set -euo pipefail
@@ -39,16 +40,36 @@ case "${1:-}" in
     ;;
   list)
     command -v fd >/dev/null 2>&1 || { echo "dev-projects: fd not found" >&2; exit 1; }
-    if [[ "${2:-}" == "--main-only" ]]; then
-      { printf '%s\n' "${extras_order[@]}"
-        fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix; } |
-        while IFS= read -r entry; do
-          if [[ ! -f "${extras[$entry]:-$root/$entry}/.git" ]]; then printf '%s\n' "$entry"; fi
-        done
-    else
-      printf '%s\n' "${extras_order[@]}"
-      fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix
-    fi
+    # --paths appends a tab and the resolved absolute path to every entry, so a
+    # caller that needs both gets them in one invocation. Without it a picker
+    # has to run `resolve` once per entry — fine for a shell script that
+    # resolves only the one line the user picked, wasteful for the vicinae
+    # extension, which needs every path up front to tell a real repository from
+    # an intermediate directory like `labs/`. The resolution rule itself is not
+    # duplicated: this is the same `${extras[...]:-$root/...}` expansion the
+    # `resolve` branch below uses.
+    main_only=false with_paths=false
+    for flag in "${@:2}"; do
+      case "$flag" in
+        --main-only) main_only=true ;;
+        --paths) with_paths=true ;;
+        *) echo "dev-projects: unknown list flag '$flag'" >&2; exit 1 ;;
+      esac
+    done
+    { printf '%s\n' "${extras_order[@]}"
+      fd --type d --max-depth 2 --base-directory "$root" --strip-cwd-prefix; } |
+      while IFS= read -r entry; do
+        path="${extras[$entry]:-$root/$entry}"
+        # A main repository has a .git *directory*; a linked worktree has a .git
+        # file, and an intermediate group directory (labs/, mbrella/) has no
+        # .git at all. Testing for the directory states what --main-only means
+        # rather than naming one thing it excludes — the negative form let the
+        # group directories through, and both callers that cared had grown
+        # their own `-d "$path/.git"` retest to drop them again (dev-clean, and
+        # the vicinae project list).
+        if $main_only && [[ ! -d "$path/.git" ]]; then continue; fi
+        if $with_paths; then printf '%s\t%s\n' "$entry" "$path"; else printf '%s\n' "$entry"; fi
+      done
     ;;
   resolve)
     entry="${2:-}"

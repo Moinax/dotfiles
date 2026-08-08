@@ -5,7 +5,7 @@
 # tracking origin/<branch>; --create would fork an empty branch off main and
 # drop the remote work — this decision is what routes between the two.
 #
-# The decide half of wtstart and rofi-wts, shared across zsh, fish and bash the
+# The decide half of wtstart and the vicinae worktree picker, shared across zsh, fish and the Node the
 # same way wtstart-launch shares the launch half — only the `wt switch` call
 # itself stays per-shell (it needs shell integration to cd the parent shell).
 #
@@ -16,7 +16,7 @@
 # branch would and leaves the whole index fresh. Paid only when the branch is
 # unknown: deciding for a branch git already knows about stays instant.
 #
-#   -n  report the fetch via notify-send instead of stderr (rofi-wts has no tty)
+#   -n  report the fetch via notify-send instead of stderr (for callers with no tty)
 set -euo pipefail
 
 use_notify=false

@@ -30,7 +30,7 @@ wtstart() {
     wt switch || return 1
     [[ "$PWD" == "$orig_dir" ]] && return 0
   else
-    # wt-switch-args (shared with fish and rofi-wts) fetches origin when the
+    # wt-switch-args (shared with fish and the vicinae worktree picker) fetches origin when the
     # branch is unknown and prints --create only when it is genuinely new, so
     # a remote-only branch checks out tracking origin/<branch>.
     local -a switch_args=($(wt-switch-args "$branch"))

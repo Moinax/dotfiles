@@ -25,6 +25,7 @@ descriptions:
   telegram-desktop: Telegram messaging app
   python-pyqt6-webengine: Chromium-based webview — runtime for the Messenger and WhatsApp app shells
   bitwarden: Bitwarden password manager desktop app
+  rbw: Unofficial Bitwarden CLI — required by the vicinae Bitwarden extension
   helium: Helium web browser (AppImage, set as default)
   zen-browser-bin: Zen Browser (AUR)
   google-chrome: Google Chrome web browser (AUR)
@@ -61,6 +62,9 @@ packages:
 
     # Password manager
     - bitwarden
+    # CLI vault client, and what the vicinae Bitwarden extension shells out to.
+    # Its own agent holds the master key, independently of the desktop app.
+    - rbw
 
     # Web browsers
     - zen-browser-bin  # AUR

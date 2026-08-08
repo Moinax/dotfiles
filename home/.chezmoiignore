@@ -30,14 +30,14 @@ LICENSE
 .config/xdg-desktop-portal/**
 .config/waybar
 .config/waybar/**
-.config/rofi
-.config/rofi/**
+.config/vicinae
+.config/vicinae/**
 .config/swaync
 .config/swaync/**
 .config/wlogout
 .config/wlogout/**
-.local/share/rofi
-.local/share/rofi/**
+.local/share/vicinae
+.local/share/vicinae/**
 .config/systemd/user/swayosd-server.service
 .config/systemd/user/wayland-wm@.service.d
 .config/systemd/user/wayland-wm@.service.d/**
@@ -98,7 +98,6 @@ LICENSE
 # Active theme files managed by apply-dark-mode.sh (variants are still tracked)
 .config/kitty/current-theme.conf
 .config/swaync/style.css
-.local/share/rofi/themes/moinax.rasi
 .config/wlogout/style.css
 .config/waybar/style.css
 

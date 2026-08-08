@@ -46,6 +46,5 @@ sync_theme_copies() {
     _theme_copy ".config/swaync/style-$mode.css"             ".config/swaync/style.css"
     _theme_copy ".config/swayosd/style-$mode.css"            ".config/swayosd/style.css"
     _theme_copy ".config/wlogout/style-$mode.css"            ".config/wlogout/style.css"
-    _theme_copy ".local/share/rofi/themes/moinax-$mode.rasi" ".local/share/rofi/themes/moinax.rasi"
     return 0
 }

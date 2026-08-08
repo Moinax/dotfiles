@@ -1,0 +1,107 @@
+{{- if .install_hyprland -}}
+#!/bin/bash
+# Build the local vicinae extensions after chezmoi has laid down their sources.
+#
+# `vici build` bundles src/*.tsx into ~/.local/share/vicinae/extensions/<name>/,
+# which is what vicinae actually loads — the tree chezmoi manages under
+# extensions-src/ is only source. So an apply that changes a .tsx changes
+# nothing the launcher can see until this runs, exactly like the herdr
+# migrate-layout / reload-config reconciliations CLAUDE.md describes. Same
+# shape, same reason.
+#
+# The hashes below are the trigger. run_onchange re-runs a script when its
+# *rendered content* changes, and a script that only called npm would render
+# identically forever; interpolating a digest of every source file is what ties
+# "a source changed" to "this runs again". They are data, never executed.
+#
+# sources:
+{{ $root := joinPath .chezmoi.sourceDir "dot_local/share/vicinae/extensions-src" -}}
+{{ range (glob (joinPath $root "**/*")) -}}
+{{ if not (stat .).isDir -}}
+#   {{ trimPrefix (printf "%s/" $root) . }} {{ include . | sha256sum }}
+{{ end -}}
+{{ end -}}
+set -e
+
+SRC_ROOT="$HOME/.local/share/vicinae/extensions-src"
+[ -d "$SRC_ROOT" ] || exit 0
+
+# vicinae is what consumes the build output; without it there is nothing to
+# build for, and on a machine that only installed the Hyprland group without
+# the launcher this would otherwise fail every apply.
+if ! command -v vicinae &>/dev/null; then
+    echo "vicinae-extensions: vicinae not installed, skipping extension build"
+    exit 0
+fi
+
+# npm comes from fnm. Prefer whatever is already on PATH, and fall back to the
+# `default` alias path rather than a /run/user/*/fnm_multishells/* one: the
+# multishell paths are per-shell and vanish, the alias path survives node
+# upgrades. A chezmoi script does not necessarily run under a shell that has
+# sourced fnm at all, which is why the fallback exists.
+if ! command -v npm &>/dev/null; then
+    FNM_DEFAULT="$HOME/.local/share/fnm/aliases/default/bin"
+    if [ -x "$FNM_DEFAULT/npm" ]; then
+        PATH="$FNM_DEFAULT:$PATH"
+        export PATH
+    else
+        echo "vicinae-extensions: npm not found, skipping extension build"
+        exit 0
+    fi
+fi
+
+# Drop bundles for commands the manifest no longer declares.
+#
+# `vici build` writes one <command>.js per entrypoint into the output directory
+# and never removes anything, so deleting a command from package.json leaves its
+# bundle behind forever. Vicinae itself is not fooled — the manifest is what it
+# registers from, so an orphan is inert — but it makes the built extension a
+# misleading thing to read, and the next person to wonder why a command "still
+# exists" will find the file and believe it.
+prune_stale() {
+    local ext="$1"
+    python3 - "$ext" <<'PY'
+import json, sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+manifest = json.loads((src / "package.json").read_text())
+data = Path.home() / ".local/share/vicinae"
+import os
+if os.environ.get("XDG_DATA_HOME"):
+    data = Path(os.environ["XDG_DATA_HOME"]) / "vicinae"
+out = data / "extensions" / manifest["name"]
+if not out.is_dir():
+    sys.exit(0)
+
+keep = {f"{c['name']}.js" for c in manifest.get("commands", [])}
+for bundle in out.glob("*.js"):
+    if bundle.name not in keep:
+        bundle.unlink()
+        print(f"vicinae-extensions: pruned stale {manifest['name']}/{bundle.name}")
+PY
+}
+
+status=0
+for ext in "$SRC_ROOT"/*/; do
+    [ -f "$ext/package.json" ] || continue
+    name="$(basename "$ext")"
+    echo "vicinae-extensions: building $name"
+    # `npm install` rather than `npm ci`: no lockfile is tracked (the repo
+    # gitignores package-lock.json globally), so there is nothing for ci to
+    # install from. One runtime dependency, pinned by a caret in the manifest.
+    if (cd "$ext" && npm install --silent && npm run --silent build); then
+        prune_stale "$ext" && echo "vicinae-extensions: $name built"
+    else
+        echo "vicinae-extensions: $name FAILED to build" >&2
+        status=1
+    fi
+done
+
+# A build failure is worth a non-zero exit — a silently stale extension is the
+# failure mode this whole script exists to prevent.
+exit "$status"
+{{- else -}}
+#!/bin/bash
+# Hyprland group not selected — no vicinae, nothing to build.
+{{- end }}

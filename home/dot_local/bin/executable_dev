@@ -2,7 +2,7 @@
 # Open a persistent, detachable dev environment (AI agent + lazygit + nvim)
 # for a directory. Reattach by re-running `dev`. A script rather than a shell
 # function: it has no parent-shell side effects, and one copy serves fish,
-# zsh, and the pickers (dev-pick, rofi-dev) alike.
+# zsh, and the pickers (dev-pick, the vicinae Dev Project command) alike.
 #   -n <name>  append " - <name>" after the directory name in the title
 #   -p <prov>  AI agent provider: claude (default), codex, opencode
 #

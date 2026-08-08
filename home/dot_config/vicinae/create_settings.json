@@ -1,0 +1,13 @@
+{
+  "$schema": "https://vicinae.com/schemas/config.json",
+
+  // `create_` file: chezmoi writes this once, on a machine that does not have
+  // it yet, and never again. That is what leaves it free for vicinae's GUI to
+  // own — every preference changed in the settings window is written straight
+  // back into this file, so a managed one would be overwritten on every apply.
+  //
+  // Everything canonical lives in the imported file instead. Values written
+  // here by the GUI take precedence over it, which is the intended direction:
+  // a per-machine choice made in the UI should survive the next apply.
+  "imports": ["moinax.json"]
+}

@@ -87,15 +87,3 @@ tools:
       curl -sL https://github.com/LeonardoTrapani/hyprvoice/releases/latest/download/hyprvoice-linux-x86_64 -o ~/.local/bin/hyprvoice
       chmod +x ~/.local/bin/hyprvoice
 
-  # `updated_by: none` rather than simply omitting the metadata, so the updater
-  # can tell a deliberate opt-out from a forgotten declaration: there is no
-  # version to compare, and the only "update" is a re-clone that copies over
-  # ~/.local/share/rofi/themes — which would clobber anything added there by
-  # hand. Re-run the installer explicitly if you want fresh themes.
-  - name: rofi-themes-collection
-    updated_by: none
-    description: Collection of Rofi themes
-    type: git
-    url: https://github.com/lr-tech/rofi-themes-collection
-    dest_temp: /tmp/rofi-themes-collection
-    install_cmd: cp -r /tmp/rofi-themes-collection/themes/* ~/.local/share/rofi/themes/

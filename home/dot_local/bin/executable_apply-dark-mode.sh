@@ -177,6 +177,18 @@ if systemctl --user is-active --quiet swayosd-server.service 2>/dev/null; then
     systemctl --user restart swayosd-server.service 2>/dev/null || true
 fi
 
+# Vicinae is not driven from here, and deliberately so. Its config maps a theme
+# to each system appearance — theme.light.name / theme.dark.name in
+# ~/.config/vicinae/moinax.json — and it follows the KDE portal's colour-scheme,
+# which this script has already flipped above. It is the same arrangement as
+# Waybar's, one layer down: set the appearance, let the app pick its own side.
+#
+# Calling `vicinae theme set` here would be worse than redundant. That command
+# writes whichever half of the mapping matches the appearance vicinae believes
+# is current, and at this point in the script vicinae may not have seen the
+# portal change yet — so a dark toggle could land "catppuccin-mocha" in the
+# *light* slot and quietly corrupt the mapping.
+
 # Waybar discovers the appearance via the portal color-scheme (set through
 # gsettings above) and live-switches its stylesheet. The icon is a separate
 # custom module with `interval: once`, though, so non-click callers such as the
@@ -222,6 +234,5 @@ if command -v chezmoi &>/dev/null; then
         ~/.config/starship.toml \
         ~/.config/tuicr/config.toml \
         ~/.config/yazi/theme.toml \
-        ~/.local/share/rofi/themes/wallpaper.rasi \
         2>/dev/null || true
 fi

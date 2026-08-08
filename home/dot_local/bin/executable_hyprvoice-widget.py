@@ -108,7 +108,7 @@ BAR_BYTES = RATE * BAR_MS // 1000 * 2
 # for swayosd's live-switching setup.
 #
 # Written as hex and converted here, not as float triples: #1e1e2e appears in
-# eleven other files (waybar, swaync, swayosd, wlogout, rofi, yazi, theme.lua),
+# eleven other files (waybar, swaync, swayosd, wlogout, yazi, theme.lua),
 # and a flavour tweak has to be able to find this one by grepping for the same
 # string as the rest. Cairo wants 0..1 floats, so the conversion happens once at
 # import rather than being baked into the source.

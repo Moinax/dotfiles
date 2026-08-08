@@ -12,7 +12,7 @@ command = "CLAUDECODE= MAX_THINKING_TOKENS=0 claude -p --no-session-persistence 
 # or giving an existing local branch its first worktree, and never on reopening
 # one. That is the whole reason this lives here rather than in wtstart: the
 # scripts used to carry a hand-computed `--new` flag through three shells, and
-# each copy could disagree with the other two (the rofi one did).
+# each copy could disagree with the other two (they did).
 #
 # pre-start rather than the post-start the docs suggest, because it blocks: the
 # dev environment launches the moment `wt switch` returns, and a background copy

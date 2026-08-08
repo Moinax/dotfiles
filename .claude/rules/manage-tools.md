@@ -172,7 +172,7 @@ you stop running once the machine is set up.
 
 ### The themed surfaces read a copy, so refreshing it *is* the reconciliation
 
-Six surfaces — kitty, eza, swaync, swayosd, wlogout, rofi — read one fixed path
+Five surfaces — kitty, eza, swaync, swayosd, wlogout — read one fixed path
 (`style.css`, `theme.yml`, `current-theme.conf`) and express the mode by copying
 `style-dark.css` or `style-light.css` over it. None of those copies is managed:
 the only thing that ever writes them is a dark/light toggle.
