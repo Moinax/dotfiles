@@ -325,6 +325,14 @@ sync_packages() {
     [ -n "$BASE_COMMIT" ] || return 0
 
     # Nothing under packages/ moved — skip the worktree export entirely.
+    #
+    # CHANGED_FILES is the git diff BASE_COMMIT..HEAD, so this is also what makes
+    # an uncommitted packages/ edit a no-op: package_delta below reads the live
+    # checkout, working tree and all, but only a committed change ever gets it
+    # that far. Deliberate — the anchor is a commit, so "since when" is only
+    # answerable for committed state — but silent, and it reads as a bug from the
+    # outside: you edit a yaml, run the command whose job is to act on it, and it
+    # prints nothing.
     local touched=false f
     for f in "${CHANGED_FILES[@]}"; do
         case "$f" in packages/*) touched=true; break ;; esac
