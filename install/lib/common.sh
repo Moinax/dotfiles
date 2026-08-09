@@ -841,11 +841,21 @@ parse_custom_install_requires_packages() {
 CHEZMOI_CONF="$HOME/.config/chezmoi/chezmoi.toml"
 
 # Read a key's value from chezmoi.toml's [data] section (quotes stripped).
+#
+# **An absent key is an empty answer, not a failure**, and the trailing `|| true`
+# is what makes that true. Without it the leading `grep` finds nothing, returns 1,
+# and `set -o pipefail` hands that status to the whole function — so every caller
+# of the form `v=$(chezmoi_data_get k)` inherits it, and under `set -e` a bare
+# assignment that fails ends the script. `dots update` did exactly that: it
+# printed the Repository header and vanished, with no error and exit 1, the first
+# time it asked about a group whose flag was not yet recorded. The callers that
+# survived were only the ones that happened to wrap the substitution in `[ ... ]`,
+# where the status is discarded — safety by accident of punctuation.
 chezmoi_data_get() {
     local key="$1"
     [ -f "$CHEZMOI_CONF" ] || return 0
     grep -E "^[[:space:]]*${key}[[:space:]]*=" "$CHEZMOI_CONF" 2>/dev/null | head -1 \
-        | sed 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//; s/^"\(.*\)"$/\1/'
+        | sed 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//; s/^"\(.*\)"$/\1/' || true
 }
 
 # Upsert a key in chezmoi.toml's [data] section. true/false are written bare,
