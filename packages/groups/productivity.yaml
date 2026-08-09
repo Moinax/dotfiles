@@ -16,7 +16,9 @@ services: []
 descriptions:
   dolphin: KDE file manager
   gwenview: KDE image viewer
-  kate: KDE text editor
+  kate: KDE text editor — the desktop $VISUAL
+  markdownpart: KPart rendering Markdown — without it Kate's Preview pane is blank on .md
+  marksman: Markdown language server — the one Kate's stock LSP config asks for on .md
   okular: KDE document viewer (PDF, EPUB, DjVu)
   ark: KDE archive manager (Dolphin right-click "Extract here")
   ffmpegthumbnailer: Video thumbnail generator
@@ -37,6 +39,12 @@ packages:
     # KDE apps
     - gwenview
     - kate
+    # Kate's markdown story needs both: markdownpart renders the Preview pane,
+    # marksman answers its LSP client. Kate's stock LSP config names a server per
+    # language without depending on it, so a missing one is a console warning on
+    # every open — nvim's servers live in Mason's own dir and are invisible here.
+    - markdownpart
+    - marksman
     - okular
     - ark
 

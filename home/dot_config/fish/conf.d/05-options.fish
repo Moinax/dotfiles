@@ -1,6 +1,6 @@
-# Editor
+# Editor — see dot_zsh/rc.d/00-options.zsh for why VISUAL is Kate and not Cursor.
 set -gx EDITOR nvim
-set -gx VISUAL cursor
+set -gx VISUAL kate
 set -gx SUDO_EDITOR nvim
 
 # No default greeting — the fastfetch banner in config.fish replaces it.

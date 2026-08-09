@@ -17,6 +17,12 @@ bindkey '\e[H'    beginning-of-line   # Home
 bindkey '\e[F'    end-of-line         # End
 
 # Editor
+# VISUAL is the desktop editor only. Kate over Cursor: Cursor 2.x made the agent
+# panel the default surface, which is the wrong thing to land in when you just
+# want to read a file. Kate is Qt6 (no Electron), reuses the KDE libs already
+# installed, has the LSP client on by default, and previews Markdown via
+# markdownpart. Everything else stays on nvim — including git, which is pinned
+# through core.editor in dot_gitconfig.tmpl and never consults VISUAL.
 export EDITOR="nvim"
-export VISUAL="cursor"
+export VISUAL="kate"
 export SUDO_EDITOR="nvim"
