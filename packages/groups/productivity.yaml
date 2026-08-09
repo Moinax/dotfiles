@@ -15,6 +15,7 @@ services: []
 
 descriptions:
   dolphin: KDE file manager
+  ghostwriter: Distraction-free Markdown editor (KDE) — long-form writing, next to Kate's editing
   gwenview: KDE image viewer
   kate: KDE text editor — the desktop $VISUAL
   markdownpart: KPart rendering Markdown — without it Kate's Preview pane is blank on .md
@@ -37,6 +38,7 @@ packages:
     - kdegraphics-thumbnailers
 
     # KDE apps
+    - ghostwriter
     - gwenview
     - kate
     # Kate's markdown story needs both: markdownpart renders the Preview pane,
