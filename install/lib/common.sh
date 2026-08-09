@@ -168,6 +168,21 @@ group_selected() {
     [[ " ${SELECTED_GROUP_NAMES[*]} " == *" $1 "* ]]
 }
 
+# True when a custom_install entry survived the selector: its group is selected,
+# and either the whole group was taken or the entry was kept in the custom list.
+#
+# `grep -qxF`, not the `case " $list " in *" name "*` glob this replaces — the
+# selector joins kept entries with newlines, so only a single-entry list ever has
+# spaces around its one name. vibewatch was the sole user and the ai group has
+# exactly one custom entry, which is why it went unnoticed; messaging has two, so
+# the second always read as unticked.
+custom_entry_selected() {
+    local group="$1" entry="$2"
+    group_selected "$group" || return 1
+    [ "${GROUP_PACKAGE_MODE[$group]:-all}" = "custom" ] || return 0
+    grep -qxF "$entry" <<< "${GROUP_CUSTOM_PACKAGE_LIST[$group]:-}"
+}
+
 print_header() {
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -294,36 +309,49 @@ get_dotfiles_dir() {
 
 # Parse YAML file and extract package list for a distro
 # Usage: parse_packages "file.yaml" "arch"
-parse_packages() {
-    local file="$1"
-    local distro="$2"
-    
+parse_yaml_nested_list() {
+    local file="$1" parent="$2" child="$3"
+
     if command_exists yq; then
-        # grep exits non-zero when a group has no matching lines; tolerate it so
-        # callers running under `set -o pipefail` don't abort on an empty group.
-        yq -r ".packages.${distro}[]? // \"\"" "$file" 2>/dev/null | grep -v "^#" | grep -v "^$" || true
+        # grep exits non-zero when a section has no matching lines; tolerate it so
+        # callers running under `set -o pipefail` don't abort on an empty section.
+        yq -r ".${parent}.${child}[]? // \"\"" "$file" 2>/dev/null \
+            | grep -v "^#" | grep -v '^[[:space:]]*$' || true
     else
-        # Fallback: simple grep-based parsing
-        local in_section=false
-        local indent=""
+        local in_parent=false in_child=false line
         while IFS= read -r line; do
-            if [[ "$line" =~ ^[[:space:]]*${distro}:[[:space:]]*$ ]]; then
-                in_section=true
-                indent=$(echo "$line" | grep -o "^[[:space:]]*")
-                continue
+            if [[ "$line" =~ ^${parent}:[[:space:]]*$ ]]; then
+                in_parent=true; in_child=false; continue
             fi
-            if $in_section; then
-                # Check if we've exited the section
-                if [[ "$line" =~ ^[[:space:]]*[a-z_]+:[[:space:]]*$ ]] && [[ ! "$line" =~ ^${indent}[[:space:]] ]]; then
-                    break
+            if $in_parent; then
+                # Any other top-level key ends the parent block.
+                [[ "$line" =~ ^[a-z] ]] && break
+                if [[ "$line" =~ ^[[:space:]]+${child}:[[:space:]]*$ ]]; then
+                    in_child=true; continue
                 fi
-                # Extract package name
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-                    echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
+                if $in_child; then
+                    # A sibling section at the same level ends this one.
+                    if [[ "$line" =~ ^[[:space:]]+[a-z_]+:[[:space:]]*$ ]]; then
+                        in_child=false; continue
+                    fi
+                    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
+                        echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
+                    fi
                 fi
             fi
         done < "$file"
     fi
+}
+
+# Packages for a distro/section — `packages.<name>`.
+#
+# Anchored on the `packages:` parent rather than matching the section name
+# wherever it appears, which is what this fallback used to do. base.yaml now
+# carries both `packages.desktop` and `services.desktop`, and a bare
+# `^\s*desktop:` match cannot tell those apart — it would have handed the package
+# list back as the service list, on exactly the machines that have no yq.
+parse_packages() {
+    parse_yaml_nested_list "$1" packages "$2"
 }
 
 # Parse YAML descriptions map and output "package=description" lines
@@ -362,82 +390,57 @@ parse_descriptions() {
     fi
 }
 
-# Parse YAML file and extract dotfiles list
-parse_dotfiles() {
-    local file="$1"
-    
+# Read a top-level YAML list — a `key:` header followed by `- item` lines — and
+# emit one item per line, blanks dropped.
+#
+# One parser for every such list in the schema, because the fallback below is
+# precisely the part that drifts. It existed in three hand-copied versions, and
+# only the desktop_only one ever learned to strip an inline comment: on a machine
+# without yq, `- vicinae.service  # the launcher` parsed correctly as a
+# desktop_only entry and yielded a unit name with the comment glued on as a
+# service. The yq path never had that bug, so it would only ever have shown up on
+# the fallback nobody tests.
+#
+# The named wrappers below are the API — call those. A bare key at a call site is
+# how `services` and `user_services` get confused, and those two must not be:
+# one is enabled with sudo and the other must never see it, since
+# `sudo systemctl --user` talks to root's instance rather than the caller's.
+parse_yaml_list() {
+    local file="$1" key="$2"
+
     if command_exists yq; then
-        yq -r '.dotfiles[]? // ""' "$file" 2>/dev/null
+        # No comment handling needed here — yq is a real YAML parser and has
+        # already dropped them. `// ""` turns a null entry into an empty line,
+        # which is what the grep removes; `|| true` because grep exits non-zero
+        # when it filters everything out, and callers run under `set -e`.
+        yq -r ".${key}[]? // \"\"" "$file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
     else
-        # Fallback: simple parsing
-        local in_section=false
+        local in_section=false line
         while IFS= read -r line; do
-            if [[ "$line" =~ ^dotfiles:[[:space:]]*$ ]]; then
+            if [[ "$line" =~ ^${key}:[[:space:]]*$ ]]; then
                 in_section=true
                 continue
             fi
             if $in_section; then
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
+                # Any other top-level key ends the list.
+                [[ "$line" =~ ^[a-z] ]] && break
                 if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-                    echo "${BASH_REMATCH[1]}" | xargs
-                fi
-            fi
-        done < "$file"
-    fi
-}
-
-# Parse services from YAML
-parse_services() {
-    local file="$1"
-    
-    if command_exists yq; then
-        yq -r '.services[]? // ""' "$file" 2>/dev/null
-    else
-        local in_section=false
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^services:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-                    echo "${BASH_REMATCH[1]}" | xargs
-                fi
-            fi
-        done < "$file"
-    fi
-}
-
-# Parse desktop_only list from YAML
-# Usage: parse_desktop_only "file.yaml"
-parse_desktop_only() {
-    local file="$1"
-
-    if command_exists yq; then
-        yq -r '.desktop_only[]? // ""' "$file" 2>/dev/null | grep -v "^$" || true
-    else
-        local in_section=false
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^desktop_only:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
+                    # xargs trims; it also prints nothing for a line that was
+                    # only a comment, so no blank survives the strip.
                     echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
                 fi
             fi
         done < "$file"
     fi
 }
+
+# The declared lists, one wrapper each. Adding a list to the schema means adding
+# a line here, not another copy of the loop above.
+parse_dotfiles()      { parse_yaml_list "$1" dotfiles; }
+parse_services()      { parse_yaml_list "$1" services; }
+parse_user_services() { parse_yaml_list "$1" user_services; }
+parse_desktop_only()  { parse_yaml_list "$1" desktop_only; }
+
 
 # Read a group's declared hardware requirement (the `requires_hardware:` field),
 # or empty when none is declared. This is a single top-level scalar, so we grep
@@ -596,6 +599,29 @@ parse_entry_field_values() {
 }
 
 parse_custom_install_names() { parse_entry_names "$1" "custom_install"; }
+
+# Names of the custom_install entries in this file that declare `chezmoi_flag:
+# true` — the ones that own an `install_<name>` chezmoi data key on top of the
+# group flag.
+#
+# The key exists because a few custom entries are not only *installed*: their
+# real payload is chezmoi-managed (vibewatch's waybar pill and Claude hook, the
+# two chat shells' launchers, .desktop files and icons). Unticking one of those
+# in the selector has to reach those files, which only a chezmoi flag can do.
+#
+# Declared in the yaml rather than listed in the installer, for exactly the
+# reason the group-flag loop carries: a hand-kept list there is how `biometric`
+# and `security` came to be installed on a machine whose chezmoi data recorded
+# no flag for either. One flag per declaring entry, generated.
+parse_custom_install_flag_entries() {
+    local file="$1" name
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        [ "$(parse_entry_field "$file" custom_install "$name" chezmoi_flag)" = "true" ] \
+            && printf '%s\n' "$name"
+    done < <(parse_custom_install_names "$file")
+    return 0
+}
 parse_custom_install_cmd() { parse_entry_field "$1" "custom_install" "$2" "install"; }
 parse_custom_install_check() { parse_entry_field "$1" "custom_install" "$2" "check"; }
 parse_custom_install_requires() { parse_entry_field "$1" "custom_install" "$2" "requires"; }
@@ -1069,19 +1095,26 @@ get_group_packages() {
     group_declared_packages "$1" | cut -f1
 }
 
-# Base packages this machine should have: core (+ aur), plus the desktop
-# sections unless this is a terminal-only install. Takes the packages/ directory
-# to read, so the same walk serves the current checkout and a worktree exported
-# at an older commit; defaults to this machine's.
-# Also one yq call rather than one per section, for the reason in
-# group_declared_packages: four invocations per tree, eight per delta scan.
-base_desired_packages() {
-    local base_file="${1:-${PACKAGES_DIR:-}}/$DISTRO_FAMILY/base.yaml"
+# One list base.yaml declares under `<key>:`, unioned across the sections this
+# machine wants — the always-on ones, plus the desktop ones unless this is a
+# terminal-only install. Takes the packages/ directory to read, so the same walk
+# serves the current checkout and a worktree exported at an older commit.
+#
+# Parameterised rather than written once per key: the purpose gating is the rule
+# most likely to change (a third purpose, another `*_aur`-style variant) and two
+# copies of it would diverge on the first such change. One yq call rather than
+# one per section, for the reason in group_declared_packages.
+_base_desired_list() {
+    local key="$1" dir="$2" always="$3" desktop_only="$4"
+    local base_file="${dir:-${PACKAGES_DIR:-}}/$DISTRO_FAMILY/base.yaml"
     [ -f "$base_file" ] || return 0
 
-    local sections=(core aur)
+    local sections=()
+    read -ra sections <<< "$always"
     if ! install_purpose_is terminal; then
-        sections+=(desktop desktop_aur)
+        local extra=()
+        read -ra extra <<< "$desktop_only"
+        sections+=("${extra[@]}")
     fi
 
     local section
@@ -1092,15 +1125,26 @@ base_desired_packages() {
         # package name. Parenthesised because `|` binds looser than `,`.
         local query=""
         for section in "${sections[@]}"; do
-            query+="((.packages.${section} // [])[]? | select(. != null)),"
+            query+="((.${key}.${section} // [])[]? | select(. != null)),"
         done
-        yq -r "${query%,}" "$base_file" 2>/dev/null | grep -v "^#" | grep -v "^$" || true
+        yq -r "${query%,}" "$base_file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
     else
         for section in "${sections[@]}"; do
-            parse_packages "$base_file" "$section"
+            parse_yaml_nested_list "$base_file" "$key" "$section"
         done
     fi
 }
+
+base_desired_packages() { _base_desired_list packages "${1:-}" "core aur" "desktop desktop_aur"; }
+
+# base.yaml gained a `services:` key so bluetooth could stop being a group's
+# business. It was declared by both hyprland and gaming — hyprland because a
+# desktop wants it, gaming because `xpadneo-dkms` pairs an Xbox controller over
+# it — which is two groups each asserting a baseline rather than a need of their
+# own, and left a machine's bluetooth depending on which checkboxes happened to
+# be ticked. `blueman` stays in hyprland: the tray applet belongs to the shell
+# that has a tray, unlike the stack underneath it.
+base_desired_services() { _base_desired_list services "${1:-}" "core" "desktop"; }
 
 # ── Package install helpers ──────────────────────────────────────────────────
 
@@ -1131,6 +1175,55 @@ ensure_installed_index() {
 # Install one `custom_install:` entry using the command its yaml declares.
 # A declared `requires:` that is absent is a skip, not a failure: the entry
 # needs a toolchain this machine has not got, and saying so beats a build error.
+# Install the system packages a custom_install entry declares under
+# `requires_packages:`, skipping any already present. Returns non-zero only when
+# the install itself failed, so each caller words its own report.
+#
+# The single implementation of a step that was written twice: installer.sh had it
+# inline, which meant requires_packages had exactly one consumer and every path
+# reaching an entry through install_custom_pkg — `dots update`,
+# `dots packages sync`, the manage view — silently skipped it. Harmless while
+# every such entry also had an `install:` that pulled its own dependencies, and
+# not harmless at all for an entry whose declared prerequisite is the whole
+# point: the two chat shells have no install command (chezmoi owns their files),
+# so on those paths they were a no-op that reported success and left
+# python-pyqt6-webengine uninstalled — two launchers dying with an ImportError.
+#
+# Called before the `requires` command gate, because a requires_packages list is
+# often what *provides* the required command.
+install_custom_requires() {
+    local file="$1" pkg="$2"
+
+    # grep before yq: of the custom entries across packages/, only a handful
+    # declare this key, and yq is ~180ms of interpreter start. Reading an absent
+    # key was the single most expensive thing on the catch-up path, paid once per
+    # entry installed.
+    grep -q 'requires_packages:' "$file" 2>/dev/null || return 0
+
+    local -a require_deps=()
+    local dep
+    while IFS= read -r dep; do
+        [ -n "$dep" ] && require_deps+=("$dep")
+    done < <(parse_custom_install_requires_packages "$file" "$pkg")
+    [ ${#require_deps[@]} -gt 0 ] || return 0
+
+    # The batch index rather than a `pacman -Qi` per dependency: one -Qi costs
+    # more than indexing the whole database, and two entries here declare the
+    # same runtime. ensure_installed_index rather than a raw read because
+    # install_packages invalidates the index on its way out.
+    ensure_installed_index
+    local -a missing=()
+    for dep in "${require_deps[@]}"; do
+        [ -n "${INSTALLED_SET[${dep#*/}]:-}" ] || missing+=("$dep")
+    done
+    [ ${#missing[@]} -gt 0 ] || return 0
+
+    print_info "Installing prerequisites for $pkg (${missing[*]})"
+    install_packages "${missing[@]}" || return 1
+    hash -r 2>/dev/null || true
+    return 0
+}
+
 install_custom_pkg() {
     local file="$1" pkg="$2"
     local install_cmd requires_cmd
@@ -1143,6 +1236,11 @@ install_custom_pkg() {
     # ancient commit forever and re-prompted for packages the machine had decided
     # not to build. The warning is the report; `dots packages sync` lists it on
     # demand.
+    install_custom_requires "$file" "$pkg" || {
+        print_warning "Failed to install prerequisites for $pkg"
+        mark_sync_shortfall
+    }
+
     if [ -n "$requires_cmd" ] && ! command_exists "$requires_cmd"; then
         print_warning "$requires_cmd not found — skipping $pkg"
         return 0

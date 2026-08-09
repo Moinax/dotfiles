@@ -1,6 +1,6 @@
 # Security - Antivirus scanning and related security tools
 name: Security
-description: ClamAV antivirus (signature updater + background scan daemon)
+description: Password manager and ClamAV antivirus
 icon: 🛡️
 environment: both
 
@@ -11,12 +11,29 @@ dotfiles: []
 # (clamav-freshclam + clamav-daemon).
 services: []
 
+# The GUI half. This group is `environment: both`, so a terminal install still
+# offers it — and would otherwise have pulled a Qt password manager and a GTK
+# antivirus front-end onto a headless box. rbw is deliberately *not* here: a CLI
+# vault client is exactly what a terminal machine wants.
+desktop_only:
+  - clamtk
+  - bitwarden
+
 descriptions:
   clamav: ClamAV antivirus engine (clamscan / clamdscan)
   clamtk: Graphical front-end for ClamAV (AUR)
+  bitwarden: Bitwarden password manager desktop app
+  rbw: Unofficial Bitwarden CLI — required by the vicinae Bitwarden extension
 
 packages:
   arch:
     # clamav bundles freshclam + clamav-daemon service units
     - clamav
     - clamtk  # AUR
+
+    # Password manager. Here rather than in productivity: a vault is a security
+    # tool, and productivity is file management.
+    - bitwarden
+    # CLI vault client, and what the vicinae Bitwarden extension shells out to.
+    # Its own agent holds the master key, independently of the desktop app.
+    - rbw

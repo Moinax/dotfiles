@@ -56,6 +56,21 @@ packages:
 
     # Peripherals
     - headsetcontrol
+    # Bluetooth stack. Baseline rather than a group's business: it was declared
+    # by both hyprland (a desktop wants it) and gaming (xpadneo pairs an Xbox
+    # controller over it), which is two groups asserting the same baseline and
+    # left a machine's bluetooth depending on which boxes happened to be ticked.
+    # The `blueman` tray applet stays in hyprland — that belongs to the shell
+    # that has a tray, unlike the stack under it.
+    #
+    # `bluez` as well as `bluez-utils`, and that pairing is load-bearing:
+    # bluetooth.service is shipped by `bluez`, while `bluez-utils` (bluetoothctl
+    # and friends) does not depend on it. Declaring only the utils left the
+    # service below with nothing to enable on any desktop that skipped hyprland —
+    # `blueman` was the sole thing pulling `bluez` in, which is exactly the
+    # which-boxes-were-ticked coupling this move exists to remove.
+    - bluez
+    - bluez-utils
 
     # GPU monitor
     - nvtop
@@ -77,3 +92,10 @@ packages:
   aur:
     # AUR-only packages (installed via paru)
     - paru  # Will be installed first if not present
+
+# System services enabled on every install, gated by purpose exactly as the
+# package sections above are: `core` always, `desktop` unless this is a
+# terminal-only install. Read by base_desired_services.
+services:
+  desktop:
+    - bluetooth

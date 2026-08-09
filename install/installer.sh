@@ -63,6 +63,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # Installer state
 SELECTED_GROUP_NAMES=()
 SERVICES_TO_ENABLE=()
+USER_SERVICES_TO_ENABLE=()
 INSTALL_WARNINGS=()
 # yaml-declared tools found already installed, so left untouched by the install
 # phase. Collected for refresh_preinstalled_tools, which offers to move them to
@@ -812,19 +813,13 @@ install_group_packages() {
                 continue
             fi
 
-            # Install system prerequisites declared via requires_packages
-            # before running the custom install command.
-            local -a require_deps=()
-            while IFS= read -r dep; do
-                [ -n "$dep" ] && require_deps+=("$dep")
-            done < <(parse_custom_install_requires_packages "$group_file" "$pkg")
-
-            if [ ${#require_deps[@]} -gt 0 ]; then
-                print_info "Installing prerequisites for $pkg (${require_deps[*]})"
-                install_packages "${require_deps[@]}" \
-                    || track_warning "Failed to install prerequisites for $pkg"
-                hash -r 2>/dev/null || true
-            fi
+            # Install system prerequisites declared via requires_packages before
+            # running the custom install command. Shared with install_custom_pkg
+            # rather than inlined here: the two copies had already diverged on
+            # whether to skip a dependency that is present, so a fresh install
+            # invoked sudo pacman twice for the runtime both chat shells declare.
+            install_custom_requires "$group_file" "$pkg" \
+                || track_warning "Failed to install prerequisites for $pkg"
 
             # Skip if a hard-required command is still missing. No shortfall for
             # the same reason install_custom_pkg does not mark one: a toolchain the
@@ -849,10 +844,19 @@ install_group_packages() {
             track_warning "No packages resolved for group $group"
         fi
 
-        # Collect services to enable
+        # Collect services to enable. Two plain reads rather than a tagged
+        # single-read protocol: this loop already spends several yq calls per
+        # group and four more per custom entry, so folding two of them saved
+        # ~170ms of a multi-minute install and cost a second row format to
+        # maintain alongside group_declared_lists.
+        local service
         while IFS= read -r service; do
             [ -n "$service" ] && SERVICES_TO_ENABLE+=("$service")
         done < <(parse_services "$group_file")
+
+        while IFS= read -r service; do
+            [ -n "$service" ] && USER_SERVICES_TO_ENABLE+=("$service")
+        done < <(parse_user_services "$group_file")
     done
     
     print_success "Group packages installed"
@@ -1080,28 +1084,28 @@ setup_dotfiles() {
     # the installer installed them and then said nothing about them. Every
     # `group_enabled` caller since — `dots packages sync`, the update delta, the
     # tool scan — read that silence as "disabled".
+    # The same rule now covers the per-app flags of custom_install entries that
+    # declare `chezmoi_flag: true` — vibewatch, and the two chat shells whose
+    # launchers, .desktop files and icons chezmoi owns. Those were a hand-kept
+    # list of three right here, thirty lines under the comment that says not to
+    # keep one: adding a fourth app meant editing this file twice and
+    # .chezmoiignore once, and forgetting any of them fails silently.
     local -a group_flags=()
-    local group_file group_id enabled
+    local group_file group_id enabled entry
     for group_file in "$DOTFILES_DIR"/packages/groups/*.yaml; do
         [ -f "$group_file" ] || continue
         group_id=$(get_group_id "$group_file")
         enabled=false
         group_selected "$group_id" && enabled=true
         group_flags+=("    $(get_chezmoi_flag "$group_id") = $enabled")
-    done
 
-    # vibewatch: on by default when the AI group is selected
-    local install_vibewatch="false"
-    if group_selected ai; then
-        install_vibewatch="true"
-    fi
-    # If the user customised the AI group's package list, check whether vibewatch was kept
-    if [ "${GROUP_PACKAGE_MODE[ai]:-all}" = "custom" ]; then
-        case " ${GROUP_CUSTOM_PACKAGE_LIST[ai]:-} " in
-            *" vibewatch "*) install_vibewatch="true" ;;
-            *) install_vibewatch="false" ;;
-        esac
-    fi
+        while IFS= read -r entry; do
+            [ -n "$entry" ] || continue
+            enabled=false
+            custom_entry_selected "$group_id" "$entry" && enabled=true
+            group_flags+=("    $(get_chezmoi_flag "$entry") = $enabled")
+        done < <(parse_custom_install_flag_entries "$group_file")
+    done
 
     local has_hyprlock_fingerprint="false"
     if [ "$HAS_FINGERPRINT" = "true" ] && group_selected biometric && command_exists fprintd-enroll; then
@@ -1124,7 +1128,6 @@ sourceDir = "$source_dir"
 [data]
     distro = "$DISTRO"
 $(printf '%s\n' "${group_flags[@]}")
-    install_vibewatch = $install_vibewatch
     has_fingerprint = $has_hyprlock_fingerprint
     hyprvoice_model = "$HYPRVOICE_MODEL"
     hyprvoice_provider = "$HYPRVOICE_PROVIDER"
@@ -1305,22 +1308,30 @@ apply_dark_mode_defaults() {
 
 # Enable services
 enable_selected_services() {
-    if [ ${#SERVICES_TO_ENABLE[@]} -eq 0 ]; then
+    # base.yaml's own services, which no group declares — the bluetooth stack is
+    # baseline rather than a group's business. Collected here rather than beside
+    # the group walk because that walk only runs over *selected* groups, and
+    # these are owed to the machine whatever it selected.
+    local service
+    while IFS= read -r service; do
+        [ -n "$service" ] && SERVICES_TO_ENABLE+=("$service")
+    done < <(base_desired_services "$DOTFILES_DIR/packages")
+
+    if [ ${#SERVICES_TO_ENABLE[@]} -eq 0 ] && [ ${#USER_SERVICES_TO_ENABLE[@]} -eq 0 ]; then
         return 0
     fi
-    
+
     print_header "Enabling Services"
-    
+
     source "$SCRIPT_DIR/lib/services.sh"
-    
-    # Remove duplicates
-    local unique_services=()
-    mapfile -t unique_services < <(printf '%s\n' "${SERVICES_TO_ENABLE[@]}" | sort -u | grep -v '^$')
-    
-    for service in "${unique_services[@]}"; do
-        enable_service "$service"
-    done
-    
+
+    # Two lists rather than one sniffed from the unit name: nothing in
+    # `vicinae.service` says which systemd instance owns it, and guessing wrong
+    # means either a sudo prompt for a unit root cannot see, or a system unit
+    # silently enabled in the user instance. The dedupe is shared.
+    for_each_service enable_service      "${SERVICES_TO_ENABLE[@]}"
+    for_each_service enable_user_service "${USER_SERVICES_TO_ENABLE[@]}"
+
     # Add user to docker group if development is selected
     if group_selected development; then
         add_user_to_group "docker"
@@ -1988,6 +1999,7 @@ main() {
     # Initialize installer state
     SELECTED_GROUP_NAMES=()
     SERVICES_TO_ENABLE=()
+    USER_SERVICES_TO_ENABLE=()
     PLYMOUTH_CONFIGURED=false
     NODE_TOOLCHAIN_READY=false
     SHELL_CHANGED=false
@@ -2047,7 +2059,7 @@ main() {
             fi
         fi
         # Skip groups whose required hardware is absent (e.g. biometric with no
-        # fingerprint reader). Bitwarden itself lives in 'productivity' now, so
+        # fingerprint reader). Bitwarden itself lives in 'security' now, so
         # it still installs without one.
         if ! group_hardware_available "$group_file"; then
             continue

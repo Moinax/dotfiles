@@ -1,0 +1,72 @@
+# Messaging - Chat clients, native packages and web-app shells
+name: Messaging
+description: Chat clients (Slack, Telegram, Discord, Messenger, WhatsApp)
+icon: 💬
+environment: desktop
+
+# Messenger and WhatsApp ship no Linux client, so they are PyQt6-WebEngine
+# shells: chat_shell.py is the shared window, the two executables pick a service,
+# and the .desktop files plus hicolor icons make them look like real apps. Their
+# runtime is declared under custom_install below, not as a package of this group
+# — see the note there.
+dotfiles:
+  - dot_local/bin/executable_messenger
+  - dot_local/bin/executable_whatsapp
+  - dot_local/lib/chat_shell.py
+  - dot_local/share/applications/messenger.desktop
+  - dot_local/share/applications/whatsapp.desktop
+  - dot_local/share/icons/hicolor/512x512/apps/messenger.png
+  - dot_local/share/icons/hicolor/512x512/apps/whatsapp.png
+  - dot_local/share/icons/hicolor/scalable/apps/messenger.svg
+  - dot_local/share/icons/hicolor/scalable/apps/whatsapp.svg
+
+services: []
+
+descriptions:
+  slack-desktop: Team communication app (AUR)
+  telegram-desktop: Telegram messaging app
+  discord: Voice, video and text chat
+  messenger: Facebook Messenger (web-app shell)
+  whatsapp: WhatsApp (web-app shell)
+
+packages:
+  arch:
+    - slack-desktop  # AUR
+    - telegram-desktop
+    # Discord lives here rather than under gaming: it is a messaging app that
+    # happens to be popular with gamers, and keeping it with Slack and Telegram
+    # means a machine that wants chat does not have to take Steam and the
+    # controller drivers to get it.
+    - discord
+
+# Messenger and WhatsApp are the two apps here that no one packages, so they are
+# custom_install entries rather than distro packages — which is also what gets
+# them into the selector *as apps*. `python-pyqt6-webengine` used to sit in the
+# list above instead, and that was the defect: it is a runtime, not a choice, and
+# a checkbox next to Slack invited you to untick it and get two launchers that
+# die with an ImportError. As requires_packages it is installed whenever either
+# shell is kept and never shown.
+#
+# Neither entry has an `install:`, and that is deliberate rather than missing:
+# chezmoi owns the launcher, the .desktop file and the icons, so there is nothing
+# to fetch. The installer runs prerequisites before — and independently of — any
+# install command, so an entry with none still pulls its runtime in. `check` is
+# what stops it being offered again once chezmoi has put the launcher there.
+custom_install:
+  - name: messenger
+    # Its launcher, .desktop file and icons are chezmoi's, so unticking it has to
+    # reach them — see chezmoi_flag in install/lib/common.sh.
+    chezmoi_flag: true
+    check: '[ -x "$HOME/.local/bin/messenger" ]'
+    requires_packages:
+      arch: [python-pyqt6-webengine]
+    # No upstream release to track: the shell is chat_shell.py in this repo, and
+    # the web app it wraps updates itself server-side.
+    updated_by: none
+
+  - name: whatsapp
+    chezmoi_flag: true
+    check: '[ -x "$HOME/.local/bin/whatsapp" ]'
+    requires_packages:
+      arch: [python-pyqt6-webengine]
+    updated_by: none

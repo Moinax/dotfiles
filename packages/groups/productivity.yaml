@@ -1,6 +1,6 @@
 # Productivity - File managers, backup, and productivity tools
 name: Productivity
-description: File managers, backup tools, and productivity apps
+description: File management, KDE apps, archives and cloud sync
 icon: 📁
 environment: desktop
 
@@ -21,15 +21,6 @@ descriptions:
   ark: KDE archive manager (Dolphin right-click "Extract here")
   ffmpegthumbnailer: Video thumbnail generator
   kdegraphics-thumbnailers: Image/PDF thumbnail plugins
-  slack-desktop: Team communication app (AUR)
-  telegram-desktop: Telegram messaging app
-  python-pyqt6-webengine: Chromium-based webview — runtime for the Messenger and WhatsApp app shells
-  bitwarden: Bitwarden password manager desktop app
-  rbw: Unofficial Bitwarden CLI — required by the vicinae Bitwarden extension
-  helium: Helium web browser (AppImage, set as default)
-  zen-browser-bin: Zen Browser (AUR)
-  google-chrome: Google Chrome web browser (AUR)
-  speech-dispatcher: Speech synthesis backend for the browsers' SpeechSynthesis API
   dropbox: Dropbox cloud file sync (official dist binary, bypasses distro package)
   localsend-bin: LocalSend — AirDrop-style LAN file sharing (AUR)
   p7zip: 7-Zip archive tool
@@ -54,23 +45,6 @@ packages:
     # the cachyos-snapper-support meta-package at install time), so we install
     # nothing here. On non-CachyOS Arch derivatives, set up snapshots manually.
 
-    # Communication
-    - slack-desktop  # AUR
-    - telegram-desktop
-    # Runtime for the Messenger and WhatsApp app shells.
-    - python-pyqt6-webengine
-
-    # Password manager
-    - bitwarden
-    # CLI vault client, and what the vicinae Bitwarden extension shells out to.
-    # Its own agent holds the master key, independently of the desktop app.
-    - rbw
-
-    # Web browsers
-    - zen-browser-bin  # AUR
-    - google-chrome  # AUR
-    - speech-dispatcher  # web speech synthesis (SpeechSynthesis API)
-
     # Cloud sync — dropbox installed via custom_install (Dropbox's own
     # auto-updater fights any distro package)
 
@@ -83,28 +57,6 @@ packages:
     - unzip
 
 custom_install:
-  # Helium ships only as an AppImage. install-github resolves the latest release,
-  # picks the asset for the current arch, imports it via the AppImage mechanism
-  # (~/.local/share/AppImages/helium.AppImage + helium.desktop launcher that
-  # mimeapps.list points at as the default browser), and records the release
-  # source so 'dots apps check-updates / update' keep it current.
-  # --name helium is load-bearing: slugify lowercases it to "helium", so the
-  # resulting helium.AppImage / helium.desktop match the binds + mimeapps refs.
-  - name: helium
-    check: '[ -x "$HOME/.local/share/AppImages/helium.AppImage" ]'
-    requires: curl
-    # FUSE is needed to *run* the AppImage (extraction during import does not).
-    # Desktop installs already pull this in via install_appimage_support; declared
-    # here too so selecting Helium alone still works.
-    requires_packages:
-      arch: [fuse2]
-    install: |
-      "$DOTFILES_DIR/tools/manage-external-apps.py" install-github imputnet/helium-linux \
-        --name helium --type appimage --non-interactive
-    # Tracked as an external app (recorded release source), so 'dots
-    # update' reports it from the apps updater instead of re-running install.
-    updated_by: app
-
   # Dropbox's in-app auto-updater downloads dist binaries to ~/.dropbox-dist/
   # and SIGKILLs the running daemon to swap them in. Any distro-packaged
   # /opt/dropbox/ install loses that fight (restart-loop). We install the

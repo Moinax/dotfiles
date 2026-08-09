@@ -27,6 +27,10 @@ descriptions:
 #         install before running `install`)
 custom_install:
   - name: vibewatch
+    # Owns a chezmoi flag (`install_vibewatch`), because dropping it from the
+    # group's package list has to reach the configs that reference it — the
+    # waybar pill, the Claude settings hook — not just skip the install.
+    chezmoi_flag: true
     check: command -v vibewatch
     install: curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh
     requires: cargo

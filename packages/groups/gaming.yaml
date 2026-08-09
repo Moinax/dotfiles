@@ -1,20 +1,19 @@
 # Gaming - Gaming platforms and tools
 name: Gaming
-description: Gaming platforms and communication (Steam, Discord)
+description: Gaming platforms and tools (Steam, Heroic, controllers)
 icon: 🎮
 environment: desktop
 
 # No specific dotfiles for gaming
 dotfiles: []
 
-# Bluetooth — needed to pair wireless controllers (Xbox, etc.). Idempotent
-# with the hyprland group, which already enables it on desktop installs.
-services:
-  - bluetooth
+# No services of its own. Wireless controllers (xpadneo, DualSense) pair over
+# bluetooth, but that stack is baseline for every desktop install now — see
+# packages/arch/base.yaml — rather than something this group has to assert.
+services: []
 
 descriptions:
   steam: Valve game distribution platform
-  discord: Voice and text chat for gamers
   mangohud: FPS and performance overlay
   gamemode: Game performance optimization daemon
   heroic-games-launcher-bin: Launcher for Epic, GOG, and Amazon Prime games (AUR)
@@ -27,7 +26,6 @@ descriptions:
 packages:
   arch:
     - steam
-    - discord
     - mangohud  # Optional: FPS overlay
     - gamemode  # Optional: Game performance optimization
     - heroic-games-launcher-bin  # AUR — Epic/GOG/Amazon Prime games

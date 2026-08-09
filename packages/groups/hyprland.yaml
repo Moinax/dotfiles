@@ -14,9 +14,17 @@ dotfiles:
   - dot_config/wlogout
   - dot_local/share/vicinae
 
-# Services to enable
-services:
-  - bluetooth
+# No system services of its own — the bluetooth stack and its unit are baseline
+# now, in packages/arch/base.yaml. `blueman` below stays here: the tray applet
+# belongs to the shell that has a tray.
+services: []
+
+# Per-user units, enabled in the caller's own systemd instance — never with sudo.
+# vicinae is declared here rather than left to the package's systemd preset so
+# the repo, not the AUR build, decides the launcher runs: a preset only enables,
+# and enabling under an already-active graphical-session.target starts nothing.
+user_services:
+  - vicinae.service
 
 descriptions:
   hyprland: Dynamic tiling Wayland compositor
@@ -38,8 +46,7 @@ descriptions:
   wl-clipboard: Wayland clipboard utilities
   wtype: Wayland keyboard input simulator
   pavucontrol-qt: PulseAudio volume control GUI (Qt)
-  blueman: Bluetooth device manager
-  bluez-utils: Bluetooth utilities
+  blueman: Bluetooth device manager (tray applet)
   network-manager-applet: NetworkManager tray applet (nm-applet)
   kde-gtk-config: KDE service that synchronizes Plasma appearance into GTK
   xorg-xhost: X server access control
@@ -81,8 +88,7 @@ packages:
 
     # Audio control
     - pavucontrol-qt
-    - blueman
-    - bluez-utils
+    - blueman  # bluez-utils itself is baseline — packages/arch/base.yaml
 
     # Network tray applet (SNI icon in Waybar tray)
     - network-manager-applet

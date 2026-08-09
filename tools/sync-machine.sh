@@ -159,7 +159,7 @@ declared_packages_at() {
 # Answering either way writes the flag, so nothing is ever asked twice.
 reconcile_group_flags() {
     local -a unanswered=()
-    local file group_id
+    local file group_id group_answer
     for file in "$GROUPS_DIR"/*.yaml; do
         [ -f "$file" ] || continue
         # The same hardware gate the installer and the manage view consult, so a
@@ -167,8 +167,16 @@ reconcile_group_flags() {
         # a group nothing on it could install.
         group_hardware_available "$file" || continue
         group_id=$(get_group_id "$file")
-        [ -z "$(chezmoi_data_get "$(get_chezmoi_flag "$group_id")")" ] || continue
-        unanswered+=("$group_id")
+        group_answer=$(chezmoi_data_get "$(get_chezmoi_flag "$group_id")")
+        if [ -z "$group_answer" ]; then
+            unanswered+=("$group_id")
+            continue
+        fi
+        # Already-answered groups still need their per-app flags backfilled: the
+        # machines that most need this are precisely the ones that answered long
+        # ago, since only `dots setup` ever wrote those keys. Missing ones inherit
+        # the group's recorded answer; existing ones are left alone.
+        seed_custom_entry_flags "$file" "$group_answer"
     done
 
     [ ${#unanswered[@]} -gt 0 ] || return 0
@@ -206,12 +214,41 @@ reconcile_group_flags() {
         # record a group as disabled permanently on the strength of an Esc.
         if confirm_or_abort "Record '$group' as enabled on this machine?"; then
             chezmoi_data_set "$flag" true
+            seed_custom_entry_flags "$GROUPS_DIR/$group.yaml" true
             print_success "$flag = true"
         else
             chezmoi_data_set "$flag" false
+            seed_custom_entry_flags "$GROUPS_DIR/$group.yaml" false
             print_info "$flag = false — it will not be asked again"
         fi
     done
+}
+
+# Per-app flags for the group's `chezmoi_flag: true` custom entries, defaulted to
+# the answer just given for the group itself.
+#
+# Only `dots setup` wrote these before, and it is the one command an existing
+# machine never runs — so a machine that adopted a group here got the group flag
+# and nothing else. That is not a gap the templates can paper over: they read the
+# key directly, and chezmoi *errors* on a missing one rather than treating it as
+# false, so `install_ai = true` with no `install_vibewatch` breaks every
+# `chezmoi apply` on that machine outright. Seeding at the single writer fixes it
+# for every template at once, instead of each gate carrying its own fallback.
+#
+# Never overwrites an answer already recorded — re-running must not undo a
+# deliberate untick.
+seed_custom_entry_flags() {
+    local group_file="$1" default="$2" entry flag
+    [ -f "$group_file" ] || return 0
+
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        flag=$(get_chezmoi_flag "$entry")
+        [ -z "$(chezmoi_data_get "$flag")" ] || continue
+        chezmoi_data_set "$flag" "$default"
+        print_info "  $flag = $default"
+    done < <(parse_custom_install_flag_entries "$group_file")
+    return 0
 }
 
 # The delta scan: everything between "what has the repo changed?" and the answer.
@@ -430,6 +467,61 @@ install_new_packages() {
     return 0
 }
 
+# Every service the repo declares for this machine — base.yaml's and every
+# enabled group's, system and user — that is not enabled, offered in one prompt.
+#
+# Scoped to base at first, which was a notch too narrow: `enable_selected_services`
+# is installer-only, `sync_group_after_change` fires only for groups a *package*
+# change touched (so a group that merely gained a service is never visited), and
+# `start_user_services_after_apply` deliberately starts without ever enabling. So
+# nothing enabled a group's newly declared service on an existing machine — which
+# made hyprland's own `user_services: vicinae.service` inert everywhere but a
+# fresh install, working only by the coincidence that vicinae-bin ships a systemd
+# preset. That coincidence is exactly what declaring it was supposed to replace.
+#
+# Offered rather than enabled outright: the system half needs sudo, and a
+# `dots update` that starts asking for a root password without saying why is
+# worse than a prompt. Declining is not a shortfall — the anchor should not
+# freeze over a service the user chose to leave off.
+reconcile_declared_services() {
+    command_exists systemctl || return 0
+
+    # grep before yq: eight group files, two declare a block-form list, and yq is
+    # ~170ms of interpreter start each. `services: []` does not match `^services:$`,
+    # so the groups that declare nothing cost nothing.
+    local -a declaring=()
+    mapfile -t declaring < <(grep -l '^services:$\|^user_services:$' "$GROUPS_DIR"/*.yaml 2>/dev/null)
+
+    local -a want_system=() want_user=()
+    mapfile -t want_system < <(base_desired_services "$DOTFILES_DIR/packages")
+
+    local file
+    for file in "${declaring[@]}"; do
+        group_enabled "$file" || continue
+        mapfile -t -O "${#want_system[@]}" want_system < <(parse_services "$file")
+        mapfile -t -O "${#want_user[@]}"   want_user   < <(parse_user_services "$file")
+    done
+
+    local -a missing_system=() missing_user=()
+    [ ${#want_system[@]} -gt 0 ] \
+        && mapfile -t missing_system < <(printf '%s\n' "${want_system[@]}" | services_with_state system no)
+    [ ${#want_user[@]} -gt 0 ] \
+        && mapfile -t missing_user < <(printf '%s\n' "${want_user[@]}" | services_with_state user no)
+
+    local -a missing=("${missing_system[@]}" "${missing_user[@]}")
+    [ ${#missing[@]} -gt 0 ] || return 0
+
+    print_header "Declared Services"
+    print_info "Declared by the repo but not enabled here: ${missing[*]}"
+    if confirm_or_abort "Enable them?"; then
+        [ ${#missing_system[@]} -gt 0 ] && for_each_service enable_service      "${missing_system[@]}"
+        [ ${#missing_user[@]}   -gt 0 ] && for_each_service enable_user_service "${missing_user[@]}"
+    else
+        print_info "Skipped — run 'dots update' again to be offered them"
+    fi
+    return 0
+}
+
 # The "drop" half: packages the repo declared at the anchor, declares no longer,
 # and this machine still has. Takes the scan's `drop` rows verbatim —
 # "pkg<TAB>kind", kind being `custom` for an entry installed by a bespoke
@@ -554,6 +646,9 @@ do_sync() {
     resolve_base
     reconcile_group_flags
     sync_packages
+    # After sync_packages: a service is worth offering only once the package that
+    # ships its unit is actually on the machine.
+    reconcile_declared_services
 
     print_header "Dotfiles"
     # Not apply_dotfiles: the tool refresh has to land between the apply and the

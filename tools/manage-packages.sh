@@ -551,34 +551,42 @@ sync_group_after_change() {
         fi
     fi
 
-    local services
+    local services user_services
     services=$(parse_services "$file")
-    [ -z "$services" ] && return 0
+    user_services=$(parse_user_services "$file")
+    [ -z "$services" ] && [ -z "$user_services" ] && return 0
 
     if [ "$all_installed" = true ]; then
-        local stopped=() svc
-        while IFS= read -r svc; do
-            [ -z "$svc" ] && continue
-            systemctl is-enabled "$svc" &>/dev/null || stopped+=("$svc")
-        done <<< "$services"
-        if [ ${#stopped[@]} -gt 0 ]; then
+        local stopped=() user_stopped=() svc
+        mapfile -t stopped      < <(services_with_state system no <<< "$services")
+        mapfile -t user_stopped < <(services_with_state user   no <<< "$user_services")
+
+        # One merged list for the prompt, two for the verbs. Interpolating the
+        # halves side by side ("${stopped[*]} ${user_stopped[*]}") printed the
+        # separator whether or not both were populated, and the commonest case is
+        # one of them empty — hyprland declares bluetooth, normally already
+        # enabled, plus vicinae — so the line read "not enabled:  vicinae.service".
+        local missing=("${stopped[@]}" "${user_stopped[@]}")
+        if [ ${#missing[@]} -gt 0 ]; then
             echo ""
-            print_info "Associated services not enabled: ${stopped[*]}"
+            print_info "Associated services not enabled: ${missing[*]}"
             if confirm_or_abort "Enable these services?"; then
-                for svc in "${stopped[@]}"; do enable_service "$svc"; done
+                for_each_service enable_service      "${stopped[@]}"
+                for_each_service enable_user_service "${user_stopped[@]}"
             fi
         fi
     elif [ "$any_installed" = false ]; then
-        local active=() svc
-        while IFS= read -r svc; do
-            [ -z "$svc" ] && continue
-            systemctl is-enabled "$svc" &>/dev/null && active+=("$svc")
-        done <<< "$services"
-        if [ ${#active[@]} -gt 0 ]; then
+        local active=() user_active=() svc
+        mapfile -t active      < <(services_with_state system yes <<< "$services")
+        mapfile -t user_active < <(services_with_state user   yes <<< "$user_services")
+
+        local leftover=("${active[@]}" "${user_active[@]}")
+        if [ ${#leftover[@]} -gt 0 ]; then
             echo ""
-            print_info "Associated services still enabled: ${active[*]}"
+            print_info "Associated services still enabled: ${leftover[*]}"
             if confirm_or_abort "Disable these services?"; then
-                for svc in "${active[@]}"; do disable_service "$svc"; done
+                for_each_service disable_service      "${active[@]}"
+                for_each_service disable_user_service "${user_active[@]}"
             fi
         fi
     fi

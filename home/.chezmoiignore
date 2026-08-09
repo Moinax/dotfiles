@@ -109,13 +109,42 @@ Wallpapers
 Wallpapers/**
 {{- end }}
 
-# Ignore Productivity configs if not selected
-{{- if not .install_productivity }}
+# Browsers and Messaging, split out of Productivity.
+#
+# `index . "key"` rather than the bare `.install_browsers` the older gates use,
+# and that is not stylistic: chezmoi *errors* on a missing map key — `map has no
+# entry for key "install_browsers"` — rather than treating it as false. Every
+# machine set up before this split has no such flag until `dots update` runs
+# reconcile_group_flags, and `dots update` is fine because that runs before the
+# apply. A hand-run `chezmoi apply` in between is not, and hand applies are
+# routine when working on the dotfiles themselves. `index` returns the zero value
+# for an absent key, so the group reads as unselected until it is answered.
+{{- if not (index . "install_browsers") }}
 .local/share/applications/google-chrome.desktop
+{{- end }}
+
+# The two chat shells are gated per app, not per group: each is a custom_install
+# entry the selector lets you keep or drop, on the same rule as vibewatch. Icons
+# included — they are hicolor entries for these launchers and mean nothing on
+# their own.
+#
+# Both flags are written by `dots setup` and backfilled by reconcile_group_flags
+# in `dots update`, so no per-gate fallback is needed here — seeding lives at the
+# single writer rather than being repeated at every gate that reads one.
+{{- if not (index . "install_messenger") }}
 .local/share/applications/messenger.desktop
-.local/share/applications/whatsapp.desktop
 .local/bin/messenger
+.local/share/icons/hicolor/512x512/apps/messenger.png
+.local/share/icons/hicolor/scalable/apps/messenger.svg
+{{- end }}
+{{- if not (index . "install_whatsapp") }}
+.local/share/applications/whatsapp.desktop
 .local/bin/whatsapp
+.local/share/icons/hicolor/512x512/apps/whatsapp.png
+.local/share/icons/hicolor/scalable/apps/whatsapp.svg
+{{- end }}
+# The shared window both launchers import — it goes only when neither is kept.
+{{- if and (not (index . "install_messenger")) (not (index . "install_whatsapp")) }}
 .local/lib/chat_shell.py
 {{- end }}
 

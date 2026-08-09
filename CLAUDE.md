@@ -29,11 +29,20 @@ formats, rate limits) live in `.claude/rules/manage-tools.md`, loaded when you t
 `dots` → `tools/setup.sh` → `install/installer.sh` → `install/distros/arch.sh` + package YAML files
 
 ### Package definitions (`packages/`)
-YAML files define packages (key `arch`, plus `aur`/`desktop_aur` in base). Groups (`packages/groups/`) are selectable during install: `hyprland`, `development`, `gaming`, `multimedia`, `productivity`.
+YAML files define packages (key `arch`, plus `aur`/`desktop_aur` in base). Every
+file in `packages/groups/` is one selectable group — `ls` it rather than trusting
+a list here, which had already gone stale twice (it omitted `ai`, `biometric` and
+`security`, then missed the `browsers`/`messaging` split out of `productivity`).
+
+`packages/arch/base.yaml` is what every machine gets regardless of selection, and
+carries a `services:` key with the same `core`/`desktop` purpose gating as its
+package sections — that is where a genuine baseline like the bluetooth stack
+belongs. A service declared by two groups is the smell: it means each is
+asserting a baseline rather than a need of its own.
 
 ### Chezmoi source directory (`home/`)
 The `home/` directory is the Chezmoi source.
-- `home/.chezmoiignore` — conditionally excludes configs based on template variables like `.install_hyprland`, `.install_development`, `.install_productivity`
+- `home/.chezmoiignore` — conditionally excludes configs based on template variables like `.install_hyprland` or `.install_development`. Most are group flags, one per `packages/groups/*.yaml`; a custom_install entry marked `chezmoi_flag: true` gets its own (`.install_messenger`) so unticking that one app reaches the files chezmoi owns for it. Both kinds are written by `dots setup` and backfilled by `reconcile_group_flags` — chezmoi *errors* on a key that was never written, so a gate must never reference a flag nothing seeds
 
 ## Conventions
 
