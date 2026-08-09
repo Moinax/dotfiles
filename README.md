@@ -47,11 +47,13 @@ The interactive installer will:
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `hyprpaper`, `hyprshot`, `waybar`, `vicinae`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
 | **Development** | `neovim`, Cursor, Zed, the [`herdr`](https://github.com/ogulcancelik/herdr) multiplexer, Git tooling (`gh`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
-| **Gaming** | Steam, Heroic and Discord with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
+| **Gaming** | Steam and Heroic with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
-| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), chat apps (Slack, Telegram, plus dedicated Messenger and WhatsApp app shells), browsers (Zen, Chrome, Helium), archive tools, and themes/icons |
+| **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), KDE apps (Kate, Ghostwriter, Gwenview, Okular, Ark), file sharing (Dropbox, LocalSend), archive tools, and themes/icons |
+| **Messaging** | Chat clients: Slack, Telegram, Discord, plus dedicated Messenger and WhatsApp app shells |
+| **Browsers** | Helium (default), Zen and Chrome, with `speech-dispatcher` for the SpeechSynthesis API |
 | **AI** | AI-powered desktop tools: `hyprvoice` speech-to-text dictation, backed by either local `whisper-cpp` models or Groq's cloud API, with an on-screen overlay showing the live microphone level |
-| **Security** | ClamAV antivirus with its `clamtk` GUI |
+| **Security** | Bitwarden password manager (with the `rbw` CLI the vicinae extension needs) and ClamAV antivirus with its `clamtk` GUI |
 | **Biometric** | `fprintd` fingerprint authentication |
 
 BTRFS snapshots are deliberately absent: CachyOS's own `snapper` + `snap-pac` +
