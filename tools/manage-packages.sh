@@ -557,7 +557,7 @@ sync_group_after_change() {
     [ -z "$services" ] && [ -z "$user_services" ] && return 0
 
     if [ "$all_installed" = true ]; then
-        local stopped=() user_stopped=() svc
+        local stopped=() user_stopped=()
         mapfile -t stopped      < <(services_with_state system no <<< "$services")
         mapfile -t user_stopped < <(services_with_state user   no <<< "$user_services")
 
@@ -576,7 +576,7 @@ sync_group_after_change() {
             fi
         fi
     elif [ "$any_installed" = false ]; then
-        local active=() user_active=() svc
+        local active=() user_active=()
         mapfile -t active      < <(services_with_state system yes <<< "$services")
         mapfile -t user_active < <(services_with_state user   yes <<< "$user_services")
 
@@ -611,12 +611,16 @@ scan_missing_packages() {
     done < <(base_desired_packages)
 
     # Groups whose chezmoi flag is enabled
-    local file
+    local file rows
     for file in "$GROUPS_DIR"/*.yaml; do
         group_enabled "$file" || continue
 
+        # One read, classified twice — group_declared_packages is this same yq
+        # call and throws the prerequisite rows away.
+        rows=$(group_declared_lists "$file")
+
         # The custom flag comes off the row rather than from a second read: the rows
-        # group_declared_packages already returns carry it in field 2, so the extra
+        # classify_declared_rows returns carry it in field 2, so the extra
         # parse_custom_install_names pass this used to do was a 65ms yq per group
         # spent re-deriving what was in hand.
         local flag
@@ -629,7 +633,18 @@ scan_missing_packages() {
             else
                 [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || printf 'distro\t%s\n' "$pkg"
             fi
-        done < <(group_declared_packages "$file")
+        done < <(printf '%s\n' "$rows" | classify_declared_rows)
+
+        # A custom entry's prerequisites are missing-and-declared exactly like any
+        # other package, and the entry's own `check` will never say so: the two
+        # chat shells check for a launcher chezmoi puts there, so they read as
+        # installed with or without the PyQt6 their launcher imports. Reported as
+        # distro packages because that is what pacman installs them as.
+        while IFS= read -r pkg; do
+            if [ -z "$pkg" ] || [ -n "${seen[$pkg]:-}" ]; then continue; fi
+            seen["$pkg"]=1
+            [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || printf 'distro\t%s\n' "$pkg"
+        done < <(printf '%s\n' "$rows" | selected_requires_packages)
     done
 }
 

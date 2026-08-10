@@ -120,9 +120,21 @@ resolve_base() {
 # declaring group's yaml for a custom_install entry. The caller needs that split
 # anyway (the two have different install paths and different installed-checks),
 # and carrying it out of here is what saves a second parse of every group file.
+#
+# **`requires_packages` counts as declared, and leaving it out is what made
+# `dots update` uninstall a runtime the repo still asks for.** Moving
+# `python-pyqt6-webengine` out of messaging's `packages:` and into the
+# `requires_packages:` of the two chat shells changed nothing about whether the
+# machine wants it — but this walk only saw the `packages:` key, so the name
+# vanished from the HEAD set while remaining in the anchor's, and the drop half
+# offered it for removal under the heading "Dropped from the dotfiles". It was
+# removed, taking python-pyqt6 with it, and both launchers died on `import
+# PyQt6` at their next start. Neither guard could have caught it: pacman's
+# dependency graph does not know a Python script imports a module, and the
+# confirmation prompt was asking about a list that was wrong.
 declared_packages_at() {
     local root="$1"
-    local file pkg flag
+    local file pkg flag rows
 
     while IFS= read -r pkg; do
         [ -n "$pkg" ] && printf '%s\t\n' "$pkg"
@@ -134,13 +146,26 @@ declared_packages_at() {
         # so it is judged on the group's name and not on the old file's content.
         group_enabled "$file" || continue
 
-        # group_declared_packages already knows which names are custom_install
+        # One read, classified twice — the split group_declared_lists exists for.
+        # group_declared_packages would be the same yq call over again just to
+        # reach the prerequisite rows it drops on the floor.
+        rows=$(group_declared_lists "$file")
+
+        # classify_declared_rows already knows which names are custom_install
         # entries — it had to, to build its list. Asking again with a second
         # parse_custom_install_names was the same yq work twice per group, and the
         # only thing this needs on top is *which file* declared it.
         while IFS=$'\t' read -r pkg flag; do
             [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "${flag:+$file}"
-        done < <(group_declared_packages "$file")
+        done < <(printf '%s\n' "$rows" | classify_declared_rows)
+
+        # Emitted with no group file, i.e. as distro packages, which is what they
+        # are: pacman installs them and pacman can remove them. The custom-entry
+        # column means "installed by a bespoke command, so it has no uninstall" —
+        # a prerequisite is neither.
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && printf '%s\t\n' "$pkg"
+        done < <(printf '%s\n' "$rows" | selected_requires_packages)
     done
 }
 
@@ -348,6 +373,69 @@ package_delta() {
         [ -n "${explicit[$real]:-}" ] || continue
         printf 'drop\t%s\t\n' "$real"
     done
+}
+
+# The prerequisites of every custom_install entry this machine keeps, that are
+# not installed. Anchor-independent, unlike everything else in this phase, and
+# that is the whole point: a `requires_packages` package that goes missing does
+# so on the *machine*, at no commit at all, so a delta against SYNCED_COMMIT can
+# never see it.
+#
+# Nothing else was going to notice either. An entry is revisited only when its
+# `check` fails, and for the two chat shells the check is `[ -x
+# ~/.local/bin/whatsapp ]` — a launcher chezmoi puts there whether or not its
+# runtime exists. So the entry reads as done forever, `install_custom_requires`
+# is never reached again, and the machine sits with a launcher that cannot
+# start. The repair has to be its own question, asked off the declaration rather
+# than off the check.
+#
+# Runs before sync_packages so the two cannot ask twice about the same package:
+# the delta's install half skips anything already on the machine, and by then
+# this has either put it there or been declined.
+reconcile_custom_requires() {
+    # grep before yq, as reconcile_declared_services does: three group files
+    # declare the key and the rest cost nothing. Anchored to the start of the
+    # line so the prose mentioning `requires_packages` in ai.yaml's and
+    # messaging.yaml's comments does not drag those files through a parse.
+    local -a declaring=()
+    mapfile -t declaring < <(grep -l '^[[:space:]]*requires_packages:' "$GROUPS_DIR"/*.yaml 2>/dev/null)
+    [ ${#declaring[@]} -gt 0 ] || return 0
+
+    local -a want=()
+    local file
+    for file in "${declaring[@]}"; do
+        group_enabled "$file" || continue
+        mapfile -t -O "${#want[@]}" want \
+            < <(group_declared_lists "$file" | selected_requires_packages)
+    done
+    [ ${#want[@]} -gt 0 ] || return 0
+
+    ensure_installed_index
+    local -A seen=()
+    local -a missing=()
+    local pkg
+    for pkg in "${want[@]}"; do
+        [ -n "$pkg" ] && [ -z "${seen[$pkg]:-}" ] || continue
+        seen["$pkg"]=1
+        [ -n "${INSTALLED_SET[${pkg#*/}]:-}" ] || missing+=("$pkg")
+    done
+    [ ${#missing[@]} -gt 0 ] || return 0
+
+    print_header "Missing Prerequisites"
+    print_info "Required by apps this machine keeps, absent from it (${#missing[@]}):"
+    printf '  %s\n' "${missing[@]}"
+    echo ""
+    if ! confirm_or_abort "Install them?"; then
+        # No shortfall: the anchor has no say in whether this is asked again.
+        # The question comes off the machine's own state, so it returns by
+        # itself at the next update for as long as the package is missing.
+        print_info "Skipped — run 'dots update' again to be offered them"
+        return 0
+    fi
+
+    install_packages "${missing[@]}" \
+        || print_warning "Some prerequisites could not be installed"
+    return 0
 }
 
 # Both halves of the delta: install what the repo gained, offer to remove what it
@@ -645,6 +733,8 @@ do_sync() {
     pull_repo
     resolve_base
     reconcile_group_flags
+    # Before sync_packages, and independent of the anchor — see the function.
+    reconcile_custom_requires
     sync_packages
     # After sync_packages: a service is worth offering only once the package that
     # ships its unit is actually on the machine.

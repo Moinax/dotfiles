@@ -1023,7 +1023,11 @@ classify_declared_rows() {
             # in both lists counted as custom before, and its install path differs.
             C) _gdp_custom_names["$name"]=1; _gdp_custom+=("$name") ;;
             P) _gdp_distro+=("$name") ;;
-            # N/I/E are metadata for whoever asked for it; not our business.
+            # N/I/E/R are for whoever asked for them; not our business. R in
+            # particular is deliberately *not* folded in here: a prerequisite is
+            # not a package of the group, it must never appear in the selector,
+            # and the one caller that needs it reads the same rows through
+            # selected_requires_packages.
         esac
     done
 
@@ -1035,8 +1039,36 @@ classify_declared_rows() {
     done
 }
 
+# Packages a group declares as *prerequisites* rather than as choices: the
+# `requires_packages:` of its custom_install entries, read from the tagged rows
+# and filtered down to the entries this machine actually keeps.
+#
+# Emitted as a plain package list, deliberately with no entry attached, because
+# the question every caller asks is "does this machine still need it?" and the
+# answer is a union: `python-pyqt6-webengine` is declared by both chat shells,
+# so unticking one must not take the other's runtime away. Folding the two
+# declarations into one set *is* the reference count.
+#
+# An entry is kept unless its own chezmoi flag says false. Entries without a
+# `chezmoi_flag` have no key of their own and come back empty here, which reads
+# as kept — right for them, since the group flag is the only answer they have,
+# and the caller has already checked it. An entry whose flag was never seeded
+# reads the same way, which is the safe direction: a prerequisite wrongly kept
+# costs a package nobody uses, one wrongly dropped breaks the app.
+selected_requires_packages() {
+    local kind value name
+    while IFS=$'\t' read -r kind value; do
+        [ "$kind" = R ] || continue
+        name="${value%%=*}"
+        [ "$(chezmoi_data_get "$(get_chezmoi_flag "$name")")" = false ] && continue
+        printf '%s\n' "${value#*=}"
+    done
+    return 0
+}
+
 # The one yq call: "<tag><TAB>value" rows, tagged
-#   N name · I icon · E pkg=description · D desktop_only · C custom name · P package
+#   N name · I icon · E pkg=description · D desktop_only · C custom name ·
+#   R custom name=prerequisite · P package
 # Metadata first, then the two sets classify_declared_rows needs before the rows
 # they classify. The yq-less fallback calls the same parsers as before rather than
 # reimplementing their line-oriented scanning — that path is for a machine that has
@@ -1058,6 +1090,9 @@ group_declared_lists() {
           ((.descriptions // {}) | to_entries[] | \"E\t\" + (.key | tostring) + \"=\" + ((.value // \"\") | tostring)),
           ((.desktop_only // [])[]?   | select(. != null) | \"D\t\" + tostring),
           ((.custom_install // [])[]? | .name | select(. != null) | \"C\t\" + tostring),
+          ((.custom_install // [])[]? | select(.name != null) | (.name | tostring) as \$n
+             | (.requires_packages.${DISTRO_FAMILY} // [])[]? | select(. != null)
+             | \"R\t\" + \$n + \"=\" + tostring),
           ((.packages.${DISTRO_FAMILY} // [])[]? | select(. != null) | \"P\t\" + tostring)
         " "$file" 2>/dev/null | grep -v "^.	#" || true
     else
@@ -1066,6 +1101,18 @@ group_declared_lists() {
         parse_descriptions "$file" | sed 's/^/E\t/'
         parse_desktop_only "$file" | sed 's/^/D\t/'
         parse_custom_install_names "$file" | sed 's/^/C\t/'
+        # Guarded by the same grep install_custom_requires opens with: the
+        # per-entry parse is a whole extra read of the file each, and only a
+        # handful of entries across packages/ declare the key at all.
+        if grep -q '^[[:space:]]*requires_packages:' "$file" 2>/dev/null; then
+            local _gdl_entry _gdl_dep
+            while IFS= read -r _gdl_entry; do
+                [ -n "$_gdl_entry" ] || continue
+                while IFS= read -r _gdl_dep; do
+                    [ -n "$_gdl_dep" ] && printf 'R\t%s=%s\n' "$_gdl_entry" "$_gdl_dep"
+                done < <(parse_custom_install_requires_packages "$file" "$_gdl_entry")
+            done < <(parse_custom_install_names "$file")
+        fi
         parse_packages "$file" "$DISTRO_FAMILY" | sed 's/^/P\t/'
     fi
 }
