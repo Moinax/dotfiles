@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import (
+    QElapsedTimer,
     QMetaType,
     QObject,
     QProcess,
@@ -88,6 +89,17 @@ DEBUG: bool
 FALLBACK_ICON = "dialog-messages"
 ICON_SIZE = 64        # the tray pixmap, and what the badge is sized against
 ICON_CACHE_SIZE = 128  # what IconCache writes, for launchers to scale down from
+
+# How long a page may accumulate before an unattended reload reclaims it.
+# Measured on a renderer left on web.whatsapp.com for 29 hours: 2.14 GB, of
+# which 1.94 GB is anonymous — Blink's image cache and the V8 heap, neither of
+# which a running page ever gives back. A reload is the only lever that returns
+# it, and Chromium's own answer — freezing or discarding a background tab — is
+# not available here: a frozen page runs no JavaScript, so it would cost the
+# unread badge and every notification, which is the only reason this process
+# stays resident at all.
+IDLE_RELOAD_HOURS = 12
+RELOAD_CHECK_MINUTES = 5
 
 # Internal hosts come from the launcher and are matched on the registrable
 # suffix so subdomains are covered. Anything else goes to the default browser:
@@ -628,6 +640,48 @@ class ColorSchemeFollower(QObject):
         )
 
 
+class IdleReloader(QObject):
+    """Reload the page once it has been left alone long enough.
+
+    The clock is the time since the last finished load, not since the last
+    reload this class started, so a manual F5 or a colour-scheme flip counts as
+    the same reclaim and the timer never fires on top of one.
+
+    Elapsed rather than wall-clock time on purpose: a laptop that suspends for
+    the night would otherwise come back to a page "idle" for nine hours and
+    reload it under the user's hands at the first keystroke.
+    """
+
+    def __init__(self, view, page):
+        super().__init__(view)
+        self.view = view
+        self.page = page
+        self.since_load = QElapsedTimer()
+        self.since_load.start()
+        page.loadFinished.connect(lambda ok: self.since_load.start())
+        timer = QTimer(self)
+        timer.timeout.connect(self.tick)
+        timer.start(RELOAD_CHECK_MINUTES * 60_000)
+
+    def tick(self):
+        if self.since_load.elapsed() < IDLE_RELOAD_HOURS * 3_600_000:
+            return
+        # Never under the user's hands: a reload costs the scroll position and
+        # anything half-typed, so a focused window is off limits and the check
+        # simply comes back in five minutes. The page keeps growing until then,
+        # which is nothing next to a message lost mid-sentence.
+        if self.view.isActiveWindow():
+            log("RELOAD", "window focused -> deferred")
+            return
+        # Audible means a call or a voice note is playing, and a reload would
+        # cut it. Same deferral, same reasoning.
+        if self.page.isRecentlyAudible():
+            log("RELOAD", "page audible -> deferred")
+            return
+        log("RELOAD", f"idle {IDLE_RELOAD_HOURS}h -> reclaiming")
+        self.page.triggerAction(QWebEnginePage.WebAction.Reload)
+
+
 def bind_shortcuts(view, page):
     """Wire the browser keys by hand.
 
@@ -810,6 +864,11 @@ def run(config: ChatApp) -> int:
             lambda ok: log("LOAD", "ok" if ok else "FAILED"))
 
     bind_shortcuts(view, page)
+
+    # Unheld and parented to the view, like ColorSchemeFollower above: the view
+    # outlives every reload this starts, and a local would take the timer's
+    # connection with it when collected.
+    IdleReloader(view, page)
 
     view.setWindowTitle(config.title)
     view.resize(1280, 900)
