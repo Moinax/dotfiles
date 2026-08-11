@@ -7,6 +7,22 @@ set -e
 
 LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprvoice.log"
 
+# `--lang en`: transcribe this one dictation in English, then hand the language
+# back to whatever dictation-lang remembers. Bound to Mod+Alt+D, and it exists
+# because Whisper decides the language per clip from the audio alone — on
+# French-accented English it lands on French and *translates* rather than
+# mis-spells. See the comment block in dictation-lang for the measurements.
+#
+# Parsed before anything else so a bare Mod+D keeps exactly the shape it had.
+# Read, not consumed: nothing below this line touches a positional, and the
+# `shift 2` that used to follow was the whole failure mode of a mistyped
+# `--lang` with no value — shift past the end returns non-zero, and under
+# `set -e` that ends the script before the toggle, silently.
+ONESHOT_LANG=""
+if [ "${1:-}" = "--lang" ]; then
+    ONESHOT_LANG="${2:-}"
+fi
+
 if ! command -v hyprvoice &>/dev/null; then
     notify-send -u critical "Dictation" "hyprvoice is not installed"
     exit 1
@@ -46,6 +62,16 @@ starting=no
 # failing case here is the *stop* press — the one that must still toggle.
 if [[ "$status" == *status=idle* ]]; then
     starting=yes
+fi
+
+# The language has to be in the daemon *before* the toggle: the pipeline is
+# built from the config at toggle time, and writing it afterwards would not
+# reconfigure the recording but destroy it (a reload calls stopPipeline()).
+# So this costs the reload — ~1s — before the mic opens, which is the whole
+# reason the sticky switch exists alongside it: a language already in the file
+# writes nothing and waits for nothing.
+if [ "$starting" = yes ] && [ -n "$ONESHOT_LANG" ] && command -v dictation-lang &>/dev/null; then
+    dictation-lang oneshot "$ONESHOT_LANG" || true
 fi
 
 # Toggle recording on/off

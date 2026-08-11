@@ -77,20 +77,37 @@ timeout = "5m"                   # Maximum recording duration per toggle
 {{- end }}
 provider = {{ $provider | quote }}
 model = {{ .hyprvoice_model | quote }}    # Multilingual model (EN+FR).
-language = ""                    # Auto-detect, deliberately. Whisper detects once per
-                                 # clip from the audio, so switching to English is just
-                                 # a matter of speaking English — and the log shows it
-                                 # holding French correctly even on openers like
-                                 # "Hello comment ça va". Pinning "fr" would buy nothing
-                                 # (language was never what garbled the tool names) and
-                                 # would cost every English dictation.
-                                 #
-                                 # This is also why `keywords` above is a bare
-                                 # comma-separated term list and not an English
-                                 # sentence: Whisper's prompt joins the decoder context,
-                                 # and English *prose* there can drag a borderline clip
-                                 # into English output. Proper nouns carry no such
-                                 # sentence-level language signal.
+
+# Whisper picks a language once per clip, from the audio alone, and then writes
+# *in it* — so a wrong pick is not a spelling error, it is a translation. Both
+# halves of that are measured, not inferred: forcing "fr" on English audio
+# returns "Et donc, mes collègues américains, ne demandez pas ce que votre pays
+# peut faire pour vous" (Groq API, whisper.cpp's jfk.wav), and auto-detect does
+# the same thing to French-accented English on its own — hyprvoice.log has "Ok,
+# pour Prettier, vous pouvez créer un ticket Linear…" leaving the *transcriber*,
+# with the LLM pass echoing it back unchanged. Nothing downstream can undo that;
+# the English is already gone.
+#
+# `keywords` above is not a lever on it either way: a French *prose* prompt
+# leaves a confidently-English clip in English, same clip, measured. Only this
+# field moves it, and hyprvoice has no per-clip flag for it — so the switch is
+# ~/.local/bin/dictation-lang, which patches the line below in place and waits
+# out the ~1s hot-reload. Mod+Ctrl+D cycles auto → fr → en and remembers it,
+# Mod+Alt+D dictates one clip in English and puts this back afterwards. Neither
+# ever writes mid-dictation: a reload calls stopPipeline(), so that would not
+# reconfigure the recording, it would destroy it.
+#
+# Empty stays the right default — auto-detect holds French correctly even on
+# openers like "Hello comment ça va", and pinning "fr" permanently would only
+# trade this bug for its mirror image on every English dictation.
+#
+# Templated from the same state file the switch writes, so `chezmoi apply`
+# reproduces the current choice. Without that it would reset the language to
+# auto mid-session, silently, on any `dots update` that touches dotfiles.
+{{- $state := printf "%s/hyprvoice-lang" (env "XDG_STATE_HOME" | default (printf "%s/.local/state" .chezmoi.homeDir)) -}}
+{{- $sticky := "" -}}
+{{- if stat $state }}{{ $sticky = output "cat" $state | trim }}{{ end }}
+language = {{ if or (eq $sticky "fr") (eq $sticky "en") }}{{ $sticky | quote }}{{ else }}""{{ end }}
 streaming = false
 {{- if eq $provider "whisper-cpp" }}
 threads = 0                      # 0 = auto (NumCPU - 1)

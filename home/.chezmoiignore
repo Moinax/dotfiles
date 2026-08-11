@@ -51,6 +51,7 @@ LICENSE
 .config/hyprvoice/**
 .local/bin/toggle-dictation.sh
 .local/bin/hyprvoice-widget.py
+.local/bin/dictation-lang
 # Only ever holds the RNNoise filter feeding the dictation mic — nothing else
 # here configures PipeWire, so the whole tree goes when dictation does.
 .config/pipewire

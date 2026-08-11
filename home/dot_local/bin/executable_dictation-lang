@@ -1,0 +1,268 @@
+#!/bin/bash
+
+# Dictation language switch for hyprvoice.
+#
+# Whisper picks a language once per clip, from the audio alone, and then writes
+# *in that language* — so a wrong pick is not a spelling error, it is a
+# translation. Forcing "fr" on English audio returns "Et donc, mes collègues
+# américains, ne demandez pas ce que votre pays peut faire pour vous" (measured
+# against the Groq API), and auto-detect does the same thing to French-accented
+# English on its own: ~/.local/state/hyprvoice.log has "Ok, pour Prettier, vous
+# pouvez créer un ticket Linear…" leaving the *transcriber*, before the LLM pass
+# ran at all. That is why this exists at all — the cleanup pass cannot undo it,
+# the English is gone by the time it sees the text.
+#
+# The only lever is `[transcription] language`, and `hyprvoice toggle` has no
+# per-clip flag for it, so the switch has to patch the config. Two shapes, both
+# needed:
+#
+#   set / cycle   sticky. Remembered in $STATE_FILE, which the chezmoi template
+#                 for config.toml interpolates — so `chezmoi apply` reproduces
+#                 the current choice instead of silently resetting it mid-session.
+#   oneshot       transient, for a single dictation: config only, the remembered
+#                 preference untouched, and a detached `restore` that puts it
+#                 back once the daemon falls idle. The caller only has to know
+#                 that it must run *before* `hyprvoice toggle`; everything else
+#                 about the round trip lives here, next to the daemon state it
+#                 depends on.
+#
+# Two daemon facts shape the rest, both read out of hyprvoice v1.0.2's source
+# and confirmed against the running daemon:
+#
+#   * a config change is debounced 500ms and then reloaded, ~1s end to end. The
+#     pipeline is built from the config at *toggle* time (daemon.go's
+#     `pipeline.New(conf)`), so a language written after the keypress is a
+#     language the clip never sees. Hence the wait below, and hence the one-shot
+#     costing that second before the mic opens.
+#   * onConfigReload() calls stopPipeline() unconditionally. Writing this file
+#     mid-dictation therefore does not reconfigure the recording, it destroys
+#     it. Every path here refuses unless the daemon is idle.
+
+set -e
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+STATE_FILE="$STATE_DIR/hyprvoice-lang"
+LOG="$STATE_DIR/hyprvoice.log"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/hyprvoice/config.toml"
+
+# Poll cadence for `restore`. A tick is four forks (`hyprvoice status` and the
+# `sleep`, 5.8ms measured), and the loop lives as long as the dictation does —
+# at one second it costs 0.6% of a core against 2.3% at 250ms, and nothing reads
+# the restored language until the next keypress seconds later, so the finer
+# cadence bought precision no one can observe. SETTLE_TICKS of *continuous* idle
+# before writing, so a second Mod+D landing right after the first does not eat a
+# pipeline restart.
+POLL_S=1
+SETTLE_TICKS=2
+MAX_TICKS=400 # a little past the 5m recording timeout
+
+usage() {
+    cat <<'EOF'
+Usage: dictation-lang <command>
+
+  get                  language the next clip will be transcribed with
+  set <auto|fr|en>     remember a language and apply it now
+  cycle                auto → fr → en → auto, remembered
+  oneshot <auto|fr|en> apply for the dictation about to start, then restore
+  restore              wait for the daemon to fall idle, then put the
+                       remembered language back
+EOF
+}
+
+# Anything unrecognised reads as auto: a hand-edited state file must not be able
+# to write a language hyprvoice rejects, which would take the whole config down
+# with it (validate.go refuses a language the model does not support).
+normalise() {
+    case "$1" in
+        fr | en) printf '%s' "$1" ;;
+        *) printf 'auto' ;;
+    esac
+}
+
+label() {
+    case "$1" in
+        fr) printf 'Français' ;;
+        en) printf 'English' ;;
+        *) printf 'Auto (détection)' ;;
+    esac
+}
+
+config_lang() {
+    local value
+    value=$(sed -n 's/^language = "\([^"]*\)".*/\1/p' "$CONFIG" 2>/dev/null | head -1)
+    normalise "$value"
+}
+
+sticky_lang() {
+    normalise "$(cat "$STATE_FILE" 2>/dev/null)"
+}
+
+# "idle" / "recording" / "transcribing" / "injecting", or "down" when no daemon
+# answers. `hyprvoice status` exits 0 either way, so the output is the signal.
+daemon_status() {
+    local reply status
+    reply=$(hyprvoice status 2>/dev/null || true)
+    if [[ "$reply" != *status=* ]]; then
+        printf 'down'
+        return
+    fi
+    status="${reply##*status=}"
+    printf '%s' "${status%% *}"
+}
+
+notify() {
+    if command -v notify-send &>/dev/null; then
+        # Synchronous hint so a held Mod+Ctrl+D replaces its own popup instead
+        # of stacking three of them down the corner.
+        notify-send -t 1500 -h string:x-canonical-private-synchronous:dictation-lang \
+            "Dictée" "$1" || true
+    fi
+}
+
+# Rewrite the one line, in place. In place and not tmp+rename because the value
+# is the only thing that may move: the surrounding file is a chezmoi-rendered
+# template carrying every comment that explains it, and a rename would leave the
+# next `chezmoi diff` comparing modes and inode-fresh content for no reason.
+write_lang() {
+    local code="$1" value="" body
+    [ "$code" = auto ] || value="$code"
+    body=$(awk -v v="$value" '
+        !done && /^language = "/ { print "language = \"" v "\""; done = 1; next }
+        { print }
+    ' "$CONFIG")
+    printf '%s\n' "$body" >"$CONFIG"
+}
+
+# Block until the daemon says it took the new config, so the caller can toggle
+# knowing the next clip is transcribed with it. Bounded at 4s: a daemon that
+# stopped watching is a reason to go ahead with a stale language, not to hang on
+# a keypress.
+wait_for_reload() {
+    local from="$1"
+    for _ in $(seq 1 40); do
+        sleep 0.1
+        if tail -n "+$from" "$LOG" 2>/dev/null | grep -q 'configuration successfully reloaded'; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# 0 wrote it, 1 refused (a dictation is in flight), 2 nothing to write. Callers
+# need the third apart from the first: it is what tells `oneshot` there is no
+# reload to wait out and nothing to hand back afterwards.
+apply_lang() {
+    local code from status
+    code=$(normalise "$1")
+
+    # Nothing to write is the common case for a sticky language, and it is what
+    # keeps a normal Mod+D free of the reload wait entirely.
+    if [ "$(config_lang)" = "$code" ]; then
+        return 2
+    fi
+
+    status=$(daemon_status)
+    if [ "$status" != idle ] && [ "$status" != down ]; then
+        notify "Dictée en cours — langue inchangée"
+        return 1
+    fi
+
+    # Counted before the write, so the grep cannot match a reload from an
+    # earlier edit and return before this one has landed.
+    from=$(($(wc -l <"$LOG" 2>/dev/null || echo 0) + 1))
+    write_lang "$code"
+
+    # No daemon to wait for: the value is read at boot instead.
+    if [ "$status" = down ]; then
+        return 0
+    fi
+    wait_for_reload "$from" || true
+}
+
+set_lang() {
+    local code rc=0
+    code=$(normalise "$1")
+    apply_lang "$code" || rc=$?
+
+    # Refused: remember nothing either, so the memory never describes a language
+    # the daemon was not given.
+    if [ "$rc" -eq 1 ]; then
+        return 1
+    fi
+
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "$code" >"$STATE_FILE"
+    notify "Langue : $(label "$code")"
+}
+
+# Apply a language for the dictation the caller is about to start, and arrange
+# for it to be handed back. Detached, because it outlives this process by the
+# length of the dictation.
+oneshot() {
+    local rc=0
+    apply_lang "$1" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        setsid -f "$0" restore >/dev/null 2>&1 </dev/null || true
+    fi
+    return 0
+}
+
+# Wait out the dictation, then hand the config back to the remembered
+# preference. One loop: the recording is live before the caller's next line
+# runs, so the first tick a second later already sees it — an opening guard for
+# "has it started yet" would only be re-asking what the settle counter answers.
+# The count resets on a new dictation, which also means a burst of English clips
+# keeps the one-shot language for the whole burst rather than half of it.
+restore_when_idle() {
+    local idle=0 status
+
+    for _ in $(seq 1 "$MAX_TICKS"); do
+        status=$(daemon_status)
+        if [ "$status" = idle ] || [ "$status" = down ]; then
+            idle=$((idle + 1))
+            if [ "$idle" -ge "$SETTLE_TICKS" ]; then
+                break
+            fi
+        else
+            idle=0
+        fi
+        sleep "$POLL_S"
+    done
+
+    apply_lang "$(sticky_lang)" || true
+}
+
+case "${1:-}" in
+    get)
+        config_lang
+        echo
+        ;;
+    set)
+        [ -n "${2:-}" ] || {
+            usage >&2
+            exit 1
+        }
+        set_lang "$2"
+        ;;
+    cycle)
+        case "$(sticky_lang)" in
+            auto) next=fr ;;
+            fr) next=en ;;
+            *) next=auto ;;
+        esac
+        set_lang "$next"
+        ;;
+    oneshot)
+        [ -n "${2:-}" ] || {
+            usage >&2
+            exit 1
+        }
+        oneshot "$2"
+        ;;
+    restore) restore_when_idle ;;
+    help | --help | -h) usage ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+esac

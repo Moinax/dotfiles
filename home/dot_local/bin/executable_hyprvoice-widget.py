@@ -38,6 +38,7 @@ import struct
 import subprocess
 import sys
 from collections import deque
+from functools import cache
 from pathlib import Path
 
 import tomllib
@@ -94,6 +95,9 @@ FLOOR_DB = -55.0  # quietest level the meter still shows movement for
 ROW_GAP = 8  # one gap value for every element in the control row
 PILL_WIDTH = 470  # fixed, so the waveform can absorb every width change
 WAVE_MIN = 140  # floor for the waveform; hexpand gives it whatever is left
+
+# Dictation languages worth a chip. Absent from here = auto-detect, the default.
+LANGUAGES = {"fr": "Français", "en": "English"}
 
 # hyprvoice's own capture format (`pw-record --format s16 --rate 16000
 # --channels 1`), mirrored so the meter and the daemon hear the same thing.
@@ -172,6 +176,17 @@ label.source {{
    * ~6px of height rather than a full text line. Without this the control row
    * is pushed a full line below the pill's centre and reads bottom-heavy. */
   margin: -4px 6px -5px 0;
+}}
+/* Accent, not the dimmed grey the device name uses: this one is a warning as
+ * much as a label — it says the next clip will be *written* in that language
+ * whatever is spoken into it. Same negative vertical margins as .source so the
+ * top line keeps costing ~6px instead of a full text line. */
+label.lang {{
+  color: rgb({accent_r}, {accent_g}, {accent_b});
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin: -4px 0 -5px 0;
 }}
 /* GtkMenuButton's CSS node is `menubutton`, wrapping a `button` child — a
  * `button.micbtn` selector matches neither, so the platform theme's raised
@@ -324,6 +339,16 @@ def pactl_json(args: list[str]) -> list:
         return []
 
 
+@cache
+def hyprvoice_config() -> dict:
+    """The daemon's config, parsed once for the two settings read out of it."""
+    try:
+        with CONFIG_PATH.open("rb") as handle:
+            return tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
 def pinned_device() -> str | None:
     """hyprvoice's `[recording] device`, when it names one.
 
@@ -331,12 +356,25 @@ def pinned_device() -> str | None:
     which is what makes the picker below effective. A pinned device overrides
     it, so the picker says so instead of quietly doing nothing.
     """
-    try:
-        with CONFIG_PATH.open("rb") as handle:
-            device = tomllib.load(handle).get("recording", {}).get("device", "")
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
-    return device or None
+    return hyprvoice_config().get("recording", {}).get("device", "") or None
+
+
+def pinned_language() -> str | None:
+    """hyprvoice's `[transcription] language`, when one is pinned.
+
+    Reported because it is the one setting that can silently *translate* a
+    dictation: Whisper writes in whatever language it is given, so a pinned "fr"
+    turns an English clip into French prose rather than into mis-spelled
+    English. Empty means auto-detect — the usual case, and nothing worth a chip.
+
+    Read-only here, deliberately. Changing it writes config.toml, and the daemon
+    answers a config change by tearing the pipeline down — from inside a pill
+    that only exists *during* a dictation, offering the control would be
+    offering a button that discards what is being said. dictation-lang owns the
+    write, off the keypress, while the daemon is idle.
+    """
+    code = hyprvoice_config().get("transcription", {}).get("language", "")
+    return code if code in LANGUAGES else None
 
 
 def default_source() -> str:
@@ -529,12 +567,33 @@ class Overlay:
         pill.set_size_request(PILL_WIDTH, -1)
         self.window.set_child(pill)
 
+        # The thin top line carries the two things that decide what comes out of
+        # a dictation and are otherwise invisible while speaking: the language
+        # Whisper is pinned to, on the left, and the live microphone on the
+        # right. Spacing 0 — they sit at opposite ends of the row.
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        pill.append(head)
+
+        # Only when pinned. Auto-detect is the default and the quiet case; a
+        # chip reading "auto" on every dictation would train the eye to skip the
+        # line, which is the one place a stuck "EN" has to be noticed.
+        code = pinned_language()
+        if code:
+            chip = Gtk.Label(label=code.upper())
+            chip.add_css_class("lang")
+            chip.set_xalign(0.0)
+            chip.set_tooltip_text(
+                f"Langue de dictée fixée : {LANGUAGES[code]} — Mod+Ctrl+D pour changer"
+            )
+            head.append(chip)
+
         # Which microphone is live, spelled out: the level meter says whether
         # *something* is heard, never which device is being listened to.
         self.source = Gtk.Label()
         self.source.add_css_class("source")
         self.source.set_xalign(1.0)
-        pill.append(self.source)
+        self.source.set_hexpand(True)
+        head.append(self.source)
 
         # Single source of truth for the row's rhythm: every gap between the
         # mic, the waveform, the timer and the buttons comes from here.
