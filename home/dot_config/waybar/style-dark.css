@@ -65,6 +65,18 @@ tooltip label {
   background: @chip;
   border-radius: 8px;
 }
+/* `hyprland/window` keeps its widget when the workspace is empty, so the chip
+ * `.module` gives it stays on the bar as a blank pill with nothing in it — it
+ * read as a margin back when it sat against #workspaces, and reads as a broken
+ * widget now that a gauge precedes it. The class lands on the whole bar, not on
+ * the module (waybar-hyprland-window(5)), and `separate-outputs` is what makes
+ * that per-monitor rather than global. Zeroing the box and not just the fill:
+ * a transparent chip still holds its 8px of padding open. */
+window#waybar.empty #window {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
 #custom-system,
 #cpu,
 #memory {

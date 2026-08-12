@@ -59,6 +59,13 @@ tooltip label {
   background: @chip;
   border-radius: 8px;
 }
+/* See style-dark.css: an empty workspace leaves `hyprland/window` on the bar as
+ * a blank chip, and the class lands on the bar rather than on the module. */
+window#waybar.empty #window {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
 #custom-system,
 #cpu,
 #memory {
