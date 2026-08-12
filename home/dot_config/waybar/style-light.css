@@ -8,6 +8,9 @@
  * stops matching the pill it mirrors. */
 @define-color chip rgba(100, 100, 255, 0.30);
 @define-color accent rgba(170, 40, 170, 0.45);
+/* The same magenta at rim strength — see the twin note in style-dark.css.
+ * Rim-only, and deliberately not @chip/@accent, which theme.lua solves against. */
+@define-color accent_rim rgba(170, 40, 170, 0.90);
 
 * {
   color: #4c4f69;
@@ -238,16 +241,24 @@ tooltip label {
  * in style-dark.css: `.attention` below is the only colour that ever moves. */
 #custom-vibewatch-state {
   background: rgba(0, 0, 0, 0.12);
+  /* Reserved transparent so `.attention` recolours it without resizing the
+   * chip — the reasoning is spelled out in style-dark.css. Padding drops 7px →
+   * 6px to pay for it. */
+  border: 1px solid transparent;
   border-radius: 7px;
-  padding: 0 7px;
+  padding: 0 6px;
   margin: 2px 2px;
   transition:
     color 0.25s ease-in-out,
-    background 0.25s ease-in-out;
+    background 0.25s ease-in-out,
+    border-color 0.25s ease-in-out;
 }
 /* Attention on the recess, not the whole pill: a group emits no class of its
- * own, and the state is the thing actually waiting on you. */
+ * own, and the state is the thing actually waiting on you. A rim rather than a
+ * fill, for the reason in style-dark.css — the state word now carries its own
+ * hue (peach / lavender / mauve, one per ask) and a magenta ground ate two of
+ * the three. The `color` this drops was dead anyway: every character in the
+ * chip arrives already tinted by a Pango span, which outranks the widget's. */
 #custom-vibewatch-state.attention {
-  color: #1e1e2e;
-  background: @accent;
+  border-color: @accent_rim;
 }

@@ -11,6 +11,12 @@
  * stops matching the pill it mirrors. */
 @define-color chip rgba(100, 100, 255, 0.30);
 @define-color accent rgba(255, 100, 255, 0.35);
+/* The same magenta at rim strength. A 1px border covers so little of the
+ * wallpaper that @accent's 0.35 vanishes on it — the note on `#vibewatch`
+ * below is the measurement. Only `#custom-vibewatch-state.attention` uses it,
+ * and it is deliberately not `@chip`/`@accent`: those two feed the group-tab
+ * solve in hypr/conf/theme.lua, and this one must not drag them along. */
+@define-color accent_rim rgba(255, 100, 255, 0.85);
 
 * {
   color: #cdd6f4;
@@ -266,18 +272,33 @@ tooltip label {
  * the widget. On the group it animated nothing. */
 #custom-vibewatch-state {
   background: rgba(0, 0, 0, 0.45);
+  /* Transparent, not absent: `.attention` below only recolours this border, so
+   * the chip must already be reserving its 1px. Set it there instead and the
+   * chip grows 2px the moment an agent blocks, shoving the count badge sideways
+   * — a relayout of the pill, which is the one thing its fixed width is for.
+   * The 7px padding this replaces is now 6px, so the total is unchanged. */
+  border: 1px solid transparent;
   border-radius: 7px;
-  padding: 0 7px;
+  padding: 0 6px;
   margin: 2px 2px;
   transition:
     color 0.25s ease-in-out,
-    background 0.25s ease-in-out;
+    background 0.25s ease-in-out,
+    border-color 0.25s ease-in-out;
 }
 /* Attention: the magenta of workspaces.active, caffeine.activated and
  * notification, but on the recess rather than the whole pill. A `group/` emits
  * no class of its own — only the children do — so the group cannot know it is
  * blocked. Putting it on the state chip is the better reading anyway: the state
- * is the thing waiting on you, and it is already the loudest object in the pill. */
+ * is the thing waiting on you, and it is already the loudest object in the pill.
+ *
+ * A rim rather than the fill it used to be. vibewatch now says *which* ask is
+ * blocking in the state word's own colour — peach for a permission gate,
+ * lavender for a question, mauve for a plan — and a magenta ground took two of
+ * those three with it: mauve on magenta is the same hue twice, and lavender not
+ * much better. The rim keeps the accent doing what it does everywhere else in
+ * the bar while leaving the word its full contrast against the dark recess,
+ * which is where the state now actually lives. */
 #custom-vibewatch-state.attention {
-  background: @accent;
+  border-color: @accent_rim;
 }
