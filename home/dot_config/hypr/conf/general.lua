@@ -57,10 +57,18 @@ hl.config({
         -- and a 3-pane group then shows one wide block with two titles in it.
         -- Tabs deliberately mirror waybar's #workspaces buttons (style-dark.css
         -- and style-light.css) so a group tab and a workspace pill read as the
-        -- same control: 26px tall, 8px radius, 17px text, 4px between chips, and
-        -- the magenta-active / indigo-inactive pair. The 26px is measured off screen,
-        -- not read off the CSS — there a pill's height is implied by font size
-        -- plus 2px padding, so it has to be sampled to be matched.
+        -- same control: 26px tall, 8px radius, 4px between chips, and the
+        -- magenta-active / indigo-inactive pair.
+        -- The 26px is now stated on both sides rather than sampled: the pill was
+        -- letting its font imply its height, which is why this used to have to be
+        -- measured off screen, and it drifted the moment the CSS font moved. It
+        -- carries an explicit `min-height: 26px` there now, so the two agree by
+        -- construction and this number is the one place it is chosen.
+        -- The text follows the bar down to 16px. Nothing here forces it — a tab
+        -- has no 26px ceiling, and 17px still fits — but the pill had to drop to
+        -- 16 to reach 26 (its content box alone is 28px at 17), and two controls
+        -- that are meant to read as one cannot differ on the only thing you
+        -- actually read. So the CSS is what chose this number, not this file.
         -- Colours are solved in conf/theme.lua, not copied from the CSS:
         -- copying the alphas across drops the 85% bar the pill stands on, which
         -- left inactive titles unreadable over a busy wallpaper and hid the
@@ -78,7 +86,7 @@ hl.config({
             blur              = false,
             ["col.active"]    = tab.active,
             ["col.inactive"]  = tab.inactive,
-            font_size            = 17,
+            font_size            = 16,
             font_weight_active   = 400,
             font_weight_inactive = 400,
             text_color           = tab.text,
