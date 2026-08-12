@@ -9,6 +9,10 @@
     ],
     "modules-left": [
       "hyprland/workspaces",
+      "group/stats",
+      "pulseaudio",
+      "custom/headset-battery",
+      "battery",
       "hyprland/window"
     ],
     "modules-center": [
@@ -17,11 +21,7 @@
 {{- end }}
     ],
     "modules-right": [
-      "group/stats",
       "mpd",
-      "pulseaudio",
-      "custom/headset-battery",
-      "battery",
       "custom/keyboard-layout",
 {{- if eq .chezmoi.hostname "moinax-desktop" }}
       "custom/hdr",
@@ -44,6 +44,7 @@
     ],
     "modules-left": [
       "hyprland/workspaces",
+      "battery",
       "hyprland/window"
     ],
     "modules-center": [
@@ -52,7 +53,6 @@
 {{- end }}
     ],
     "modules-right": [
-      "battery",
       "tray",
       "clock",
       "custom/notification",
