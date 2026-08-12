@@ -21,7 +21,7 @@
     "Symbols Nerd Font", "Symbols Nerd Font Mono",
     "Font Awesome 6 Free Solid", "Font Awesome 6 Free",
     "Noto Sans Symbols 2", "Noto Sans Symbols", sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   min-height: 0;
   font-weight: normal;
 }
@@ -39,9 +39,6 @@ tooltip {
 tooltip label {
   color: #4c4f69;
 }
-.modules-right {
-  padding-top: 2px;
-}
 /* See style-dark.css: every widget carries the same alpha as an inactive
  * workspace pill.
  * The alphas here are not scaled-down copies of the dark ones, they are
@@ -52,12 +49,13 @@ tooltip label {
  * to reduce how strongly the wallpaper changes a pill across the bar. */
 /* `#stats` and `#vibewatch` are named because a `group/` does not match
  * `.module` — see the twin note in style-dark.css, including why `#vibewatch`
- * takes the geometry from here and replaces the background below. */
+ * takes the geometry from here and replaces the background below, and why the
+ * 26px chip / 16px icon pair is anchored on Hyprland's group tabs. */
 #stats,
 #vibewatch,
 .module {
   margin: 4px 2px;
-  padding: 2px 8px;
+  padding: 0 8px;
   background: @chip;
   border-radius: 8px;
 }
@@ -70,15 +68,20 @@ tooltip label {
   border: none;
 }
 /* See style-dark.css: `#workspaces` also matches `.module`, so the pills would
- * otherwise stack alpha on a second indigo layer of their own container. */
+ * otherwise stack alpha on a second indigo layer of their own container — and
+ * the 0 padding is load-bearing, the box already spends the bar's spare height
+ * through `.module`'s margin. */
 #workspaces {
-  padding: 2px 2px;
+  padding: 0 2px;
   background: transparent;
 }
+/* See style-dark.css: only `min-height` pins a button to the group tab's 26px;
+ * its padding does not drive its height. */
 #workspaces button {
   background: @chip;
   min-width: 24px;
-  padding: 2px 8px;
+  min-height: 26px;
+  padding: 0 8px;
   margin: 0 2px;
   border-radius: 8px;
   transition: all 0.3s ease-in-out;
@@ -107,7 +110,7 @@ tooltip label {
 #custom-notification,
 #idle-inhibitor,
 #workspaces button {
-  font-size: 17px;
+  font-size: 16px;
 }
 #custom-tailscale.connected {
   background: @accent;
@@ -187,7 +190,7 @@ tooltip label {
 }
 
 #custom-notification.none {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 #custom-notification.dnd-notification,

@@ -27,7 +27,7 @@
     "Symbols Nerd Font", "Symbols Nerd Font Mono",
     "Font Awesome 6 Free Solid", "Font Awesome 6 Free",
     "Noto Sans Symbols 2", "Noto Sans Symbols", sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   min-height: 0;
   font-weight: normal;
 }
@@ -45,22 +45,23 @@ tooltip {
 tooltip label {
   color: white;
 }
-.modules-right {
-  padding-top: 2px;
-}
 /* Every widget carries the same @chip as an inactive workspace pill, so the bar
  * reads as one set of chips. #window has no rule of its own — it matches
  * `.module` like every other module and inherits this (verified on screen). */
-/* `#stats` and `#vibewatch` are named because a `group/` does not match
- * `.module` — a group is a box, not a module, so it needs this spelled out or
- * its children would each carry one and the bar would grow extra pills.
- * `#vibewatch` joins for the geometry only: it replaces this background further
- * down with vibewatch's own, so `@chip` is not what tunes that pill. */
+/* Geometry is anchored on Hyprland's group tabs, not chosen here: a tab's fill
+ * is 26px tall (`groupbar.height` in hypr/conf/general.lua, sampled off screen
+ * to confirm), and a bar chip has to be the same object at the same size or the
+ * two stop reading as one control. A module *stretches* to the bar, so its
+ * height is `bar - 2 * margin` and the padding below only sets the text inset:
+ * 4 + 26 + 4 = 34, which is what the bar auto-sizes to. Change the margin and
+ * every chip resizes with it. The 16px icon font is part of the same solve —
+ * at 17px the content box alone is 28px and 26 is unreachable.
+ * `#workspaces` is measured separately below: it does not stretch. */
 #stats,
 #vibewatch,
 .module {
   margin: 4px 2px;
-  padding: 2px 8px;
+  padding: 0 8px;
   background: @chip;
   border-radius: 8px;
 }
@@ -80,15 +81,26 @@ tooltip label {
  * container by ~40/255 in blue. It also made the active pill brighter than the
  * identical magenta on #custom-caffeine.activated and friends, which are single
  * elements whose `.module` background is replaced, not stacked. Dropping it
- * makes the button alpha below mean exactly what it says. */
+ * makes the button alpha below mean exactly what it says.
+ *
+ * The padding is 0 because this box keeps `.module`'s 4px margin (only the
+ * padding and background are overridden here), so the container already spends
+ * the bar's whole spare height: 4 + 26 + 4 = 34. Any vertical padding here is
+ * added on top and grows the bar, which then re-stretches every *other* module
+ * past 26 — that is the failure mode, and it is silent. */
 #workspaces {
-  padding: 2px 2px;
+  padding: 0 2px;
   background: transparent;
 }
+/* A button does not stretch to the bar the way a module does, and its padding
+ * does not drive its height either — both were measured, both are no-ops here.
+ * Only `min-height` pins it, so the 26px is stated once, literally, and matches
+ * the group tab. */
 #workspaces button {
   background: @chip;
   min-width: 24px;
-  padding: 2px 8px;
+  min-height: 26px;
+  padding: 0 8px;
   margin: 0 2px;
   border-radius: 8px;
   transition: all 0.3s ease-in-out;
@@ -111,7 +123,7 @@ tooltip label {
 #custom-notification,
 #idle-inhibitor,
 #workspaces button {
-  font-size: 17px;
+  font-size: 16px;
 }
 #custom-tailscale.connected {
   background: @accent;
@@ -189,7 +201,7 @@ tooltip label {
 }
 
 #custom-notification.none {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 #custom-notification.dnd-notification,
