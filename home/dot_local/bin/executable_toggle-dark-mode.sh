@@ -14,8 +14,13 @@ fi
 echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 
-STATE_FILE="$HOME/.local/share/dark-light-mode"
-CURRENT=$(cat "$STATE_FILE" 2>/dev/null || echo "dark")
+# What the desktop is showing, not what this repo last wrote: the waybar icon
+# reads the portal too, so a scheme flipped from outside — Plasma's settings,
+# another tool — leaves the icon right and this the only thing left inverting
+# the wrong value. The state file stays as the fallback for a portal-less
+# session, and apply-dark-mode.sh keeps writing it.
+. "$HOME/.local/lib/theme-copies.sh"
+CURRENT=$(portal_mode || theme_mode)
 
 if [ "$CURRENT" = "dark" ]; then
     ~/.local/bin/apply-dark-mode.sh light

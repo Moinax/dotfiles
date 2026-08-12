@@ -28,6 +28,31 @@ theme_mode() {
     [ "$(cat "$THEME_STATE_FILE" 2>/dev/null)" = light ] && echo light || echo dark
 }
 
+# The mode a `uint32 N` payload carries: 1 = dark, 2 = light, 0 = no preference.
+# Anything but an explicit 2 reads as dark, matching theme_mode's default.
+# Takes any gdbus text carrying the value — a ReadOne reply or a monitor's
+# SettingChanged line — and fails when it carries none.
+scheme_mode() {
+    [[ $1 =~ uint32\ ([0-9]+) ]] || return 1
+    [ "${BASH_REMATCH[1]}" = 2 ] && echo light || echo dark
+}
+
+# The appearance the desktop is *showing*, which is not always the one this repo
+# last wrote — anything can flip the KDE scheme, and the portal is where every
+# app reads it. Fails on a session without a portal, so callers pair it with
+# theme_mode: `$(portal_mode || theme_mode)`.
+#
+# Both readers exist on purpose. This one answers "what is on screen" and is
+# what a *toggle* has to invert; theme_mode answers "what did we last apply" and
+# is what the copies are keyed on. They agree unless something outside this repo
+# changed the scheme, which is exactly the case worth getting right.
+portal_mode() {
+    scheme_mode "$(gdbus call --session --dest org.freedesktop.portal.Desktop \
+        --object-path /org/freedesktop/portal/desktop \
+        --method org.freedesktop.portal.Settings.ReadOne \
+        org.freedesktop.appearance color-scheme 2>/dev/null)"
+}
+
 # One copy, source then destination, both relative to $HOME. A missing source is
 # skipped rather than an error — a machine without swayosd installed still has
 # the rest to sync.
