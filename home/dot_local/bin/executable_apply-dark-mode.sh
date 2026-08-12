@@ -98,12 +98,6 @@ KDE_ICON_THEME=$( [ "$MODE" = "dark" ] && echo "breeze-dark" || echo "breeze" )
 # change below for the module to see it and every change after it.
 kded_load_module gtkconfig
 
-# The mtime the bridge's GTK colours carry *before* the flip, so the late write
-# at the bottom of this script can tell when it has rewritten them.
-GTK_COLORS_FILE="$HOME/.config/gtk-3.0/colors.css"
-gtk_colors_stamp() { stat -c %.Y "$GTK_COLORS_FILE" 2>/dev/null || echo 0; }
-GTK_COLORS_BEFORE=$(gtk_colors_stamp)
-
 if command -v plasma-apply-colorscheme &>/dev/null; then
     plasma-apply-colorscheme "$KDE_SCHEME" 2>/dev/null || true
 fi
@@ -234,30 +228,6 @@ for addr in /run/user/$(id -u)/nvim.*.0 /tmp/nvim.*/0; do
     nvim --server "$addr" --remote-send "<Cmd>lua local c = require('catppuccin'); c.options.flavour = '${FLAVOR}'; c.compile(); vim.cmd.colorscheme('catppuccin')<CR>" 2>/dev/null || true
 done
 
-# ---------- Late GTK theme write (Electron/Chromium) ----------
-# Chromium, so every Electron app, recomputes shouldUseDarkColors when GTK
-# announces a theme change — but it computes it by sampling the GTK colours,
-# not by reading the portal value that woke it up. kde-gtk-config rewrites
-# those colours (colors.css) about half a second after the scheme flip, so a
-# gtk-theme write issued next to the flip has Chromium sample the *previous*
-# mode's palette and cache it until the next notification: with two modes that
-# is not a lag, it is a permanent inversion. Every Electron window sat one
-# Mod+N behind, which is exactly how it was found.
-#
-# So this write, and only this one of the GSettings block above, waits for the
-# colours to land first. The name has to really change for GSettings to signal
-# at all, and it does — Breeze and Breeze-Dark alternate. Nothing waits on it:
-# GTK apps themselves follow the bridge's settings.ini.
-if command -v gsettings &>/dev/null; then
-    for _ in $(seq 30); do
-        [ "$(gtk_colors_stamp)" != "$GTK_COLORS_BEFORE" ] && break
-        sleep 0.1
-    done
-    # The rewrite is the file; GTK still has to notice it and reload.
-    sleep 0.5
-    gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_NAME" 2>/dev/null || true
-fi
-
 # ---------- Chezmoi templated configs ----------
 if command -v chezmoi &>/dev/null; then
     chezmoi apply \
@@ -269,4 +239,39 @@ if command -v chezmoi &>/dev/null; then
         ~/.config/tuicr/config.toml \
         ~/.config/yazi/theme.toml \
         2>/dev/null || true
+fi
+
+# ---------- Late GTK theme write (Electron/Chromium) ----------
+# Chromium, so every Electron app, recomputes shouldUseDarkColors when GTK
+# announces a theme change — but it computes it by sampling the GTK colours,
+# not by reading the portal value that woke it up. kde-gtk-config rewrites
+# those colours about half a second after the scheme flip, so a gtk-theme write
+# issued next to the flip has Chromium sample the *previous* mode's palette and
+# cache it until the next notification: with two modes that is not a lag, it is
+# a permanent inversion. Every Electron window sat one Mod+N behind, which is
+# exactly how it was found.
+#
+# So this write, and only this one of the GSettings block above, waits for the
+# colours to land first — and it is last in the script, because nothing else
+# has any reason to queue behind an Electron quirk. The name has to really
+# change for GSettings to signal at all, and it does: Breeze and Breeze-Dark
+# alternate.
+#
+# What it waits on is the bridge's own settings.ini agreeing with $MODE, not
+# an mtime: the mode is written in the same pass as the colours, so a rewrite
+# triggered by something else — `kded_load_module gtkconfig` above fires one on
+# the first toggle of a session — cannot be mistaken for this one. It also
+# makes re-applying the mode already in force free, which is the login path.
+GTK_SETTINGS_FILE="$HOME/.config/gtk-3.0/settings.ini"
+GTK_PREFER_DARK=$( [ "$MODE" = "dark" ] && echo "true" || echo "false" )
+if command -v gsettings &>/dev/null; then
+    for ((i = 0; i < 30; i++)); do
+        [ -f "$GTK_SETTINGS_FILE" ] || break
+        grep -qx "gtk-application-prefer-dark-theme=$GTK_PREFER_DARK" \
+            "$GTK_SETTINGS_FILE" && break
+        sleep 0.1
+    done
+    # The rewrite is the file; GTK still has to notice it and reload.
+    sleep 0.5
+    gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_NAME" 2>/dev/null || true
 fi
