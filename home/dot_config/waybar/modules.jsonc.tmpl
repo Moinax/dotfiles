@@ -181,11 +181,11 @@
     "on-click": "~/.local/bin/toggle-hdr.sh",
   },
   // Dark/Light mode toggle
+  // Dark/light mode (follows the portal colour-scheme — continuous exec)
   "custom/dark-mode": {
     "exec": "~/.local/bin/waybar-dark-mode.sh",
     "return-type": "json",
-    "signal": 8,
-    "interval": "once",
+    "restart-interval": 1,
     "on-click": "~/.local/bin/toggle-dark-mode.sh",
   },
   // Caffeine mode (custom idle toggle — continuous exec via inotifywait)
