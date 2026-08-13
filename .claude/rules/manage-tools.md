@@ -20,18 +20,19 @@ machine last agreed with it?
 
 Phases: pull → new groups → package delta → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
-`run_post_apply` → re-stamp the profile → report fork drift → report backup age.
+`run_post_apply` → re-stamp the profile → report fork drift → report a waiting backup.
 
 The last two phases report and never act, and both run after the anchor is stamped
-but before the final verdict, which has to stay the last thing on screen. `dots update`
-does not *run* a backup for the same reason it does not rebase a fork: `create` wants a
-passphrase and pushes secrets, which is no business of an unattended sync.
+but before the final verdict, which has to stay the last thing on screen.
 
-`report_backup_age` reads the mtime of `~/Backups/projects-backup.tar.zst.age`, i.e. when
-*this* machine last backed up. Not the shared archive's own timestamp — that answers "when
-did any machine", and another machine's recent backup says nothing about whether this one's
-secrets are captured. Silent under `BACKUP_STALE_AFTER_DAYS`, and silent entirely when
-`~/Backups/projects-backup/.git` is absent, since that means backups are not set up here.
+`report_backup_available` names a backup another machine pushed that this one has not
+restored. It is the *incoming* direction, deliberately — not a "you should back up"
+reminder. Two reasons it earns a line in a sync: the archive is cumulative, so a newer one
+holds secrets this machine lacks; and `dots backup create` refuses while behind, so a
+machine in this state cannot back up at all until it restores. Restoring is never done
+here — it drops files into place and re-clones repos, which is not something to do to
+someone mid-update. Silent when caught up, when the remote is unreachable, and when
+`~/Backups/projects-backup/.git` is absent (backups are not set up on this machine).
 
 ### Fork drift is discovered, not declared
 
