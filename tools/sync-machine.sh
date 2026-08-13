@@ -783,6 +783,37 @@ fork_drift() {
     done < <(find "$root" -maxdepth 3 -name .git -type d -printf '%h\n' 2>/dev/null | sort)
 }
 
+# How long a machine may go without a backup before it is worth a word.
+BACKUP_STALE_AFTER_DAYS=7
+
+# Nothing here runs a backup: `dots backup create` asks for a passphrase and
+# pushes secrets to a remote, neither of which belongs in an unattended sync.
+# It only says how long it has been — which is the part nothing else says.
+#
+# The local archive's mtime is the signal, because it answers "when did *this*
+# machine last back up". The shared archive's own timestamp would answer "when
+# did any machine", and another machine's recent backup says nothing about
+# whether this one's secrets are captured. Paths mirror backup-projects.sh,
+# which owns them and cannot be sourced (it runs a command on source).
+report_backup_age() {
+    local archive="$HOME/Backups/projects-backup.tar.zst.age"
+    # No backup repo means the feature is not in use here; nagging about a
+    # backup nobody asked for is the kind of noise that trains people to skim.
+    [ -d "$HOME/Backups/projects-backup/.git" ] || return 0
+
+    local days
+    if [ -f "$archive" ]; then
+        days=$(( ( $(date +%s) - $(stat -c %Y "$archive") ) / 86400 ))
+        [ "$days" -ge "$BACKUP_STALE_AFTER_DAYS" ] || return 0
+        print_header "Backup"
+        print_warning "Last backup from this machine was $days days ago"
+    else
+        print_header "Backup"
+        print_warning "This machine has never written a backup"
+    fi
+    print_info "  dots backup create"
+}
+
 # Silent when every fork is current: `dots update` should not grow a section
 # that exists to say there is nothing to do.
 report_fork_drift() {
@@ -835,6 +866,7 @@ do_sync() {
     # "Machine in sync" trailed by a yellow fork warning reads as though the
     # sync had left something undone, which is exactly what this is not.
     report_fork_drift
+    report_backup_age
 
     local head
     head=$(profile_get SYNCED_COMMIT)
@@ -855,7 +887,8 @@ Usage: dots update [command]
 Brings this machine in line with the dotfiles repo: pulls, offers what the repo
 has gained since the last sync and what it has dropped, applies the configs,
 refreshes the tools, and reloads the surfaces that need it. Also names any fork
-in the projects tree that upstream has moved past.
+in the projects tree that upstream has moved past, and says so when this
+machine's last backup is getting old.
 
 Commands:
   (none)      Run the full sync
