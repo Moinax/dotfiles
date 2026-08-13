@@ -7,6 +7,7 @@
 #                       then offer to restart T3 Code onto it
 #     -y, --yes         restart without asking (for unattended runs)
 #     -n, --no-restart  install only, leave the running app alone
+#   t3fork restart      restart T3 Code onto the installed AppImage as-is
 #
 # Test changes with `vp run dev:desktop` in the repo before `install` —
 # that is the e2e loop; this script only ships what already works.
@@ -162,8 +163,13 @@ case "${1:-}" in
     [[ "$restart" == yes ]] && restart_app
     ;;
 
+  restart)
+    [[ -f "$target" ]] || { echo "t3fork: nothing installed at $target" >&2; exit 1; }
+    restart_app
+    ;;
+
   *)
-    sed -n '2,9p' "$0" | sed 's/^# \?//'
+    sed -n '2,10p' "$0" | sed 's/^# \?//'
     exit 1
     ;;
 esac
