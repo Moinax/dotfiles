@@ -453,6 +453,22 @@ config in `~/.config/projects-backup/`: `extra-includes` (repo-relative path reg
 to bootstrap a fresh machine (gh OAuth device flow over HTTPS needs no SSH key, so
 GitHub login + age passphrase are the only secrets).
 
+### One archive for every machine, so a backup may only move forward
+
+`create` refuses when the backup repo has commits this machine does not, and says to
+`restore` first. That is not politeness about git hygiene: the archive has a single
+filename shared by every machine, so backing up from a machine that is behind replaces a
+superset with a subset — and the loss is *invisible*, because the push succeeds and HEAD
+looks healthy while another machine's secrets survive only in history. Restore-then-backup
+is what makes the archive cumulative; a restore pulls the missing repos and secret files
+onto this machine, so its own backup then really does contain everything.
+
+Before the check existed, git's own rejection of a diverged push was doing this work by
+accident. Do not "fix" that rejection by resetting onto the remote — that was tried, and
+it converts a loud failure into a silent overwrite. The check runs before the scan so a
+refusal does not cost a passphrase prompt, and an unreachable remote warns instead of
+blocking (nothing can be overwritten while nothing can be pushed).
+
 ### What a restore does *not* bring back
 
 Repos are re-cloned from `manifest/repos.tsv`, so everything that never left the machine

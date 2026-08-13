@@ -127,6 +127,48 @@ repo_secret_files() {
 
 # ── Create ───────────────────────────────────────────────────────────────────
 
+# One archive serves every machine, so a backup is only ever allowed to move
+# forward. A machine that is behind holds none of what the newer archive added:
+# backing up from it would replace a superset with a subset, and since the file
+# has a single name the loss is invisible — the push succeeds, HEAD looks fine,
+# and the secrets another machine contributed are only in history.
+#
+# So refuse, and send the user through `restore` first. That is not a detour: a
+# restore brings the missing repos and secret files onto this machine, after
+# which its own backup genuinely contains everything. Restore-then-backup is
+# what makes the archive cumulative rather than last-writer-wins.
+#
+# Refusing is also the behaviour this replaced, by accident: before the archive
+# name became shared, a diverged push was simply rejected by git. That rejection
+# was doing real work.
+backup_repo_is_current() {
+    [ -d "$BACKUP_REPO_DIR/.git" ] || return 0
+
+    if ! git -C "$BACKUP_REPO_DIR" fetch -q origin 2>/dev/null; then
+        # Offline is not a reason to block a local backup — nothing can be
+        # overwritten while nothing can be pushed.
+        print_warning "Could not reach the backup repo — backing up without checking it"
+        return 0
+    fi
+    git -C "$BACKUP_REPO_DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1 || return 0
+
+    local behind
+    behind=$(git -C "$BACKUP_REPO_DIR" rev-list --count HEAD..origin/HEAD 2>/dev/null) || return 0
+    [ "${behind:-0}" -gt 0 ] || return 0
+
+    print_error "The backup repo has $behind newer backup(s) this machine does not have"
+    print_info "Another machine backed up after this one last synced. Backing up now would"
+    print_info "replace that archive with this machine's, dropping whatever only it holds."
+    echo ""
+    print_info "Restore first, then back up:"
+    print_info "  dots backup restore"
+    print_info "  dots backup create"
+    echo ""
+    print_info "To write a local archive without touching the shared one:"
+    print_info "  dots backup create --local-only"
+    return 1
+}
+
 do_create() {
     local dry_run=false local_only=false
     for arg in "$@"; do
@@ -139,6 +181,12 @@ do_create() {
 
     require_tools git tar zstd
     $dry_run || require_tools age
+
+    # Refused before any work is done: scanning, compressing and asking for a
+    # passphrase only to stop at the push wastes the one step that needs you.
+    if ! $dry_run && ! $local_only; then
+        backup_repo_is_current || return 1
+    fi
 
     local stage
     stage=$(mktemp -d)
@@ -244,24 +292,6 @@ push_to_backup_repo() {
         fi
         # -q: a fresh backup repo is empty and git's warning about it is noise
         gh repo clone "$slug" "$BACKUP_REPO_DIR" -- -q 2>/dev/null
-    fi
-
-    # Catch up before committing, or a backup pushed from another machine makes
-    # this one unpushable: the archive has one name, so both sides commit over
-    # the same file and the push is rejected for a divergence no merge could
-    # ever resolve. `do_restore` already pulls; this is the same need.
-    #
-    # A hard reset is the right shape here and not a data risk. Every commit in
-    # this repo is a full snapshot under one filename, so history has no branch
-    # worth keeping: the only thing discarded is a local snapshot that failed to
-    # push, which the archive about to be committed supersedes anyway. It stays
-    # reachable through the reflog regardless.
-    if git -C "$BACKUP_REPO_DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
-        if git -C "$BACKUP_REPO_DIR" fetch -q origin 2>/dev/null; then
-            git -C "$BACKUP_REPO_DIR" reset -q --hard origin/HEAD 2>/dev/null || true
-        else
-            print_warning "Could not reach the backup repo — committing on what is here"
-        fi
     fi
 
     cp "$archive" "$BACKUP_REPO_DIR/$ARCHIVE_NAME"
