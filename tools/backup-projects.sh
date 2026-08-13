@@ -80,6 +80,10 @@ Config files in ~/.config/projects-backup/ (one entry per line, # comments):
   extra-includes       extra path regexes to back up (repo-relative paths)
   extra-home-includes  extra files/dirs to back up (relative to ~)
   extra-exclude-dirs   extra directory names to skip while scanning repos
+
+What is NOT backed up: repo contents. Restore re-clones from each repo's origin,
+so anything that never left the machine is lost — unpushed commits, local-only
+branches, stashes, submodules, worktrees, hooks. Push before you rely on this.
 EOF
 }
 
@@ -144,8 +148,10 @@ do_create() {
     print_header "Backing up ~/Projects"
 
     # Manifest: one line per repo (path, remote, branch) so restore can
-    # re-clone everything into place.
-    local repo rel remote branch file_count=0 repo_count=0
+    # re-clone everything into place. Anything else goes in a sidecar file
+    # rather than a fourth column, so an older restore ignores what it does not
+    # know instead of folding it into `branch`.
+    local repo rel remote branch name url file_count=0 repo_count=0
     while IFS= read -r repo; do
         rel="${repo#"$PROJECTS_DIR"/}"
         remote=$(git -C "$repo" remote get-url origin 2>/dev/null || true)
@@ -155,6 +161,24 @@ do_create() {
         fi
         printf '%s\t%s\t%s\n' "$rel" "$remote" "$branch" >> "$stage/manifest/repos.tsv"
         repo_count=$((repo_count + 1))
+
+        # Secondary remotes. A clone restores origin and nothing else, so
+        # without this a fork comes back with no `upstream` — and since "no
+        # upstream remote" is indistinguishable from "not a fork", every tool
+        # that keys off it (dots update's fork check) goes quiet rather than
+        # complaining.
+        #
+        # Read through `config` rather than `remote get-url`: that one echoes
+        # the remote's own *name* and exits 0 when a remote has no url, so the
+        # `|| continue` never fires and a junk row goes to the manifest. It also
+        # applies `insteadOf` rewrites, and the rewritten URL is the wrong thing
+        # to archive — the restored machine has the same rules and would apply
+        # them again.
+        while IFS= read -r name; do
+            [ "$name" = origin ] && continue
+            url=$(git -C "$repo" config --get "remote.$name.url") || continue
+            printf '%s\t%s\t%s\n' "$rel" "$name" "$url" >> "$stage/manifest/remotes.tsv"
+        done < <(git -C "$repo" remote 2>/dev/null || true)
 
         local f
         while IFS= read -r f; do
@@ -277,6 +301,24 @@ decrypt_to() {
     tar -C "$stage" --zstd -xf "$stage/archive.tar.zst"
 }
 
+# Put back the remotes a clone does not carry. Strictly additive: `remote add`
+# on a name that already exists fails and changes nothing, so this is safe to
+# run over a checkout that is already on disk — which is the point, since a
+# machine restored before this existed has repos sitting there with no
+# `upstream` and needs a way to get them back.
+#
+# read_config_lines gives the "missing file → nothing" contract for free, so an
+# archive written before this manifest existed restores unchanged.
+restore_repo_extras() {
+    local stage="$1" rel="$2" dest="$3"
+    local row_rel name url
+
+    while IFS=$'\t' read -r row_rel name url; do
+        [ "$row_rel" = "$rel" ] || continue
+        git -C "$dest" remote add "$name" "$url" 2>/dev/null || true
+    done < <(read_config_lines "$stage/manifest/remotes.tsv")
+}
+
 do_restore() {
     local archive="" force=false home_only=false
     for arg in "$@"; do
@@ -330,6 +372,11 @@ do_restore() {
         dest="$PROJECTS_DIR/$rel"
         if [ -d "$dest" ]; then
             print_info "$rel already exists, not cloning"
+            # Still worth a pass: adding a missing remote cannot clobber
+            # anything, and a repo that is on disk but has lost its `upstream`
+            # is exactly what this repairs. Restoring from scratch is not the
+            # only way to end up needing it.
+            restore_repo_extras "$stage" "$rel" "$dest"
             continue
         fi
         if [ -z "$remote" ]; then
@@ -340,6 +387,7 @@ do_restore() {
         # </dev/null so a git/ssh prompt can't swallow the manifest on stdin
         if git clone -q "$remote" "$dest" < /dev/null; then
             [ -n "$branch" ] && git -C "$dest" checkout -q "$branch" 2>/dev/null || true
+            restore_repo_extras "$stage" "$rel" "$dest"
         else
             print_error "Failed to clone $remote"
         fi

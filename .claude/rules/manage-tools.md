@@ -20,7 +20,40 @@ machine last agreed with it?
 
 Phases: pull → new groups → package delta → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
-`run_post_apply` → re-stamp the profile.
+`run_post_apply` → re-stamp the profile → report fork drift.
+
+### Fork drift is discovered, not declared
+
+`fork_drift` treats the `upstream` remote as the registry: any main checkout
+under the `dev-projects root` tree that has one is a fork, so a new one is picked
+up without touching the dotfiles. It reports and never acts — a rebase stops on
+conflicts and wants a human — and it runs after the anchor is stamped but
+*before* the final verdict, so it can neither leave a sync half-done nor trail a
+warning after a green "Machine in sync". Every failure path is a silent
+`continue`: offline, a vanished upstream, a repo mid-rebase — none is worth a
+warning on a sync that already succeeded, and the next run asks again.
+
+The root comes from `dev-projects root`, the single source of truth for the
+project tree — not a knob of its own, which is what made a machine with
+`DEV_PROJECTS_ROOT` set invisible to this check. `-type d` on the walk is
+load-bearing in the other direction: linked worktrees share the main checkout's
+remotes, so without it a fork with three worktrees reports the same drift four
+times under four names.
+
+The command it prints comes from `git config dotfiles.forkUpdate` **in the fork**,
+not from a table here, because rebasing is rarely the whole job (t3code has to
+rebuild and reinstall an AppImage, which only `t3fork` knows) — and because a
+table of fork→command in the dotfiles is the t3code-specific coupling this was
+built to avoid. Without the key it falls back to a plain `git rebase`.
+
+Both the `upstream` remote and the key live in the fork's `.git/config`, which
+a restore used to drop on the floor — see the sidecar manifests under
+`dots backup` below, which is what now carries them back.
+
+The default branch is resolved by trying `upstream/HEAD`, then `main`, then
+`master`, through `rev-parse --verify` rather than `symbolic-ref`: a *dangling*
+`upstream/HEAD` (its branch deleted upstream) resolves fine for `symbolic-ref`
+and then fails the count, which dropped the fork from the report entirely.
 
 **The anchor is the whole design.** `SYNCED_COMMIT` in
 `~/.local/state/dotfiles/profile.env` (see `profile_get`/`profile_set` in
@@ -419,6 +452,32 @@ config in `~/.config/projects-backup/`: `extra-includes` (repo-relative path reg
 `restore --home-only` restores just the home secrets; the installer's SSH setup uses it
 to bootstrap a fresh machine (gh OAuth device flow over HTTPS needs no SSH key, so
 GitHub login + age passphrase are the only secrets).
+
+### What a restore does *not* bring back
+
+Repos are re-cloned from `manifest/repos.tsv`, so everything that never left the machine
+is gone: **unpushed commits, local-only branches, stashes, submodules, worktrees, hooks,
+sparse-checkout and LFS objects.** The design rests on the code itself living on GitHub —
+this tool backs up the *secrets beside* the code, not the code. Say so when the question
+comes up; `usage()` says it too.
+
+`manifest/remotes.tsv` (`rel`, name, url) is the one exception, and only because a clone
+restores `origin` and nothing else: without it a fork came back with no `upstream`, and
+`fork_drift` above then went quiet rather than complaining, "not a fork" being
+indistinguishable from "no upstream remote". It is a sidecar rather than a fourth column
+in `repos.tsv` because restore reads that file with `read -r rel remote branch`, so a
+fourth column would land inside `branch`; a file an older restore does not know about is
+simply ignored. Read through `read_config_lines`, which makes a missing manifest a
+non-event.
+
+Re-adding is additive by construction — `git remote add` on an existing name fails and
+changes nothing — which is why extras are applied to repos that are *already on disk*
+too. That is the repair path for a machine restored before this manifest existed.
+
+Per-repo `dotfiles.*` config keys are deliberately **not** carried. `t3fork` re-asserts
+its own `dotfiles.forkUpdate` on every run instead, which self-heals after any loss
+rather than only after a restore — and losing it costs one degraded suggestion line
+(`fork_drift` falls back to a plain `git rebase`), not a silent failure.
 
 ## `dots apps` — `tools/manage-external-apps.py`
 
