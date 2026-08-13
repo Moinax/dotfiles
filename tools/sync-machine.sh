@@ -721,6 +721,83 @@ update_tools() {
     fi
 }
 
+# ── Phase 5: forks ───────────────────────────────────────────────────────────
+
+# Emits `repo<TAB>behind<TAB>command` for every fork upstream has moved past.
+#
+# The `upstream` remote *is* the registry. A checkout that has one is a fork of
+# something, so nothing has to be declared here for the next one to be picked up
+# — which is the whole reason this is not a list of projects in the dotfiles.
+#
+# Report only, deliberately: a rebase stops on conflicts and wants a human, and
+# by the time this runs the sync has applied its configs and stamped its anchor.
+# The command it names is the repo's own, because rebasing is rarely the whole
+# job — t3code has to rebuild and reinstall an AppImage afterwards, which only
+# `t3fork` knows how to do.
+#
+# Prints nothing but its answer: it is meant to be run through spin_capture,
+# which discards the pass's stderr.
+fork_drift() {
+    # dev-projects owns the project tree — its root, and the convention for what
+    # counts as a checkout in it. Asking it is what keeps a machine with
+    # DEV_PROJECTS_ROOT set from being invisible here.
+    local root
+    root="$(dev-projects root 2>/dev/null)" || root="$HOME/Projects"
+    [ -d "$root" ] || return 0
+
+    local repo candidate ref behind cmd
+    while IFS= read -r repo; do
+        git -C "$repo" remote get-url upstream >/dev/null 2>&1 || continue
+
+        # Offline, or an upstream that has gone away. Neither is worth a warning
+        # on a sync that has otherwise succeeded, so the fork is simply skipped
+        # and the next run asks again. --no-tags because nothing below reads a
+        # tag, and a fork of a busy repo drags hundreds along on every fetch.
+        git -C "$repo" fetch --quiet --no-tags upstream 2>/dev/null || continue
+
+        # `upstream/HEAD` is the symref git sets on fetch, and the only thing
+        # that knows a project calling its trunk `master`. Resolved through
+        # rev-parse rather than symbolic-ref so that a *dangling* one — its
+        # branch deleted upstream — falls through to the candidates below
+        # instead of naming a ref that no longer exists, which read as "not
+        # behind" and dropped the fork from the report in silence.
+        ref=""
+        for candidate in upstream/HEAD upstream/main upstream/master; do
+            if git -C "$repo" rev-parse --verify --quiet "$candidate" >/dev/null 2>&1; then
+                ref="$candidate"
+                break
+            fi
+        done
+        [ -n "$ref" ] || continue
+
+        behind=$(git -C "$repo" rev-list --count "HEAD..$ref" 2>/dev/null) || continue
+        [ "$behind" -gt 0 ] || continue
+
+        cmd=$(git -C "$repo" config --get --default "git -C $repo rebase $ref" dotfiles.forkUpdate)
+
+        printf '%s\t%s\t%s\n' "${repo##*/}" "$behind" "$cmd"
+    # `-type d` keeps linked worktrees out: they share the main checkout's
+    # remotes, so each would report the same drift again under its own name.
+    # `-printf %h` and the sort match backup-projects.sh's walk of the same
+    # tree, and make the order stable between runs.
+    done < <(find "$root" -maxdepth 3 -name .git -type d -printf '%h\n' 2>/dev/null | sort)
+}
+
+# Silent when every fork is current: `dots update` should not grow a section
+# that exists to say there is nothing to do.
+report_fork_drift() {
+    local drift
+    spin_capture drift "Checking forks against upstream..." fork_drift || return 0
+    [ -n "$drift" ] || return 0
+
+    print_header "Forks"
+    local name behind cmd
+    while IFS=$'\t' read -r name behind cmd; do
+        print_warning "$name: upstream is $behind commit(s) ahead"
+        print_info "  $cmd"
+    done <<<"$drift"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 do_sync() {
@@ -754,6 +831,11 @@ do_sync() {
     # above this line has still happened, so the cost is one re-offer next run.
     record_synced_state
 
+    # Before the verdict, which has to be the last thing on screen: a green
+    # "Machine in sync" trailed by a yellow fork warning reads as though the
+    # sync had left something undone, which is exactly what this is not.
+    report_fork_drift
+
     local head
     head=$(profile_get SYNCED_COMMIT)
     echo ""
@@ -763,6 +845,7 @@ do_sync() {
     else
         print_success "Machine in sync${head:+ at ${head:0:8}}"
     fi
+
 }
 
 usage() {
@@ -771,7 +854,8 @@ Usage: dots update [command]
 
 Brings this machine in line with the dotfiles repo: pulls, offers what the repo
 has gained since the last sync and what it has dropped, applies the configs,
-refreshes the tools, and reloads the surfaces that need it.
+refreshes the tools, and reloads the surfaces that need it. Also names any fork
+in the projects tree that upstream has moved past.
 
 Commands:
   (none)      Run the full sync

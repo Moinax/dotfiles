@@ -91,8 +91,18 @@ restart_app() {
 
 cd "$repo"
 
+# Tell `dots update`'s fork check how this fork is brought up to date, so its
+# report names the command that does the whole job rather than a bare rebase
+# that would leave the installed AppImage untouched. Written on every run: the
+# key lives in this checkout's .git/config, which no backup and no clone
+# carries, so re-asserting it is what makes it survive a fresh checkout.
+register_fork_command() {
+  git config dotfiles.forkUpdate "t3fork update && t3fork install"
+}
+
 case "${1:-}" in
   update)
+    register_fork_command
     git fetch upstream main
     git switch "$branch"
     # A rebase keeps the fork as "upstream plus N patches", which is what makes
