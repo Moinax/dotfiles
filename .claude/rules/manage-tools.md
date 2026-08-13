@@ -22,17 +22,23 @@ Phases: pull → new groups → package delta → `chezmoi apply` → tool refre
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
 `run_post_apply` → re-stamp the profile → report fork drift → report a waiting backup.
 
-The last two phases report and never act, and both run after the anchor is stamped
-but before the final verdict, which has to stay the last thing on screen.
+Both run after the anchor is stamped but before the final verdict, which has to stay
+the last thing on screen.
 
 `report_backup_available` names a backup another machine pushed that this one has not
 restored. It is the *incoming* direction, deliberately — not a "you should back up"
 reminder. Two reasons it earns a line in a sync: the archive is cumulative, so a newer one
 holds secrets this machine lacks; and `dots backup create` refuses while behind, so a
-machine in this state cannot back up at all until it restores. Restoring is never done
-here — it drops files into place and re-clones repos, which is not something to do to
-someone mid-update. Silent when caught up, when the remote is unreachable, and when
-`~/Backups/projects-backup/.git` is absent (backups are not set up on this machine).
+machine in this state cannot back up at all until it restores. Silent when caught up,
+when the remote is unreachable, and when `~/Backups/projects-backup/.git` is absent
+(backups are not set up on this machine).
+
+It is the one phase here that may *act*, and only with a tty: on a terminal it offers to
+run the restore, everywhere else it prints the command and stops. A restore re-clones repos
+and writes secrets to disk, so starting one where nobody can answer is not a default worth
+having — the same `[ -t 0 ]` reasoning as `t3fork install`'s restart prompt. Declining
+prints the command too. A failed restore warns rather than failing the sync: it runs after
+the anchor is stamped, so the cost is the restore and nothing else.
 
 ### Fork drift is discovered, not declared
 

@@ -812,7 +812,27 @@ report_backup_available() {
     print_warning "$behind newer backup(s) waiting${when:+, latest from $when}"
     print_info "  Another machine backed up after this one. Restoring brings its"
     print_info "  secrets here — and 'dots backup create' stays blocked until you do."
-    print_info "  dots backup restore"
+
+    # Offer it only where there is somebody to answer. Run from a hook, a cron
+    # job or a pipe there is no terminal, and a restore is far too consequential
+    # to start on a guess — it re-clones repos and writes secrets to disk. So no
+    # tty means the command, and nothing else.
+    if [ ! -t 0 ] || ! command_exists gum; then
+        print_info "  dots backup restore"
+        return 0
+    fi
+
+    echo ""
+    if ! confirm_or_abort "Restore it now?"; then
+        print_info "  dots backup restore"
+        return 0
+    fi
+
+    # Never fatal to the sync: everything above this point has already happened
+    # and the anchor is stamped, so a failed restore costs the restore, nothing
+    # more. It asks for the age passphrase itself.
+    "$DOTFILES_DIR/tools/backup-projects.sh" restore \
+        || print_warning "Restore did not complete — run 'dots backup restore' to retry"
 }
 
 # Silent when every fork is current: `dots update` should not grow a section
