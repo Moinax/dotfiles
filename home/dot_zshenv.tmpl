@@ -35,6 +35,10 @@ fi
 
 # Cargo (worktrunk, vibewatch, etc.)
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+
+# Vite+ (t3code's build toolchain); its installer appends the same line to
+# ~/.zshrc, which chezmoi owns and reverts — so it lives here instead.
+[[ -f "$HOME/.vite-plus/env" ]] && source "$HOME/.vite-plus/env"
 case ":$PATH:" in
   *":$HOME/.cargo/bin:"*) ;;
   *) [[ -d "$HOME/.cargo/bin" ]] && export PATH="$HOME/.cargo/bin:$PATH" ;;

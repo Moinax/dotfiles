@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# Maintain the local T3 Code fork: rebase our patches onto upstream, then
+# build and install the AppImage over the one the desktop entry points at.
+#
+#   t3fork update       fetch upstream and rebase the fork branch onto it
+#   t3fork install      build a Linux AppImage and replace the installed one,
+#                       then offer to restart T3 Code onto it
+#     -y, --yes         restart without asking (for unattended runs)
+#     -n, --no-restart  install only, leave the running app alone
+#
+# Test changes with `vp run dev:desktop` in the repo before `install` —
+# that is the e2e loop; this script only ships what already works.
+set -euo pipefail
+
+repo="${T3CODE_REPO:-$HOME/Projects/labs/t3code}"
+branch="${T3CODE_FORK_BRANCH:-moinax}"
+target="$HOME/.local/share/AppImages/t3-code.AppImage"
+
+[[ -d "$repo" ]] || { echo "t3fork: no repo at $repo" >&2; exit 1; }
+
+# Every process of the running app answers to `t3code`, zygotes and renderers
+# included; the one to signal is the root, whose parent is not one of them.
+# Signalling that alone lets Electron run its own shutdown (it flushes state on
+# before-quit) instead of having its children pulled out from under it.
+t3code_root_pids() {
+  local all pid parent
+  all="$(pgrep -x t3code || true)"
+  [[ -n "$all" ]] || return 0
+  while read -r pid; do
+    parent="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    grep -qx "${parent:-0}" <<<"$all" || printf '%s\n' "$pid"
+  done <<<"$all"
+}
+
+# Spawn detached from this process tree *and* from its cgroup.
+#
+# The desktop launches T3 Code into a systemd scope (`app-t3code-N.scope`), and
+# everything started from inside it — this script, an agent's shell, whatever
+# they spawn — inherits that cgroup. When the app goes down systemd tears the
+# scope down and kills every process still in it, so a relauncher started with
+# plain `setsid` dies with the app it was waiting for: `setsid` makes a new
+# POSIX session, which is not a new cgroup. That is exactly what happened the
+# first time this was tried — clean kill, no relaunch.
+#
+# `systemd-run --user` puts it in a transient unit of its own instead. setsid
+# remains the fallback for a machine with no systemd, where nothing tears a
+# cgroup down and it is sufficient.
+#
+# `ELECTRON_RUN_AS_NODE` is dropped on the way out: T3 Code exports it to every
+# process it spawns, so an agent shell inside it hands the variable to whatever
+# it launches — and an Electron app started with it set runs as plain Node and
+# tries to execute its first argument as a script. systemd-run happens to dodge
+# this by starting from the user manager's environment rather than ours, but the
+# setsid fallback would inherit it, so clear it for both instead of relying on
+# which branch ran.
+spawn_detached() {
+  if command -v systemd-run >/dev/null 2>&1; then
+    systemd-run --user --collect --quiet -- "$@" >/dev/null 2>&1 && return
+  fi
+  setsid -f env -u ELECTRON_RUN_AS_NODE "$@" >/dev/null 2>&1 </dev/null
+}
+
+# Restart the installed app. Normally runs *inside* T3 Code — an agent in a
+# thread, whose whole process tree hangs off the app being replaced — so the
+# relaunch is detached before the signal goes out, never after.
+restart_app() {
+  local pids
+  pids="$(t3code_root_pids)"
+  if [[ -z "$pids" ]]; then
+    echo "t3fork: T3 Code is not running; launching it"
+    spawn_detached "$target"
+    return
+  fi
+
+  # The waiter polls rather than `wait`s: it is not the parent of what it
+  # watches. The ceiling matters because a hung quit must not leave the desktop
+  # with no T3 Code at all — after it, relaunch regardless.
+  spawn_detached bash -c '
+    for _ in $(seq 1 40); do
+      pgrep -x t3code >/dev/null || break
+      sleep 0.5
+    done
+    exec "$1"
+  ' _ "$target"
+
+  echo "t3fork: restarting T3 Code"
+  # shellcheck disable=SC2086
+  kill -TERM $pids 2>/dev/null || true
+}
+
+cd "$repo"
+
+case "${1:-}" in
+  update)
+    git fetch upstream main
+    git switch "$branch"
+    # A rebase keeps the fork as "upstream plus N patches", which is what makes
+    # the next one cheap. Never merge: a merge buries our commits in history and
+    # every later conflict has to be re-solved.
+    if ! git rebase upstream/main; then
+      echo
+      echo "t3fork: conflicts — fix them, then:"
+      echo "  git add <files> && git rebase --continue"
+      echo "  git rebase --abort   # to back out"
+      echo
+      echo "If upstream has merged one of our patches, drop it:"
+      echo "  git rebase --skip"
+      exit 1
+    fi
+    git --no-pager log --oneline upstream/main.."$branch"
+    ;;
+
+  install)
+    restart=ask
+    for flag in "${@:2}"; do
+      case "$flag" in
+        -y|--yes) restart=yes ;;
+        -n|--no-restart) restart=no ;;
+        *) echo "t3fork: unknown flag $flag" >&2; exit 1 ;;
+      esac
+    done
+
+    # Resolve vp rather than trusting PATH. The point of this script is to be
+    # runnable from inside T3 Code, and an agent shell there replays a snapshot
+    # captured before ~/.vite-plus was ever on PATH — so `command -v vp` fails
+    # in the one context that matters most. Its own install location is stable,
+    # so ask PATH first and fall back to it.
+    vp="$(command -v vp || true)"
+    [[ -n "$vp" ]] || vp="$HOME/.vite-plus/bin/vp"
+    [[ -x "$vp" ]] || { echo "t3fork: vp not found (curl -fsSL https://vite.plus | bash)" >&2; exit 1; }
+    "$vp" i
+
+    # Version carries the commit so two builds are never confused for each
+    # other; the fork tag also keeps it sorting below upstream's nightlies.
+    version="$(node -p "require('./apps/desktop/package.json').version")-$branch.$(git rev-parse --short HEAD)"
+
+    # Clear the output dir rather than predicting electron-builder's file name:
+    # whatever single AppImage is left afterwards is this build's.
+    rm -f release/*.AppImage
+    "$vp" run dist:desktop:artifact --platform linux --target AppImage --arch x64 --build-version "$version"
+
+    built="$(echo release/*.AppImage)"
+    [[ -f "$built" ]] || { echo "t3fork: build produced no AppImage" >&2; exit 1; }
+
+    # Safe while T3 Code is running: install(1) creates a new file, so the
+    # mounted AppImage keeps its own inode until the app is restarted.
+    install -Dm755 "$built" "$target"
+    echo "t3fork: installed $version -> $target"
+
+    # Asking needs someone to answer: run from an agent or a hook there is no
+    # terminal, and a `read` there would either block forever or read the
+    # build's own output. So no tty means no restart unless -y said so.
+    if [[ "$restart" == ask ]]; then
+      if [[ -t 0 ]]; then
+        read -r -p "Restart T3 Code onto it now? [y/N] " reply
+        [[ "$reply" =~ ^[Yy]$ ]] && restart=yes || restart=no
+      else
+        echo "t3fork: not a terminal; leaving the running app alone (pass -y to restart)"
+        restart=no
+      fi
+    fi
+    [[ "$restart" == yes ]] && restart_app
+    ;;
+
+  *)
+    sed -n '2,9p' "$0" | sed 's/^# \?//'
+    exit 1
+    ;;
+esac

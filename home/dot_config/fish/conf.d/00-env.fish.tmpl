@@ -26,6 +26,10 @@ end
 test -f $HOME/.cargo/env.fish; and source $HOME/.cargo/env.fish
 test -d $HOME/.cargo/bin; and fish_add_path --path $HOME/.cargo/bin
 
+# Vite+ (t3code's build toolchain). Its installer drops an unmanaged
+# conf.d/vite-plus.fish; this line replaces it so chezmoi owns the PATH entry.
+test -f $HOME/.vite-plus/env.fish; and source $HOME/.vite-plus/env.fish
+
 # Lazy docker, zoxide, ...
 fish_add_path --path $HOME/.local/bin
 
