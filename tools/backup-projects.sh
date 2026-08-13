@@ -246,6 +246,24 @@ push_to_backup_repo() {
         gh repo clone "$slug" "$BACKUP_REPO_DIR" -- -q 2>/dev/null
     fi
 
+    # Catch up before committing, or a backup pushed from another machine makes
+    # this one unpushable: the archive has one name, so both sides commit over
+    # the same file and the push is rejected for a divergence no merge could
+    # ever resolve. `do_restore` already pulls; this is the same need.
+    #
+    # A hard reset is the right shape here and not a data risk. Every commit in
+    # this repo is a full snapshot under one filename, so history has no branch
+    # worth keeping: the only thing discarded is a local snapshot that failed to
+    # push, which the archive about to be committed supersedes anyway. It stays
+    # reachable through the reflog regardless.
+    if git -C "$BACKUP_REPO_DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
+        if git -C "$BACKUP_REPO_DIR" fetch -q origin 2>/dev/null; then
+            git -C "$BACKUP_REPO_DIR" reset -q --hard origin/HEAD 2>/dev/null || true
+        else
+            print_warning "Could not reach the backup repo — committing on what is here"
+        fi
+    fi
+
     cp "$archive" "$BACKUP_REPO_DIR/$ARCHIVE_NAME"
     git -C "$BACKUP_REPO_DIR" add "$ARCHIVE_NAME"
     if git -C "$BACKUP_REPO_DIR" diff --cached --quiet; then
