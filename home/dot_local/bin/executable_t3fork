@@ -2,7 +2,8 @@
 # Maintain the local T3 Code fork: rebase our patches onto upstream, then
 # build and install the AppImage over the one the desktop entry points at.
 #
-#   t3fork update       fetch upstream and rebase the fork branch onto it
+#   t3fork update       take in origin, rebase the fork branch onto upstream,
+#                       then offer to publish it (force-with-lease, asks first)
 #   t3fork install      build a Linux AppImage and replace the installed one,
 #                       then offer to restart T3 Code onto it
 #     -y, --yes         restart without asking (for unattended runs)
@@ -91,37 +92,278 @@ restart_app() {
 
 cd "$repo"
 
-# Tell `dots update`'s fork check how this fork is brought up to date, so its
-# report names the command that does the whole job rather than a bare rebase
-# that would leave the installed AppImage untouched. Written on every run: the
-# key lives in this checkout's .git/config, which no backup and no clone
-# carries, so re-asserting it is what makes it survive a fresh checkout.
-register_fork_command() {
+# Tell `dots update`'s fork check what this fork is, so its report names the
+# command that does the whole job rather than a bare rebase that would leave the
+# installed AppImage untouched — and measures the drift against the branch that
+# actually carries our patches rather than whatever is checked out.
+#
+# The keys live in this checkout's .git/config, which no backup and no clone
+# carries, so re-asserting them is what makes them survive a fresh checkout.
+register_fork_config() {
   git config dotfiles.forkUpdate "t3fork update && t3fork install"
+  git config dotfiles.forkBranch "$branch"
+}
+
+# Outside the case, and non-fatal, deliberately. Registering only in `update`
+# made the keys unreachable in practice: they exist to tell you which command to
+# run *before* you have run it, so the command they name cannot be the only one
+# that writes them — the very first `dots update` after they landed reported a
+# bare `git rebase`, since no `t3fork update` had run in between. Every
+# subcommand asserts them now, and failing to write one costs a degraded report
+# line, never the run the user actually asked for.
+register_fork_config || true
+
+# A rebase that stopped on a conflict leaves HEAD detached partway through the
+# replay, and *nothing else here notices*: the branch ref is only moved when the
+# rebase completes, so `moinax` still points at its old tip and every count taken
+# from it — `dots update`'s fork report included — reads exactly as it did before
+# the attempt. So each subcommand has to ask.
+#
+# `--path-format=absolute` rather than bare `--git-path`, which answers relative
+# to the repo. This script `cd`s there first so both forms happen to work today,
+# and that is exactly why the absolute one is written down — the relative answer
+# is right only for as long as nobody moves this call.
+rebase_in_progress() {
+  local dir
+  for dir in rebase-merge rebase-apply; do
+    [[ -e "$(git rev-parse --path-format=absolute --git-path "$dir")" ]] && return 0
+  done
+  return 1
+}
+
+# Both subcommands refuse on a half-finished rebase, differing only in the
+# sentence that says why — so that sentence is the argument and the rest is
+# shared. Writes to stderr: every caller is refusing to do what was asked.
+refuse_if_rebasing() {
+  rebase_in_progress || return 0
+  echo "t3fork: $1" >&2
+  say_how_to_finish >&2
+  exit 1
+}
+
+# Said in one place because both callers need the same three ways out, and a
+# half-finished rebase is the one state where the advice is identical whatever
+# you were trying to do.
+say_how_to_finish() {
+  echo "  git add <files> && git rebase --continue"
+  echo "  git rebase --abort   # to back out"
+  echo "  git rebase --skip    # if upstream merged that patch already"
+  echo
+  echo "Then: t3fork install   # nothing has rebuilt the AppImage yet"
+}
+
+origin_seen=""   # the origin fetch below succeeded
+origin_sha=""    # what origin/$branch held at that moment ("" = no such branch)
+
+# Take in whatever another machine pushed, before rebasing anything onto it.
+#
+# Same rule `dots backup create` enforces on the archive, and for the same
+# reason: this fork may only move forward. Rebasing from a checkout that is
+# behind produces a branch missing the other machine's commits, and the
+# force-push that eventually follows would delete them — a loss that leaves no
+# trace anywhere, since the push succeeds and the branch looks healthy.
+#
+# The obvious test for it is wrong. A branch rebased here and not yet pushed has
+# *already* diverged from origin by construction, so refusing on divergence
+# would block every update for anyone who does not push after each one. What
+# actually matters is whether origin carries commits this checkout does not, and
+# `git cherry` answers that by patch-id: a locally rewritten commit still counts
+# as present, a genuinely new one from elsewhere comes back `+`. Verified across
+# all three states — rewritten-only (0), rewritten plus a foreign commit (1),
+# plainly behind (fast-forwards).
+#
+# A missing origin, or a fetch that fails offline, is a warning and not a stop:
+# the `git fetch upstream` on the next line has to work anyway for this command
+# to do anything at all, so it is that one's job to end an offline run.
+sync_with_origin() {
+  git remote get-url origin >/dev/null 2>&1 || {
+    echo "t3fork: no origin remote — skipping the check for other machines' work" >&2
+    return 0
+  }
+  # Explicit refspec: this must update refs/remotes/origin/<branch>, which is
+  # what every comparison below reads, and what makes a later --force-with-lease
+  # lease against something observed rather than something remembered.
+  #
+  # `origin_sha` is what origin held at the one moment we actually looked, and
+  # offer_push leases against it rather than re-reading `origin/$branch` later:
+  # the two are the same today and would stop being the same the first time
+  # anything else in this script fetches.
+  if git fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null; then
+    origin_seen=1
+    origin_sha=$(git rev-parse --verify --quiet "origin/$branch") || origin_sha=""
+  else
+    # One probe answers all three reasons a fetch can fail here, through its exit
+    # status: 0 the branch is there, 2 the remote answers but has no such branch,
+    # anything else unreachable (verified — 128 for both a missing repo and a
+    # dead host). Asking "does origin answer?" separately first was the same
+    # question twice, at the price of a second round trip.
+    #
+    # Only status 2 may claim to have observed origin. Saying so anywhere else is
+    # what makes everything below wrong at once: the comparison would run against
+    # whatever stale `refs/remotes/origin/$branch` an earlier fetch left behind,
+    # and offer_push would announce a published branch as never pushed and offer
+    # a plain `push -u` for it.
+    local rc=0
+    git ls-remote --quiet --heads --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || rc=$?
+    case $rc in
+      0) echo "t3fork: could not read origin/$branch — continuing without it" >&2 ;;
+      2) # Reachable, and the branch really is not on it yet — the state that
+         # leaves offer_push a plain `push -u` to offer. Telling it apart from
+         # unreachable is what keeps a never-pushed branch from falling through
+         # with no offer at all.
+         origin_seen=1
+         echo "t3fork: $branch is not on origin yet" ;;
+      *) echo "t3fork: could not reach origin — continuing without it" >&2 ;;
+    esac
+    # Every arm stops here. There is nothing on origin to take in, and a
+    # `refs/remotes/origin/$branch` left over from before must not be compared
+    # against as though it were current.
+    return 0
+  fi
+  # From the variable, not a second rev-parse: origin_sha *is* the record of what
+  # was observed, which is the point of capturing it above.
+  [[ -n "$origin_sha" ]] || return 0
+
+  if git merge-base --is-ancestor "$branch" "origin/$branch"; then
+    # Behind, or level. Nothing local is at risk, so take it in silently — but
+    # a fast-forward still touches the working tree, so uncommitted changes over
+    # one of the incoming files stop it. Under `set -e` that ended the run on
+    # git's own message and none of ours, the same way `git switch` did before
+    # the rebase guard above.
+    git merge --ff-only "origin/$branch" || {
+      echo "t3fork: cannot fast-forward to origin/$branch — uncommitted changes are in the way." >&2
+      echo "t3fork: commit or stash them, then re-run: t3fork update" >&2
+      exit 1
+    }
+    return 0
+  fi
+
+  local foreign
+  foreign=$(git cherry "$branch" "origin/$branch" | grep -c '^+' || true)
+  [ "$foreign" -eq 0 ] || {
+    echo "t3fork: origin/$branch carries $foreign commit(s) this checkout does not have." >&2
+    echo "t3fork: another machine pushed work here. Rebasing now would drop it, and" >&2
+    echo "        the force-push afterwards would delete it for good. Take it first:" >&2
+    echo "  git rebase origin/$branch          # replay our patches on top of theirs" >&2
+    echo "  git reset --hard origin/$branch    # or throw ours away, if they were pushed" >&2
+    echo "Then re-run: t3fork update" >&2
+    exit 1
+  }
+}
+
+# Publish the rebased branch — offered, never done on its own.
+#
+# A rebase rewrites a branch that is already on GitHub, so the only way to put
+# origin back in step is a force-push. That is safe *here specifically* and
+# nowhere else in this script: sync_with_origin fetched seconds ago and refused
+# to go on if origin held anything this checkout lacked, so what the push
+# overwrites is patch-equivalent to what we hold. The lease closes the only
+# window left — someone pushing between that fetch and this push makes the
+# command fail rather than silently win.
+#
+# Not automatic, and the reason is not technical. `t3fork update` is the command
+# `dots update`'s fork report names, so a routine maintenance line would turn
+# into "rewrite the history of a published branch" with nobody having agreed to
+# that. The failure modes settle it: not pushing costs an origin that lags and
+# that the next run takes in without losing anything, while pushing wrongly
+# rewrites a remote.
+#
+# So it asks where there is somebody to ask, and prints the command everywhere
+# else — the same `[ -t 0 ]` reasoning as install's restart prompt, and the same
+# default of no.
+offer_push() {
+  [[ -n "$origin_seen" ]] || return 0
+
+  local head
+  head="$(git rev-parse "$branch")"
+  [[ "$head" != "$origin_sha" ]] || return 0
+
+  local -a push
+  local state
+  if [[ -n "$origin_sha" ]]; then
+    # <refname>:<expect>, refname being the ref *on the remote*. Pinning the sha
+    # rather than the bare --force-with-lease matters: the bare form leases
+    # against the local remote-tracking ref, which any later fetch in this
+    # process would quietly move underneath it.
+    push=(git push "--force-with-lease=$branch:$origin_sha" origin "$branch")
+    state="$branch has been rewritten — origin is still at ${origin_sha:0:8}"
+  else
+    # Never pushed: nothing there to overwrite, so no lease, and -u is what gives
+    # the branch an upstream for every later comparison.
+    push=(git push -u origin "$branch")
+    state="$branch has never been pushed"
+  fi
+
+  echo
+  echo "t3fork: $state"
+
+  # No terminal leaves the reply empty, which is the same answer as declining —
+  # same outcome, same next step, only the reason differs. That is what lets one
+  # branch below serve both.
+  local reply=""
+  if [[ -t 0 ]]; then
+    read -r -p "Push it to origin now? [y/N] " reply || reply=""
+  fi
+  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+    if [[ -t 0 ]]; then
+      echo "t3fork: left alone. To publish it later:"
+    else
+      echo "t3fork: not a terminal; leaving origin alone. To publish it:"
+    fi
+    printf '  %s\n' "${push[*]}"
+    return 0
+  fi
+
+  # Never fatal: the rebase succeeded and the build is still worth doing, so a
+  # rejected lease costs the push and says why, rather than taking the run with
+  # it. A rejection here means somebody pushed in the last few seconds — the one
+  # case this whole mechanism exists to catch.
+  "${push[@]}" || {
+    echo "t3fork: push refused — origin moved since we looked. Re-run: t3fork update" >&2
+    return 0
+  }
 }
 
 case "${1:-}" in
   update)
-    register_fork_command
-    git fetch upstream main
+    # Ahead of the fetch, so the answer comes before several seconds of network.
+    # Without this the run died on `git switch` instead — `fatal: cannot switch
+    # branch while rebasing`, git's message and none of ours, on the one path
+    # where the user most needs telling what to do next.
+    refuse_if_rebasing "a rebase is already in progress here — finish it first:"
+
     git switch "$branch"
+    sync_with_origin
+    git fetch upstream main
     # A rebase keeps the fork as "upstream plus N patches", which is what makes
     # the next one cheap. Never merge: a merge buries our commits in history and
     # every later conflict has to be re-solved.
     if ! git rebase upstream/main; then
       echo
       echo "t3fork: conflicts — fix them, then:"
-      echo "  git add <files> && git rebase --continue"
-      echo "  git rebase --abort   # to back out"
-      echo
-      echo "If upstream has merged one of our patches, drop it:"
-      echo "  git rebase --skip"
+      # Ending on the install is the point. The command this is half of is
+      # `t3fork update && t3fork install`, and exiting non-zero here is what
+      # stops the second half — correctly, since there is nothing coherent to
+      # build yet. But finishing the rebase by hand does not bring it back, so
+      # without this line you end up rebased and still running the old build.
+      say_how_to_finish
       exit 1
     fi
     git --no-pager log --oneline upstream/main.."$branch"
+    offer_push
     ;;
 
   install)
+    # The `&&` in `t3fork update && t3fork install` already stops the chained
+    # case, so this is for the run started by hand — which is the dangerous one.
+    # Mid-rebase, HEAD is a partially replayed tree, and nothing downstream would
+    # have said so: the build succeeds, the version string still reads
+    # `…-moinax.<sha>` because the branch name is this script's variable rather
+    # than anything git was asked, and the AppImage is installed over the working
+    # one. A build that lies about which branch it is, from a state that exists
+    # for the length of a conflict.
+    refuse_if_rebasing "a rebase is in progress — refusing to build a half-rebased tree. Finish it:"
+
     restart=ask
     for flag in "${@:2}"; do
       case "$flag" in
@@ -133,12 +375,27 @@ case "${1:-}" in
 
     # Resolve vp rather than trusting PATH. The point of this script is to be
     # runnable from inside T3 Code, and an agent shell there replays a snapshot
-    # captured before ~/.vite-plus was ever on PATH — so `command -v vp` fails
-    # in the one context that matters most. Its own install location is stable,
-    # so ask PATH first and fall back to it.
-    vp="$(command -v vp || true)"
-    [[ -n "$vp" ]] || vp="$HOME/.vite-plus/bin/vp"
-    [[ -x "$vp" ]] || { echo "t3fork: vp not found (curl -fsSL https://vite.plus | bash)" >&2; exit 1; }
+    # captured before either install location was ever on PATH — so `command -v
+    # vp` fails in the one context that matters most. Both locations are stable,
+    # so ask PATH first and fall back to them in turn.
+    #
+    # The fnm alias path comes first because that is where the dotfiles put it:
+    # development.yaml declares vite-plus as a global npm package. `~/.vite-plus`
+    # stays as the second fallback for a machine that took the curl installer
+    # before the entry existed. Never the per-shell /run/user/*/fnm_multishells
+    # path — it does not survive a node upgrade.
+    for vp in \
+      "$(command -v vp || true)" \
+      "$HOME/.local/share/fnm/aliases/default/bin/vp" \
+      "$HOME/.vite-plus/bin/vp"
+    do
+      if [[ -x "$vp" ]]; then break; fi
+    done
+    [[ -x "$vp" ]] || {
+      echo "t3fork: vp not found — 'dots packages sync' installs it, or:" >&2
+      echo "  npm install -g vite-plus" >&2
+      exit 1
+    }
     "$vp" i
 
     # Version carries the commit so two builds are never confused for each
@@ -170,7 +427,13 @@ case "${1:-}" in
         restart=no
       fi
     fi
-    [[ "$restart" == yes ]] && restart_app
+    # `if`, not `[[ … ]] && restart_app`: that list is the last command of the
+    # case, so declining the restart (or passing -n) made the whole script exit
+    # 1 — a successful install reported as a failure to anything chaining off
+    # `t3fork install`, which is exactly how this is meant to be run.
+    if [[ "$restart" == yes ]]; then
+      restart_app
+    fi
     ;;
 
   restart)

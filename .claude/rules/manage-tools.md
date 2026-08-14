@@ -79,6 +79,79 @@ rebuild and reinstall an AppImage, which only `t3fork` knows) — and because a
 table of fork→command in the dotfiles is the t3code-specific coupling this was
 built to avoid. Without the key it falls back to a plain `git rebase`.
 
+**Which branch to measure is the fork's answer too**, `dotfiles.forkBranch`,
+falling back to `HEAD`. `HEAD` alone is right only for a fork whose trunk *is* its
+patch branch: a fork maintained by rebasing one branch leaves every other branch
+stale on purpose, so counting whatever happens to be checked out measures a branch
+nobody maintains. t3code sat on a five-month-old `main` and was reported 1456
+behind when its actual patch branch was 35 — a number that looks like a finding and
+is about the wrong thing.
+
+**Two states are reported instead of counted**: a rebase stopped on a conflict, and
+a declared branch missing from the checkout (what a clone of the wrong fork looks
+like — that same t3code had `origin` on a different fork of the same upstream). Both
+are read from local files, before the fetch, because a fork stuck in either is stuck
+until somebody acts, which means paying that fetch on every run forever. The rebase
+one matters most because it is invisible: git moves the branch ref only when the
+rebase *completes*, so the count comes out identical and the fork reads exactly as it
+did. In both, the thing to avoid is a plausible number.
+
+Use `rev-parse --path-format=absolute --git-path` to find the rebase, never the bare
+form — it answers relative to the repo, so a walk running from wherever `dots update`
+was started tests a path under the *caller's* cwd and finds no rebase anywhere, ever.
+
+Rows carry the repo path rather than its name, so the reporter can build the
+`git -C <repo> rebase --continue` line itself, and every row still names the fork's
+own command. Naming it on the rebase row is not redundant: once the rebase finishes
+the drift is zero and the fork drops out of the report entirely, so that is the last
+chance to say the AppImage still needs rebuilding.
+
+`t3fork` refuses on the same state from both ends (`refuse_if_rebasing`). `install`
+is the one that matters: the `&&` in `t3fork update && t3fork install` only guards
+the chained form, and a hand-run `install` mid-rebase builds the partially replayed
+tree, stamps it `…-moinax.<sha>` — the branch name is the script's variable, not
+something git was asked — and installs it over the working AppImage.
+
+**`update` takes in origin before rebasing** (`sync_with_origin`) — `dots backup
+create`'s rule applied to a fork: it may only move forward. Rebasing from a checkout
+that is behind produces a branch missing another machine's commits, and the
+force-push that follows deletes them while the push succeeds and the branch looks
+healthy. Behind or level fast-forwards; anything else is judged by **`git cherry`,
+not by divergence**, and that is the whole feature — a branch rebased here and not
+yet pushed has already diverged by construction, so refusing on divergence would
+block every update for anyone who does not push each time. `git cherry` asks the
+question that matters, by patch-id: a locally rewritten commit counts as present, a
+genuinely foreign one comes back `+`.
+
+The fetch uses an explicit refspec so `refs/remotes/origin/<branch>` really is
+updated. When it fails, one `ls-remote --heads --exit-code` sorts the three reasons
+by exit status (0 there, 2 reachable-but-absent, else unreachable) and **only status
+2 may claim origin was observed** — saying so anywhere else makes the comparison run
+against a stale tracking ref and has `offer_push` announce a published branch as
+never pushed.
+
+**Publishing is offered, never done on its own** (`offer_push`). The force-push is
+safe *here specifically*: `sync_with_origin` fetched seconds earlier and refused to
+continue if origin held anything this checkout lacked, so what it overwrites is
+patch-equivalent to what we hold. The lease pins the observed sha
+(`--force-with-lease=<branch>:<sha>`) rather than the bare form, which leases against
+the local tracking ref — a ref any later fetch in the same process would move
+underneath it. Verified: a deliberately stale sha is rejected and the other machine's
+commit survives.
+
+Automatic was rejected for a reason that is not technical. `t3fork update` is the
+command the fork report *names*, so auto-pushing would turn a line of a routine
+maintenance report into rewriting a published branch with nobody having agreed to it.
+The failure modes settle it: not pushing costs an origin that lags and that the next
+run takes in losing nothing, while pushing wrongly rewrites a remote.
+
+**The keys are written by every `t3fork` invocation, not just `update`.** They lived
+in the `update` branch first, which made them unreachable in practice — they exist
+to tell you which command to run *before* you have run it, so the command they name
+cannot be the only thing that writes them. The first `dots update` after they landed
+printed a bare `git rebase` for exactly that reason. The write is non-fatal: losing
+it costs a degraded report line, never the run the user asked for.
+
 Both the `upstream` remote and the key live in the fork's `.git/config`, which
 a restore used to drop on the floor — see the sidecar manifests under
 `dots backup` below, which is what now carries them back.
@@ -523,10 +596,19 @@ Re-adding is additive by construction — `git remote add` on an existing name f
 changes nothing — which is why extras are applied to repos that are *already on disk*
 too. That is the repair path for a machine restored before this manifest existed.
 
+**Additive means a *wrong* remote is never repaired, only a missing one.** A restore
+re-clones only the repos that are absent; for one already on disk it can add the
+`upstream` it lacks but cannot notice that its `origin` points somewhere else
+entirely. t3code sat on a clone of a different fork of the same upstream for exactly
+this reason, and no number of restores was ever going to move it — that is a
+`git remote set-url` by hand. Worth saying out loud when someone expects a restore to
+have fixed a remote.
+
 Per-repo `dotfiles.*` config keys are deliberately **not** carried. `t3fork` re-asserts
-its own `dotfiles.forkUpdate` on every run instead, which self-heals after any loss
-rather than only after a restore — and losing it costs one degraded suggestion line
-(`fork_drift` falls back to a plain `git rebase`), not a silent failure.
+its own `dotfiles.forkUpdate` and `dotfiles.forkBranch` on every run instead, which
+self-heals after any loss rather than only after a restore — and losing them costs one
+degraded suggestion line (`fork_drift` falls back to a plain `git rebase` against
+`HEAD`), not a silent failure.
 
 ## `dots apps` — `tools/manage-external-apps.py`
 

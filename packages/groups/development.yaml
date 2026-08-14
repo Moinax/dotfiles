@@ -46,6 +46,7 @@ descriptions:
   herdr: Agent multiplexer — one terminal for all coding agents
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
+  vite-plus: Vite+ build toolchain (`vp`, npm vite-plus)
   ccstatusline: Claude Code status line with flat Catppuccin-matched theme
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
@@ -101,6 +102,24 @@ custom_install:
     binary: herdr
     source: herdrdev/herdr
     updated_by: self
+  # vite-plus — the Vite+ toolchain (`vp`). Declared so a development machine
+  # gets it from `dots packages sync` and has it tracked by `dots update`, rather
+  # than each consumer hand-installing it: `t3fork install` needs it to build the
+  # T3 Code fork's AppImage and stops on its own guard without it, which is how a
+  # machine ended up with that fork checked out and no way to build it.
+  #
+  # The npm package rather than `curl https://vite.plus | bash` — same toolchain,
+  # the tarball ships bin/vp — because npm is the install path this file's other
+  # JS entries already use, and the one `dots update` can read a version out of
+  # (`npm outdated -g`, already fetched once per run) with no extra round trip.
+  # Note the Node-bump repair does *not* depend on this entry: it reads the
+  # globals installed under the version being left, not the yaml.
+  - name: vite-plus
+    check: command -v vp
+    install: npm install -g vite-plus
+    requires: npm
+    binary: vp
+    npm: vite-plus
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash

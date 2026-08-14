@@ -737,7 +737,8 @@ update_tools() {
 
 # ── Phase 5: forks ───────────────────────────────────────────────────────────
 
-# Emits `repo<TAB>behind<TAB>command` for every fork upstream has moved past.
+# Emits `repo<TAB>branch<TAB>behind<TAB>command` for every fork upstream has
+# moved past, `behind` being `-` when the fork's own branch is missing here.
 #
 # The `upstream` remote *is* the registry. A checkout that has one is a fork of
 # something, so nothing has to be declared here for the next one to be picked up
@@ -759,9 +760,51 @@ fork_drift() {
     root="$(dev-projects root 2>/dev/null)" || root="$HOME/Projects"
     [ -d "$root" ] || return 0
 
-    local repo candidate ref behind cmd
+    local repo candidate ref tip behind cmd
     while IFS= read -r repo; do
         git -C "$repo" remote get-url upstream >/dev/null 2>&1 || continue
+
+        # Both of the fork's own answers, read once, before anything reaches the
+        # network. Which branch carries its patches, and what brings it up to
+        # date — the same two keys `t3fork` writes on every run.
+        #
+        # `HEAD` is only a sane default for the branch: a fork maintained by
+        # rebasing one branch leaves every other branch stale on purpose, so
+        # counting whatever happens to be checked out measures a branch nobody
+        # maintains. t3code sat on a `main` five months old and was reported 1456
+        # behind — a number about a branch `t3fork` never touches. The command
+        # has no default this early, because the only one worth printing names
+        # the upstream ref, which the fetch below has not resolved yet.
+        tip=$(git -C "$repo" config --get dotfiles.forkBranch) || tip=""
+        [ -n "$tip" ] || tip=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null) || tip="HEAD"
+        cmd=$(git -C "$repo" config --get dotfiles.forkUpdate) || cmd=""
+
+        # The two states this cannot measure, both answered from local files, so
+        # neither pays for the fetch below — a fork stuck in either of them is
+        # stuck until somebody acts, which means paying it on *every* run.
+        #
+        # A rebase stopped on a conflict is the subtler one. Git only moves the
+        # branch ref when the rebase *completes*, so the tip still points where
+        # it did before the attempt and the count comes out identical: the fork
+        # would be reported exactly as it was, next to a command that now refuses
+        # to run, with nothing saying the working tree is sitting in conflict.
+        # The missing branch is the same failure by another route. In both, what
+        # has to be avoided is a plausible number.
+        #
+        # `--path-format=absolute` is load-bearing: --git-path alone answers
+        # relative to the repo (".git/rebase-merge"), and this walk runs from
+        # wherever `dots update` was started, so the plain form tested a path
+        # under the *caller's* cwd and never found one. It read as "no rebase
+        # here" for every fork on the machine.
+        if [ -e "$(git -C "$repo" rev-parse --path-format=absolute --git-path rebase-merge 2>/dev/null)" ] \
+        || [ -e "$(git -C "$repo" rev-parse --path-format=absolute --git-path rebase-apply 2>/dev/null)" ]; then
+            printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "rebase" "$cmd"
+            continue
+        fi
+        if ! git -C "$repo" rev-parse --verify --quiet "$tip" >/dev/null 2>&1; then
+            printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "-" "$cmd"
+            continue
+        fi
 
         # Offline, or an upstream that has gone away. Neither is worth a warning
         # on a sync that has otherwise succeeded, so the fork is simply skipped
@@ -784,12 +827,13 @@ fork_drift() {
         done
         [ -n "$ref" ] || continue
 
-        behind=$(git -C "$repo" rev-list --count "HEAD..$ref" 2>/dev/null) || continue
+        behind=$(git -C "$repo" rev-list --count "$tip..$ref" 2>/dev/null) || continue
         [ "$behind" -gt 0 ] || continue
 
-        cmd=$(git -C "$repo" config --get --default "git -C $repo rebase $ref" dotfiles.forkUpdate)
-
-        printf '%s\t%s\t%s\n' "${repo##*/}" "$behind" "$cmd"
+        # Only here is there an upstream ref to name, which is why this is the
+        # one row kind that can fall back to a plain rebase.
+        printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "$behind" \
+            "${cmd:-git -C $repo rebase $ref}"
     # `-type d` keeps linked worktrees out: they share the main checkout's
     # remotes, so each would report the same drift again under its own name.
     # `-printf %h` and the sort match backup-projects.sh's walk of the same
@@ -857,11 +901,31 @@ report_fork_drift() {
     [ -n "$drift" ] || return 0
 
     print_header "Forks"
-    local name behind cmd
-    while IFS=$'\t' read -r name behind cmd; do
-        print_warning "$name: upstream is $behind commit(s) ahead"
-        print_info "  $cmd"
+    # The rows carry the repo path, not its name: two of the three kinds need a
+    # `git -C` command built for them here, and the name is one expansion away.
+    local repo branch behind cmd
+    while IFS=$'\t' read -r repo branch behind cmd; do
+        case "$behind" in
+            rebase)
+                print_warning "${repo##*/} ($branch): a rebase is in progress — drift not measured"
+                print_info "  Its branch still points where it did before, so any count"
+                print_info "  here would read as though nothing had been attempted."
+                print_info "  git -C $repo rebase --continue    # or --abort to back out"
+                ;;
+            -)
+                print_warning "${repo##*/}: no '$branch' branch in this checkout"
+                print_info "  Its patches live there — check 'git remote -v', this is"
+                print_info "  what a clone of the wrong fork looks like."
+                ;;
+            *)  print_warning "${repo##*/} ($branch): upstream is $behind commit(s) ahead" ;;
+        esac
+        # Named after the way out, not instead of it: finishing a rebase by hand
+        # leaves whatever the fork's command also does — a rebuilt AppImage, for
+        # t3code — undone, and once the rebase completes the drift is zero and
+        # this fork drops out of the report entirely without ever saying so.
+        [ -n "$cmd" ] && print_info "  $cmd"
     done <<<"$drift"
+    return 0
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
