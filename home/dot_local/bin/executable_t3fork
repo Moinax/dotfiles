@@ -338,15 +338,32 @@ case "${1:-}" in
     # A rebase keeps the fork as "upstream plus N patches", which is what makes
     # the next one cheap. Never merge: a merge buries our commits in history and
     # every later conflict has to be re-solved.
-    if ! git rebase upstream/main; then
+    #
+    # `--autostash` because the other half of this command dirties the tree:
+    # `t3fork install` runs `vp i`, and pnpm rewrites pnpm-lock.yaml with
+    # registry metadata. So a plain rebase refused to start on the *next* update,
+    # every cycle, over a file the tool itself had touched. Autostash restores it
+    # afterwards, so nothing is lost — and unlike the dotfiles' own pull, there is
+    # no review in progress here for it to stash out from under.
+    if ! git rebase --autostash upstream/main; then
       echo
-      echo "t3fork: conflicts — fix them, then:"
-      # Ending on the install is the point. The command this is half of is
-      # `t3fork update && t3fork install`, and exiting non-zero here is what
-      # stops the second half — correctly, since there is nothing coherent to
-      # build yet. But finishing the rebase by hand does not bring it back, so
-      # without this line you end up rebased and still running the old build.
-      say_how_to_finish
+      # A rebase that stopped on a conflict and one git refused to start are not
+      # the same state, and only the first can be continued. Saying "conflicts"
+      # for both is how this command answered a dirty tree with `--continue`,
+      # `--abort` and `--skip` — three commands that had nothing to act on.
+      if rebase_in_progress; then
+        echo "t3fork: conflicts — fix them, then:"
+        # Ending on the install is the point. The command this is half of is
+        # `t3fork update && t3fork install`, and exiting non-zero here is what
+        # stops the second half — correctly, since there is nothing coherent to
+        # build yet. But finishing the rebase by hand does not bring it back, so
+        # without this line you end up rebased and still running the old build.
+        say_how_to_finish
+      else
+        echo "t3fork: the rebase never started — git refused it, for the reason above."
+        echo "t3fork: nothing here has changed. Clear it, then re-run:"
+        echo "  t3fork update"
+      fi
       exit 1
     fi
     git --no-pager log --oneline upstream/main.."$branch"
