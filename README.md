@@ -1,3 +1,5 @@
+<img src="assets/icon.svg" alt="" width="120" align="right">
+
 # Dotfiles
 
 Personal dotfiles for [CachyOS](https://cachyos.org/) (Arch-based) with optional Hyprland desktop support.
