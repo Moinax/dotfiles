@@ -35,7 +35,7 @@ DISTRO=$(detect_distro)
 DISTRO_FAMILY=$(get_distro_family "$DISTRO")
 load_distro_lib || exit 1
 
-# Filled by pull_repo / resolve_base, read by the phases after them.
+# Filled by resolve_base, read by the phases after it.
 BASE_COMMIT=""        # what this machine last agreed with; "" = no delta known
 CHANGED_FILES=()      # BASE_COMMIT..HEAD, empty when BASE_COMMIT is ""
 # A package left behind is tracked by mark_sync_shortfall/sync_shortfall in
@@ -47,6 +47,19 @@ CHANGED_FILES=()      # BASE_COMMIT..HEAD, empty when BASE_COMMIT is ""
 # Pull, but never at the cost of uncommitted work. The dotfiles are reviewed
 # with hunk, which watches *unstaged* changes — silently stashing them out from
 # under a review in progress is not a reasonable default, so a dirty tree asks.
+#
+# **This is not part of the sync, and that separation is the point.** Bash parses
+# a script before running it, so while the pull lived here every function in this
+# file was the pre-pull one: a run that fetched a fix to `dots update` went on
+# applying the old behaviour anyway, and the fix landed one run late. Not an
+# academic cost — `python-pyqt6-webengine` was offered for *removal*, and
+# removed, by the pre-pull walk that could not yet see a `requires_packages`, in
+# the very run that pulled the commit teaching it to. Every other phase can be
+# re-run; a removal cannot.
+#
+# `dots` therefore runs `sync-machine.sh pull`, waits for it to exit, and only
+# then starts the sync — so everything the sync does is post-pull by
+# construction, with no marker, no restart and no list of which paths matter.
 pull_repo() {
     print_header "Repository"
 
@@ -79,6 +92,7 @@ pull_repo() {
     else
         print_warning "Pull failed — continuing with the checkout as it is"
     fi
+    return 0
 }
 
 # Where to diff from. A missing or unreachable anchor is not an error: it just
@@ -859,7 +873,7 @@ do_sync() {
         return 1
     fi
 
-    pull_repo
+    # No pull here — `dots` runs it as its own process first, see pull_repo.
     resolve_base
     reconcile_group_flags
     # Before sync_packages, and independent of the anchor — see the function.
@@ -912,7 +926,9 @@ in the projects tree that upstream has moved past, and any backup another
 machine pushed that this one has not restored.
 
 Commands:
-  (none)      Run the full sync
+  (none)      Run the full sync — assumes 'dots' already ran the pull below
+  pull        Only pull the repo. Its own step so the sync always runs on the
+              code the pull brought in; 'dots update' does this for you
   tools       Only refresh curl/npm/cargo tools and apps (see 'dots update tools help')
   help        Show this help message
 EOF
@@ -920,6 +936,9 @@ EOF
 
 case "${1:-}" in
     ""|sync)        do_sync ;;
+    # Its own run, so that the sync below always starts on the code the pull
+    # brought in. `dots` calls this first; see pull_repo for why it is separate.
+    pull)           pull_repo ;;
     tools)          shift; "$DOTFILES_DIR/tools/manage-updates.sh" "$@" ;;
     help|--help|-h) usage ;;
     *)              usage; exit 1 ;;

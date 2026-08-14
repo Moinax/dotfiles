@@ -18,12 +18,27 @@ question, so a laptop that never wanted the gaming group had to say so again
 every time. This asks the smaller question: what has the repo gained since this
 machine last agreed with it?
 
-Phases: pull → new groups → package delta → `chezmoi apply` → tool refresh
+Phases: new groups → package delta → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
 `run_post_apply` → re-stamp the profile → report fork drift → report a waiting backup.
 
-Both run after the anchor is stamped but before the final verdict, which has to stay
-the last thing on screen.
+### The pull is not one of those phases
+
+`dots` runs `sync-machine.sh pull` as its own process and waits for it to exit
+before starting the sync. Bash parses a script before running it, so while the
+pull lived inside the sync every function was the pre-pull one: a run that fetched
+a fix to `dots update` applied the old behaviour anyway. That cost a real package —
+`python-pyqt6-webengine` was offered for removal, and removed, by the pre-pull walk
+that could not yet see a `requires_packages`, in the very run that pulled the fix.
+Every other phase can be re-run; a removal cannot.
+
+Two processes rather than `exec`: two of `do_update`'s three callers are menu loops
+that need control back. Only the full sync pulls — `tools` and `help` never touched
+the repo. Running `tools/sync-machine.sh` by hand therefore does not pull, which is
+the one behaviour this moved; `./dots` is the entry point.
+
+The fork and backup reports run after the anchor is stamped but before the final
+verdict, which has to stay the last thing on screen.
 
 `report_backup_available` names a backup another machine pushed that this one has not
 restored. It is the *incoming* direction, deliberately — not a "you should back up"

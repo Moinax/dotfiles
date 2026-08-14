@@ -240,7 +240,24 @@ do_packages() {
 # Bring the machine in line with the repo: pull, offer what the repo gained,
 # apply, refresh tools, reload the surfaces. The tool refresh alone — what this
 # command used to mean on its own — is still reachable as `dots update tools`.
+#
+# The pull is a *separate run* of the same script, deliberately, and it is the
+# whole reason the sync itself no longer pulls. Bash parses a script before
+# running it, so a sync that pulled its own new code went on applying the old
+# code anyway and every fix landed one run late — including in the phase that
+# *removes* packages, the one thing re-running cannot undo. Pulling first, in a
+# process that exits, means everything below is post-pull by construction.
+#
+# Two processes rather than `exec`, because two of the three callers below are
+# menu loops that have to get control back.
+#
+# Only the full sync pulls. `dots update tools` refreshes binaries and never
+# touched the repo, and `help` prints text — neither has ever pulled, and
+# neither should start.
 do_update() {
+    case "${1:-}" in
+        ""|sync) "$SCRIPT_DIR/tools/sync-machine.sh" pull ;;
+    esac
     "$SCRIPT_DIR/tools/sync-machine.sh" "$@"
 }
 
