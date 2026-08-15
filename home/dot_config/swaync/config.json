@@ -54,6 +54,11 @@
     "claude-code": {
       "state": "transient",
       "summary": "Claude Code"
+    },
+    "browser-notifications": {
+      "state": "enabled",
+      "app-name": "(?i)^(Google Chrome|Chromium|Helium|Brave|Microsoft Edge|Vivaldi|Opera|Firefox|Zen)( .+)?$",
+      "override-urgency": "normal"
     }
   },
   "widgets": [
