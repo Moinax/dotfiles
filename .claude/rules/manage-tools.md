@@ -6,6 +6,7 @@ paths:
   - tools/manage-updates.sh
   - tools/sync-machine.sh
   - install/lib/post-apply.sh
+  - install/lib/login-wallpaper.sh
 ---
 
 # dots helper internals
@@ -20,8 +21,8 @@ machine last agreed with it?
 
 Phases: system update (`cachy-update`) → new groups → package delta →
 `chezmoi apply` → tool refresh (`tools/manage-updates.sh`, still reachable alone as
-`dots update tools`) → `run_post_apply` → re-stamp the profile → report fork drift →
-report a waiting backup.
+`dots update tools`) → `run_post_apply` → login wallpaper → re-stamp the profile →
+report fork drift → report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer
 
@@ -83,6 +84,54 @@ and writes secrets to disk, so starting one where nobody can answer is not a def
 having — the same `[ -t 0 ]` reasoning as `t3fork install`'s restart prompt. Declining
 prints the command too. A failed restore warns rather than failing the sync: it runs after
 the anchor is stamped, so the cost is the restore and nothing else.
+
+### `reconcile_login_wallpaper` — a privileged step setup cannot be the only owner of
+
+`install/lib/login-wallpaper.sh` holds the two steps behind
+`/var/lib/wallpaper/current` that need root — creating the directory user-owned,
+and pointing the greeter config at it — and both `dots setup` and this call it.
+That split exists because of a specific failure: the feature shipped as an
+installer step plus a `hyprlock.conf` naming the file, and setup is not re-run, so
+every machine that *already existed* pulled the dotfile half and got a
+**black lock screen**. Nothing reported it, because every piece involved was
+behaving as designed. An installer-only owner is only ever correct for something a
+fresh machine alone can lack.
+
+**That is not a future risk, it is the current state of six other steps.**
+`configure_localsend_firewall`, `tune_boot_performance`, `setup_clamav`,
+`setup_biometric`, `setup_ssh` and `setup_plymouth` are all privileged, one-time,
+and reachable from nothing but `dots setup` — grep `tools/` and `install/lib/` for
+any of them and you get nothing. `setup_biometric` is the live instance worth
+knowing about: enabling the `biometric` group later through `dots packages manage`
+runs `sync_group_after_change`, which installs `fprintd` and reconciles the
+declared services but never lays down the PAM stack, the polkit rule or the
+enrolment unit — the wallpaper bug's exact shape, already shipped. Anything moved
+out of that list wants the same treatment this one got: the steps in a lib, a
+state-driven offer on the update side.
+
+**Its trigger is machine state, never `CHANGED_FILES`.** The anchor had already
+moved past the commit that introduced the feature by the time the black lock
+screen was noticed, so a diff-driven gate could never have fired again. Same
+reasoning as `reconcile_custom_requires`: a question asked off the machine's own
+state re-offers itself for as long as the machine needs it, and declining costs
+nothing. It is gated on `install_purpose_is desktop` and on a tty, since two sudo
+prompts under a pipe would sit unanswered.
+
+`login_wallpaper_needs_setup` asks only about the two privileged steps. A
+published file that is merely *missing* is deliberately not a trigger: with a
+writable directory the picker republishes at the next pick and awww-init seeds it
+at session start, both with no privilege, so prompting for a password there would
+buy nothing.
+
+**The greeter's group path is `[Greeter][Wallpaper][org.kde.image][General]`, and
+every level is load-bearing.** The first version of the installer step wrote those
+last three groups at the *top* level and printed success; `kreadconfig6` on that
+path returns empty on a configured machine, so it repointed nothing and would have
+kept the stock KDE wallpaper on the login screen even after a full `dots setup`.
+The value is a `file://` URL, matching what KDE's Login Screen KCM writes through
+its KAuth helper — the only reference we can check ourselves against. That is why
+`login_wallpaper_greeter_image` exists as a reader and not just a writer: the
+detection and the write share one group path, so they cannot drift apart again.
 
 ### Fork drift is discovered, not declared
 

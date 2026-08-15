@@ -36,6 +36,7 @@ done
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/hyprvoice.sh"
+source "$SCRIPT_DIR/lib/login-wallpaper.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
 # The prompt-heaviest script in the repo, and the last one still without this:
@@ -1836,60 +1837,16 @@ restore_ssh_from_backup() {
     print_success "SSH key restored from backup"
 }
 
-# Publish the picked wallpaper where the login greeter can read it, and point
-# the greeter at it once and for all.
-#
-# The Plasma Login Manager greeter runs as the `plasmalogin` system user and
-# $HOME is 0700, so it can never read ~/Wallpapers — KDE's own answer (the Login
-# Screen KCM) copies the bytes to a root-owned directory through a KAuth helper,
-# which only exists behind the GUI. So we keep the copy but move it somewhere a
-# plain user can write: a directory outside $HOME that the user owns, holding
-# one fixed filename. The greeter config then names a path that never changes,
-# which is what keeps `wallpaper-picker apply` free of any root privilege.
-#
-# hyprlock reads the same file (home/dot_config/hypr/hyprlock.conf.tmpl), so the
-# lock screen and the login screen show one picture because it *is* one file.
-#
-# Idempotent, and safe to re-run to repair a hand-edited greeter config.
+# The installer's framing over install/lib/login-wallpaper.sh — the lib holds the
+# mechanism, each caller frames it (dots update's framing is
+# reconcile_login_wallpaper in tools/sync-machine.sh). Unconditional, since setup
+# has no state to reconcile against and re-running the steps costs one
+# `install -d` and two config writes.
 setup_login_wallpaper() {
     print_header "Login Wallpaper"
-
-    local dir=/var/lib/wallpaper
-    local published="$dir/current"
-
-    # Unconditional: `install -d` also repairs the ownership of a directory that
-    # already exists, which is what the picker needs to write into it. Only -o
-    # matters — the mode is 755, so the group never decides the write.
-    sudo install -d -o "$USER" -m 755 "$dir" || {
-        track_warning "Could not create $dir — lock and login screens keep their stock wallpaper"
-        return 0
-    }
-
-    # Seed it so the very first lock is not a black screen. The picker owns the
-    # copy — one atomic write, one `awww query` parse, one published path — and
-    # publishing here is the only reason this function needs a seed at all: a
-    # machine that never picked one gets it from awww-init at session start.
-    if [ ! -f "$published" ]; then
-        if "$HOME/.local/bin/wallpaper-picker.sh" publish; then
-            print_success "Seeded $published from the running desktop"
-        else
-            print_info "Nothing to seed it with yet — the first session, or the first pick, publishes it"
-        fi
-    fi
-
-    # kwriteconfig6 rather than a heredoc: /etc/plasmalogin.conf is the greeter's
-    # whole configuration, [Autologin] and all, and rewriting it wholesale to set
-    # one key is how you lose the rest of it. Nested groups are the standard
-    # Plasma wallpaper-plugin layout, [Wallpaper][<plugin>][General].
-    if command_exists plasmalogin && command_exists kwriteconfig6; then
-        sudo kwriteconfig6 --file /etc/plasmalogin.conf \
-            --group Greeter --key WallpaperPluginId org.kde.image
-        sudo kwriteconfig6 --file /etc/plasmalogin.conf \
-            --group Wallpaper --group org.kde.image --group General --key Image "$published"
-        print_success "Login greeter wallpaper points at $published"
-    else
-        print_info "No Plasma Login Manager here — published for hyprlock only"
-    fi
+    # A failure is already tracked as a warning by apply_login_wallpaper, and must
+    # not abort the install over a wallpaper.
+    apply_login_wallpaper || return 0
 }
 
 # Setup Plymouth boot splash screen (CachyOS usually ships Plymouth

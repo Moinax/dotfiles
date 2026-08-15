@@ -27,6 +27,7 @@ GROUPS_DIR="$PACKAGES_DIR/groups"
 
 source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
+source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
 
 install_interrupt_trap
@@ -767,6 +768,59 @@ remove_dropped_packages() {
     return 0
 }
 
+# ── The lock and login screens ──────────────────────────────────────────────
+
+# The two privileged steps behind /var/lib/wallpaper/current — see
+# install/lib/login-wallpaper.sh, which both this and `dots setup` call.
+#
+# Here because setup is not re-run: an already-set-up machine that merely pulled
+# the feature got only the half of it that is a dotfile. The trigger is therefore
+# machine state and never CHANGED_FILES — the anchor moves past the commit that
+# ships a step like this long before anyone notices the step never ran. Which
+# other installer-only steps have the same shape is in
+# .claude/rules/manage-tools.md.
+reconcile_login_wallpaper() {
+    install_purpose_is desktop || return 0
+    login_wallpaper_needs_setup || return 0
+
+    # Two sudo calls with a password prompt of their own: under a pipe or a cron
+    # there is nobody to answer, the same judgement update_system_packages makes.
+    #
+    # Last of the three guards rather than first, though it is the only free one:
+    # ahead of them it would announce a skip on every non-interactive run of a
+    # machine that needs nothing. The ~9ms it costs to find that out (a
+    # chezmoi.toml grep, one kreadconfig6) is paid once per `dots update`, not per
+    # unit of anything, so quiet is worth more than the milliseconds here.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the login wallpaper setup"
+        return 0
+    fi
+
+    print_header "Login Wallpaper"
+    if [ ! -w "$LOGIN_WALLPAPER_DIR" ]; then
+        print_warning "$LOGIN_WALLPAPER_DIR does not exist, or is not yours to write"
+        print_info "  hyprlock reads that one file and nothing else, so the lock"
+        print_info "  screen is currently black. Picking a wallpaper cannot repair"
+        print_info "  it — the picker has nowhere to publish to."
+    else
+        print_warning "The login greeter is not pointed at $LOGIN_WALLPAPER_FILE"
+        print_info "  It keeps its own wallpaper rather than the one the desktop"
+        print_info "  and the lock screen share. Opening System Settings → Login"
+        print_info "  Screen is one way this happens."
+    fi
+    print_info "  This is the only step in the wallpaper path that needs sudo."
+    echo ""
+    if ! confirm_or_abort "Set it up now?"; then
+        # No shortfall, and nothing for the anchor to record: the question comes
+        # off the machine's own state, so it returns by itself at the next update
+        # for as long as the machine is missing this.
+        print_info "Skipped — run 'dots update' again to be offered it"
+        return 0
+    fi
+
+    apply_login_wallpaper || return 0
+}
+
 # ── Tools ───────────────────────────────────────────────────────────────────
 
 update_tools() {
@@ -1009,6 +1063,10 @@ do_sync() {
     # passes none, which means "reconcile everything".
     run_post_apply "${CHANGED_FILES[@]}"
 
+    # After the apply, which is what puts wallpaper-picker.sh on the machine that
+    # is missing this — the seed inside it runs the picker.
+    reconcile_login_wallpaper
+
     # record_synced_state declines on its own while a package shortfall is
     # outstanding — mark_sync_shortfall in common.sh carries the why. Everything
     # above this line has still happened, so the cost is one re-offer next run.
@@ -1039,10 +1097,11 @@ Usage: dots update [command]
 Brings this machine in line with the dotfiles repo: pulls, upgrades the pacman/AUR
 side through cachy-update (or paru where that is absent — accept or refuse it, the
 sync continues either way), offers what the repo has gained since the last sync and
-what it has dropped, applies the configs, refreshes the tools, and reloads the
-surfaces that need it. Also names any fork
-in the projects tree that upstream has moved past, and any backup another
-machine pushed that this one has not restored.
+what it has dropped, applies the configs, refreshes the tools, reloads the
+surfaces that need it, and offers the one privileged step an apply cannot carry —
+the wallpaper the lock and login screens share — on a machine missing it. Also
+names any fork in the projects tree that upstream has moved past, and any backup
+another machine pushed that this one has not restored.
 
 Commands:
   (none)      Run the full sync — assumes 'dots' already ran the pull below
