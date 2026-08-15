@@ -108,7 +108,10 @@
     "interval": 2,
     "format": "⌨ {}",
     "tooltip": false,
-    "on-click": "~/.config/hypr/scripts/toggle-keyboard-layout.sh",
+    // Same selector as Mod+K. The old target, toggle-keyboard-layout.sh bare,
+    // stopped being a picker when it was refactored into list|set for the
+    // vicinae command — a bare call now exits 1, so the click did nothing.
+    "on-click": "vicinae 'vicinae://launch/@moinax/moinax/keyboard-layout?toggle=true'",
   },
   "group/stats": {
     "orientation": "horizontal",

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Generic click-to-open for notifications, invoked by swaync's scripts hook
+# (run-on: action, category ^x-open$ — see swaync/config.json). Any sender
+# becomes clickable with no new code:
+#   notify-send -A default=Open -c x-open -h string:x-open-path:/some/file …
+# swaync exports string hints wrapped in literal single quotes.
+
+path="${SWAYNC_HINT_X_OPEN_PATH-}"
+path="${path#\'}"; path="${path%\'}"
+[ -f "$path" ] && exec xdg-open "$path"
+exit 0

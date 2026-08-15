@@ -167,9 +167,9 @@ hl.bind(mod .. " + SHIFT + M", hl.dsp.exec_cmd("swaync-client -R && swaync-clien
 hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-hyprland.sh"))                    -- Reload hyprland
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
-hl.bind("PRINT",                hl.dsp.exec_cmd("hyprshot -m output"))                     -- Screenshot a monitor
-hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd("hyprshot -m window"))                  -- Screenshot a window
-hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd("hyprshot -m region"))                  -- Screenshot a region
+hl.bind("PRINT",                hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))    -- Screenshot a monitor
+hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh window")) -- Screenshot a window
+hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh region")) -- Screenshot a region
 
 -- ── 13. Media & Volume ───────────────────────────────────────────
 hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume raise"))

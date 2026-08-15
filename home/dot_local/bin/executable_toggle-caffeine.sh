@@ -10,23 +10,15 @@
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/caffeine-state"
 INHIBITOR="$HOME/.local/bin/wayland-idle-inhibitor.py"
 
-turn_on() {
-    echo on > "$STATE_FILE"
-    notify-send -u low "Caffeine" "ON — idle inhibited" || true
-}
-
-turn_off() {
-    echo off > "$STATE_FILE"
-    notify-send -u low "Caffeine" "OFF — idle resumed" || true
-}
-
+# Success is silent — the waybar caffeine module watches the state file and
+# flips instantly; only failures notify.
 if is_hyprland; then
     if pgrep -f "$INHIBITOR" &>/dev/null; then
         pkill -f "$INHIBITOR" || true
-        turn_off
+        echo off > "$STATE_FILE"
     else
         nohup "$INHIBITOR" &>/dev/null & disown
-        turn_on
+        echo on > "$STATE_FILE"
     fi
 else
     notify-send -u critical "Caffeine" "Unsupported compositor: ${XDG_CURRENT_DESKTOP:-unknown}" || true

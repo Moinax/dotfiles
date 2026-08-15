@@ -123,9 +123,9 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Screenshot monitor | `Print` | hyprshot monitor |
-| Screenshot window | `Mod+Print` | hyprshot window |
-| Screenshot region | `Mod+Shift+Print` | hyprshot region |
+| Screenshot monitor | `Print` | screenshot.sh (hyprshot); click the notification to open |
+| Screenshot window | `Mod+Print` | screenshot.sh (hyprshot); click the notification to open |
+| Screenshot region | `Mod+Shift+Print` | screenshot.sh (hyprshot); click the notification to open |
 
 ## 12. Media & Volume
 

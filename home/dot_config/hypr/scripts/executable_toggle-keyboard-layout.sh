@@ -81,9 +81,7 @@ if [ -z "$NEXT_LAYOUT_FILE" ] || [ ! -f "$NEXT_LAYOUT_FILE" ]; then
 fi
 
 # --- Copy the content of the selected layout to the active config file ---
-echo "Switching to '$selected_display_name' keyboard layout..."
+# Success is silent — the waybar keyboard-layout module already shows the
+# active layout, and the callers are headless (vicinae, waybar); only
+# failures notify. Hyprland reloads the config on write.
 cp "$NEXT_LAYOUT_FILE" "$ACTIVE_INPUT_CONF"
-
-# Send notification
-notify-send -u low "Hyprland" "Switched to: $selected_display_name Keyboard Layout"
-echo "Keyboard layout switch complete. Hyprland will reload automatically."
