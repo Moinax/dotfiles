@@ -18,9 +18,38 @@ question, so a laptop that never wanted the gaming group had to say so again
 every time. This asks the smaller question: what has the repo gained since this
 machine last agreed with it?
 
-Phases: new groups → package delta → `chezmoi apply` → tool refresh
-(`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
-`run_post_apply` → re-stamp the profile → report fork drift → report a waiting backup.
+Phases: system update (`cachy-update`) → new groups → package delta →
+`chezmoi apply` → tool refresh (`tools/manage-updates.sh`, still reachable alone as
+`dots update tools`) → `run_post_apply` → re-stamp the profile → report fork drift →
+report a waiting backup.
+
+### The system update runs first, and refusing it is an answer
+
+`update_system_packages` calls `cachy-update` (falling back to `arch-update`, which
+is what it symlinks to) before anything installs, and where neither exists — plain
+Arch, EndeavourOS, Garuda — it falls through to **`update_system confirm`**, the
+distro layer's own upgrade in `install/distros/arch.sh`, the one `dots setup` opens
+with and `_recover_stale_db` falls back on. pacman and AUR still *belong* to those
+tools — nothing here reimplements an upgrade, and `manage-updates.sh` still covers
+only what they cannot see. Running it first is what gives the package delta a
+database no older than the mirrors: install against a few-day-old one and every
+mirror 404s on a filename that has been rebuilt, which is the failure
+`_recover_stale_db` (arch.sh) recovers from after the fact and now has one less
+reason to see. Skipping the machine with no updater wrapper meant skipping the one
+with the least fresh database of all.
+
+No prompt of ours sits in front of either — both show the transaction and ask for
+themselves, and a refusal is a decision, not a failure: the sync goes on to the
+packages, the apply and the tools. Only 130 ends the run (the user stopping it),
+same rule as `update_tools`. **The two paths report a refusal differently, and that
+is the tool's doing, not a choice here:** cachy-update exits **4** for "aborted", so
+it is recognised exactly; paru and pacman exit **1** both when you decline and when
+the upgrade fails, so the fallback path can only warn in terms that cover both
+("declined, or the upgrade failed"). `confirm` is the load-bearing argument on that
+call — the argument-less `update_system` is `--noconfirm`, which would be the one
+thing this phase must never do. Skipped entirely without a tty: it needs a sudo
+password and asks its own questions, so under a pipe it would sit on a prompt nobody
+can see.
 
 ### The pull is not one of those phases
 
@@ -684,7 +713,8 @@ value rather than being stamped with a release it does not have.
 ## `dots update` — `tools/manage-updates.sh`
 
 Deliberately does NOT update the system: pacman + AUR belong to cachy-update (a symlink
-to arch-update, which picks up paru on its own). It covers only what cachy-update can't
+to arch-update, which picks up paru on its own), which the sync now calls as its own
+phase before this one — see above. It covers only what cachy-update can't
 see — curl binaries, global npm packages, the fnm-managed Node, cargo installs, and
 tracked external apps. Anything whose binary turns out to be owned by a pacman/AUR
 package is reported as managed and skipped, never refreshed: several entries also exist

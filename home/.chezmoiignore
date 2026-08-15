@@ -16,7 +16,6 @@ LICENSE
 {{- if not .install_hyprland }}
 .config/hypr/hyprland.lua
 .config/hypr/hypridle.conf
-.config/hypr/hyprpaper.conf
 .config/hypr/hyprlock.conf
 .config/hypr/conf
 .config/hypr/conf/**

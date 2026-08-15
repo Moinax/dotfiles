@@ -22,11 +22,13 @@ Type=oneshot
 # nothing — a fresh install, or a cache emptied by an awww version bump, where
 # the alternative is an empty desktop. ExecCondition= skips the unit cleanly.
 ExecCondition=/bin/sh -c '! ls %h/.cache/awww/*/* >/dev/null 2>&1'
-# No $var / $(cmd) in these lines: systemd expands $NAME itself and does no
-# command substitution, so a shell loop written with $i silently gets an empty
-# variable. TimeoutStartSec= bounds the wait instead of a counter.
-ExecStartPre=/bin/sh -c 'until awww query >/dev/null 2>&1; do sleep 0.1; done'
-ExecStart=/usr/bin/awww img --transition-type any --transition-fps 60 --transition-duration 1 %h/Wallpapers/colorful.jpg
+# Through the picker, not `awww img` directly: `apply` already waits for the
+# daemon and carries the transition flags, and — the reason this changed — it
+# also publishes to /var/lib/wallpaper/current for the lock and login screens.
+# Seeding around it left a fresh machine with a wallpaper on the desktop and a
+# black lock screen until the first manual pick. TimeoutStartSec= bounds the
+# daemon wait the script does for us.
+ExecStart=%h/.local/bin/wallpaper-picker.sh apply %h/Wallpapers/colorful.jpg
 TimeoutStartSec=15
 RemainAfterExit=yes
 

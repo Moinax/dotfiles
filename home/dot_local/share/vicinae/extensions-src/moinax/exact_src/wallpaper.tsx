@@ -6,7 +6,7 @@ import { capture, captureLines } from "./lib/shell";
 import { describeError, useLoader } from "./lib/ui";
 
 /**
- * Mod+Shift+W — the replacement for wallpaper-picker.sh's rofi half.
+ * Mod+W — the replacement for wallpaper-picker.sh's rofi half.
  *
  * rofi could only render a wallpaper as a one-line row with a small square
  * icon, which is why that picker needed its own theme file just to make the

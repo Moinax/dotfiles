@@ -30,7 +30,6 @@ descriptions:
   hyprland: Dynamic tiling Wayland compositor
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
-  hyprpaper: Wallpaper manager for Hyprland (kept as fallback)
   awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
   hyprpicker: Color picker for Hyprland
   polkit-kde-agent: Polkit authentication agent (KDE)
@@ -62,7 +61,6 @@ packages:
     - hyprland
     - hypridle
     - hyprlock
-    - hyprpaper
     - awww  # provides swww/swww-daemon — animated wallpaper daemon
     - hyprpicker
     - polkit-kde-agent

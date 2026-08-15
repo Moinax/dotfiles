@@ -19,7 +19,7 @@ usage() {
 Usage: dots [command]
 
 Commands:
-  update      Bring this machine in line with the repo (pull, apply, refresh)
+  update      Bring this machine in line with the repo (pull, system upgrade, apply, refresh)
   packages    Manage packages (add/remove from groups, sync missing)
   apps        Manage standalone apps (AppImage / Distrobox)
   reconfig    Reconfigure chezmoi data flags

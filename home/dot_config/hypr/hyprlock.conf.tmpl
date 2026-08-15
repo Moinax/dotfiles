@@ -6,65 +6,91 @@
 #        |___/|_|
 #
 
+# The same file the login greeter shows, so the two screens carry the picked
+# wallpaper by construction rather than by two configs agreeing. Extension-less
+# on purpose: hyprlock sniffs the content (hyprgraphics links libmagic), so a
+# fixed `current.jpg` would lie the first time a .png is picked. Why it lives
+# outside $HOME, and what creates it, are in CLAUDE.md.
 background {
     monitor =
-    path = ~/Wallpapers/colorful.jpg
+    path = /var/lib/wallpaper/current
 }
 
+# Everything below is dressed to match the Plasma login greeter, which is a
+# different program on a different session (see the note in CLAUDE.md — a lock
+# screen must hold the compositor's session-lock grab, so it can never *be* the
+# greeter). Only the look is shared: Breeze accent #1d99f3 lifted from
+# /usr/share/sddm/themes/breeze/theme.conf, Noto Sans as the Plasma UI font,
+# clock over a centred name and password field. Deliberately no blur — the
+# greeter blurs only while fading into the session, so a blurred lock screen
+# would match the one state you never sit looking at.
 input-field {
     monitor =
-    size = 200, 50
-    outline_thickness = 1
-    dots_size = 0.2 # Scale of input-field height, 0.2 - 0.8
-    dots_spacing = 0.15 # Scale of dots' absolute size, 0.0 - 1.0
+    size = 300, 50
+    outline_thickness = 2
+    dots_size = 0.25
+    dots_spacing = 0.3
     dots_center = true
-    dots_rounding = -1 # -1 default circle, -2 follow input-field rounding
-    outer_color = rgba(6464ff44)
-    inner_color = rgba(FFFFFF44)
-    font_color = rgb(10, 10, 10)
+    outer_color = rgba(1d99f3ff)
+    inner_color = rgba(00000066)
+    font_color = rgba(ffffffff)
+    font_family = Noto Sans
     fade_on_empty = false
-    fade_timeout = 1000 # Milliseconds before fade_on_empty is triggered.
-    placeholder_text = <i>Input Password...</i> # Text rendered in the input box when it's empty.
-    hide_input = false
-    rounding = -1 # -1 means complete rounding (circle/oval)
-    check_color = rgb(100, 100, 255)
-    fail_color = rgb(245, 60, 60) # if authentication failed, changes outer_color and fail message color
-    fail_text = <i>$FAIL <b>($ATTEMPTS)</b></i> # can be set to empty
-    capslock_color = -1
-    numlock_color = -1
-    bothlock_color = -1 # when both locks are active. -1 means don't change outer color (same for above)
-    invert_numlock = false # change color if numlock is off
-    swap_font_color = false # see below
+    placeholder_text = Password
+    rounding = 12
+    check_color = rgba(1d99f3ff)
+    fail_color = rgba(da4453ff)
+    fail_text = $FAIL (<b>$ATTEMPTS</b>)
+    capslock_color = rgba(f67400ff)
     halign = center
     valign = center
-    position = 0, 0
+    position = 0, -20
 }
 
 label {
     monitor =
     #clock
-    text = cmd[update:1000] echo "$TIME"
-    color = rgba(200, 200, 200, 1.0)
-    font_size = 55
-    font_family = JetBrainsMono Nerd Font
+    # Bare $TIME, not `cmd[update:1000] echo "$TIME"` — hyprlock substitutes and
+    # refreshes it itself (upstream's own sample does this), and the cmd form
+    # forks a shell every second for as long as the screen stays locked.
+    text = $TIME
+    color = rgba(ffffffff)
+    font_size = 64
+    font_family = Noto Sans Light
     halign = center
     valign = top
-    position = 0, -40
-    shadow_passes = 5
-    shadow_size = 10
+    position = 0, -80
+    shadow_passes = 3
+    shadow_size = 6
 }
 
 label {
     monitor =
-    text = $USER
-    color = rgba(200, 200, 200, 1.0)
+    #date — %-d drops the leading zero, the way the greeter's locale format does
+    text = cmd[update:60000] date +"%A %-d %B"
+    color = rgba(ffffffdd)
+    font_size = 18
+    font_family = Noto Sans
+    halign = center
+    valign = top
+    position = 0, -175
+    shadow_passes = 3
+    shadow_size = 6
+}
+
+label {
+    monitor =
+    # $DESC is the GECOS full name ("Jérôme Poskin"), which is what the greeter
+    # lists — $USER would read as the login name the greeter never shows.
+    text = $DESC
+    color = rgba(ffffffff)
     font_size = 20
-    font_family = JetBrainsMono Nerd Font
+    font_family = Noto Sans
     halign = center
     valign = center
-    position = 0, 50
-    shadow_passes = 5
-    shadow_size = 10
+    position = 0, 40
+    shadow_passes = 3
+    shadow_size = 6
 }
 
 {{ if and (hasKey . "has_fingerprint") .has_fingerprint -}}

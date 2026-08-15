@@ -46,10 +46,6 @@
       "state": "transient",
       "summary": "^Waybar$"
     },
-    "hyprpaper-reload": {
-      "state": "transient",
-      "summary": "^Hyprpaper$"
-    },
     "idle-warning": {
       "state": "transient",
       "summary": "Your computer will be locked"

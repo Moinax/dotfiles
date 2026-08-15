@@ -42,7 +42,7 @@ CHANGED_FILES=()      # BASE_COMMIT..HEAD, empty when BASE_COMMIT is ""
 # common.sh, not by a flag of this script's own: `dots setup` needed the same
 # judgement and had drawn the opposite conclusion from it.
 
-# ── Phase 1: the repo ────────────────────────────────────────────────────────
+# ── The repo ────────────────────────────────────────────────────────────────
 
 # Pull, but never at the cost of uncommitted work. The dotfiles are reviewed
 # with hunk, which watches *unstaged* changes — silently stashing them out from
@@ -119,7 +119,58 @@ resolve_base() {
         git -C "$DOTFILES_DIR" diff --name-only "$BASE_COMMIT" HEAD 2>/dev/null || true)
 }
 
-# ── Phase 2: packages the repo gained ────────────────────────────────────────
+# ── The system ──────────────────────────────────────────────────────────────
+
+# pacman and AUR still belong to the upgrade tools — this calls one, it does not
+# reimplement one, and manage-updates.sh still covers only what they cannot see.
+#
+# It runs *before* the package delta on purpose: installing against a database a
+# few days old asks the mirrors for versions they have already rebuilt, and every
+# one 404s (that is what _recover_stale_db in arch.sh recovers from after the
+# fact, and it now has one less reason to fire).
+#
+# Nothing here is forced. Whichever tool runs asks for its own confirmation, so
+# there is no prompt of ours in front of it, and a refusal only skips this phase —
+# the sync carries on to the packages, the apply and the tools. 130 is the user
+# stopping the run, and is the one status that must end it, same as update_tools.
+update_system_packages() {
+    local updater
+    updater=$(command -v cachy-update || command -v arch-update) || updater=""
+
+    # Either path needs a sudo password and asks its own questions; under a pipe
+    # or a cron there is nobody to answer, and it would sit on a prompt nobody
+    # sees.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the system update, run '$(basename "${updater:-paru}")' by hand"
+        return 0
+    fi
+
+    print_header "System"
+    local rc=0
+    if [ -n "$updater" ]; then
+        "$updater" || rc=$?
+    else
+        # No cachy-update here — plain Arch, EndeavourOS, Garuda. The distro layer
+        # already owns "upgrade this system": update_system in
+        # install/distros/arch.sh, the call `dots setup` opens with and the one
+        # _recover_stale_db falls back on. `confirm` is the load-bearing argument —
+        # it shows the transaction and lets you say no, which is this phase's whole
+        # contract. Skipping instead left the machine that most needs a fresh
+        # database, the one with no updater wrapper, as the only one we passed over.
+        update_system confirm || rc=$?
+    fi
+
+    case "$rc" in
+        0|4)  ;;  # cachy-update's 4 = "the update has been aborted", i.e. you said no
+        130)  exit 130 ;;
+        # paru and pacman have no code of their own for a refusal — declining the
+        # transaction and failing it both exit 1 — so this line has to cover both
+        # without accusing either. It is a note; the sync goes on regardless.
+        *)    print_warning "System packages not upgraded (declined, or the upgrade failed — status ${rc})" ;;
+    esac
+}
+
+# ── Packages the repo gained ────────────────────────────────────────────────
 
 # Every package declared for this machine — base plus every enabled group — as
 # it reads in a given commit. Called once for the anchor and once for HEAD; the
@@ -716,7 +767,7 @@ remove_dropped_packages() {
     return 0
 }
 
-# ── Phase 4: tools ───────────────────────────────────────────────────────────
+# ── Tools ───────────────────────────────────────────────────────────────────
 
 update_tools() {
     # 130 is the child telling us the user stopped it, and it is the one status that
@@ -735,7 +786,7 @@ update_tools() {
     fi
 }
 
-# ── Phase 5: forks ───────────────────────────────────────────────────────────
+# ── Forks ───────────────────────────────────────────────────────────────────
 
 # Emits `repo<TAB>branch<TAB>behind<TAB>command` for every fork upstream has
 # moved past, `behind` being `-` when the fork's own branch is missing here.
@@ -939,6 +990,8 @@ do_sync() {
 
     # No pull here — `dots` runs it as its own process first, see pull_repo.
     resolve_base
+    # Before anything installs — see the function.
+    update_system_packages
     reconcile_group_flags
     # Before sync_packages, and independent of the anchor — see the function.
     reconcile_custom_requires
@@ -983,9 +1036,11 @@ usage() {
     cat <<'EOF'
 Usage: dots update [command]
 
-Brings this machine in line with the dotfiles repo: pulls, offers what the repo
-has gained since the last sync and what it has dropped, applies the configs,
-refreshes the tools, and reloads the surfaces that need it. Also names any fork
+Brings this machine in line with the dotfiles repo: pulls, upgrades the pacman/AUR
+side through cachy-update (or paru where that is absent — accept or refuse it, the
+sync continues either way), offers what the repo has gained since the last sync and
+what it has dropped, applies the configs, refreshes the tools, and reloads the
+surfaces that need it. Also names any fork
 in the projects tree that upstream has moved past, and any backup another
 machine pushed that this one has not restored.
 

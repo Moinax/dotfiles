@@ -81,3 +81,15 @@
 # Menus that had no rofi- prefix but were rofi frontends all the same.
 .local/bin/emoji-picker.sh
 .local/bin/toggle-audio-switch.sh
+
+# hyprpaper retired — awww is the wallpaper daemon, and has been since it landed
+# in graphical-session.target.wants next to awww-init. hyprpaper's service was
+# never enabled there, so its config and its slice drop-in were applied to every
+# machine and read by nothing: the config still named colorful.jpg long after
+# picking a wallpaper stopped going anywhere near it. Same pruning rule as rofi
+# above — deleting the source is not enough outside an `exact_` directory.
+# The hyprpaper package is left installed; dropping it from hyprland.yaml only
+# stops the next machine getting it.
+.config/hypr/hyprpaper.conf
+.config/systemd/user/hyprpaper.service.d
+.config/systemd/user/hyprpaper.service.d/**

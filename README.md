@@ -47,7 +47,7 @@ The interactive installer will:
 
 | Group | Description |
 |-------|-------------|
-| **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `hyprpaper`, `hyprshot`, `waybar`, `vicinae`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
+| **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `awww`, `hyprshot`, `waybar`, `vicinae`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
 | **Development** | `neovim`, Cursor, Zed, the [`herdr`](https://github.com/ogulcancelik/herdr) multiplexer, Git tooling (`gh`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam and Heroic with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
@@ -211,7 +211,7 @@ After running the installer:
 - **Git**: hunk for diffs, tuicr for reviews, lazygit for Git operations, `gh-dash` for pull requests, WorkTrunk for worktrees
 - **Multiplexer**: herdr (Zellij is retired — nothing here configures it any more)
 - **File Manager**: yazi, dolphin
-- **Hyprland**: hypridle, hyprlock, hyprpaper, hyprshot, waybar, vicinae, swaync, wlogout
+- **Hyprland**: hypridle, hyprlock, awww, hyprshot, waybar, vicinae, swaync, wlogout
 - **AI**: hyprvoice dictation, local `whisper-cpp` or Groq (switch with `dots whisper`); recording shows an overlay with the live mic level, a microphone picker, and validate/cancel buttons
 - **Claude Code**: [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) status bar (flat Catppuccin-matched theme, dark/light switched), WorkTrunk worktree plugin
 - **AppImage support**: Desktop installs set up the FUSE runtime for AppImages; terminal installs skip it
