@@ -1,15 +1,33 @@
 [Unit]
-Description=Set initial wallpaper via awww
+Description=Seed the wallpaper via awww on a machine that has never set one
 Documentation=https://codeberg.org/LGFae/awww
 PartOf=graphical-session.target
 Requires=awww-daemon.service
 After=awww-daemon.service
+# After=graphical-session.target is what keeps this unit alive, not just tidy.
+# A target implicitly gains After= on everything it Wants=, unless the ordering
+# is already stated the other way round — so without this line the graph was
+# target -> awww-daemon (its own explicit After=) -> awww-init -> target, and
+# systemd broke the cycle by silently deleting awww-init's job at every session
+# start. Stating the order here registers Before=awww-init on the target and
+# suppresses the implicit edge, the same way awww-daemon already escapes it.
+After=graphical-session.target
 
 [Service]
 Slice=background-graphical.slice
 Type=oneshot
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 50); do awww query >/dev/null 2>&1 && exit 0; sleep 0.1; done; exit 1'
+# awww-daemon restores the last wallpaper of each output from its own cache at
+# boot (that is its default; --no-cache turns it off), so re-asserting an image
+# here would overwrite whatever was picked last. Only seed when that cache holds
+# nothing — a fresh install, or a cache emptied by an awww version bump, where
+# the alternative is an empty desktop. ExecCondition= skips the unit cleanly.
+ExecCondition=/bin/sh -c '! ls %h/.cache/awww/*/* >/dev/null 2>&1'
+# No $var / $(cmd) in these lines: systemd expands $NAME itself and does no
+# command substitution, so a shell loop written with $i silently gets an empty
+# variable. TimeoutStartSec= bounds the wait instead of a counter.
+ExecStartPre=/bin/sh -c 'until awww query >/dev/null 2>&1; do sleep 0.1; done'
 ExecStart=/usr/bin/awww img --transition-type any --transition-fps 60 --transition-duration 1 %h/Wallpapers/colorful.jpg
+TimeoutStartSec=15
 RemainAfterExit=yes
 
 [Install]
