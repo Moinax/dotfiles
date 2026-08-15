@@ -16,9 +16,15 @@ ever buried, so there is no minimising habit for a background process to serve.
 
 Deliberately not implemented: anything that reads a chat site's DOM. Scraping is
 what turns a wrapper into a maintenance treadmill and eventually abandonware —
-the unread count comes from document.title instead, and a notification click is
-handed straight back to the site's own service worker rather than resolved to a
-URL here.
+the unread count is the one the site publishes through the Badging API, and a
+notification click is handed straight back to the site's own service worker
+rather than resolved to a URL here.
+
+QtWebEngine leaves that API unimplemented, so the shell supplies it (BADGE_SHIM)
+and falls back to the "(3)" prefix on document.title for a site that never calls
+it. The prefix is the poorer signal by far: it means "arrived while you were
+away", so it is dropped the moment the window takes focus even with the message
+still unread, and it is flashed on and off while it lasts.
 
 Set the launcher's debug environment variable to 1 for a running commentary
 plus F9, which dumps whatever modal or overlay is currently covering the page.
@@ -41,6 +47,7 @@ from PyQt6.QtCore import (
     Qt,
     QTimer,
     QUrl,
+    pyqtSignal,
     pyqtSlot,
 )
 from PyQt6.QtDBus import QDBusArgument, QDBusConnection, QDBusInterface
@@ -57,6 +64,7 @@ from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEnginePermission,
     QWebEngineProfile,
+    QWebEngineScript,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
@@ -161,29 +169,45 @@ def is_internal(host):
     return is_within(host, CONFIG.domains)
 
 
-def unread_count(page_title):
-    """The "(3)" a chat site puts in front of document.title, or 0.
+def parse_title(page_title):
+    """Split document.title into the "(3)" a chat site prefixes it with, and
+    the rest.
 
-    The whole unread story rests on this prefix, and on nothing else: no DOM
-    node is read, which is what keeps the app out of the scraping treadmill.
+    One pass for both: the count is the fallback unread signal for a site that
+    never calls the Badging API, and the remainder is what the window is named
+    after. Neither reads a DOM node, which is what keeps the app out of the
+    scraping treadmill.
     """
-    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
-    return int(m.group(1)) if m else 0
+    title = (page_title or "").strip()
+    m = re.match(r"^\((\d+)\)\s*", title)
+    return (int(m.group(1)), title[m.end():]) if m else (0, title)
 
 
-def window_title(count):
-    """Keep the configured app title, carrying nothing but the unread count.
+def window_title(title):
+    """The page's own title — the open conversation — or None to keep the last.
 
-    Chat sites often name the document after the open conversation, and Qt
-    reports the bare URL as the title while a page loads. Passing either through
-    would put contact names into Waybar and Hyprland group-tab labels.
+    Kept only when it ends with the app's name, which is what separates a real
+    title ("Julie Pauwels | Messenger") from the two things a chat site also
+    puts there: the line it flashes on and off while a message waits ("Julie
+    vous a envoyé un message"), and the bare URL Qt reports while the page
+    loads. Neither belongs in a Waybar label, and rewriting them to the app name
+    would only move the flashing there.
+
+    The unread prefix is already gone by here: the tray badge carries the count
+    now, and leaving it in would make the title blink for a site with no Badging
+    API of its own.
     """
-    return f"({count}) {CONFIG.title}" if count else CONFIG.title
+    return title if title.endswith(CONFIG.title) else None
 
 
 def paint_badge(pixmap, count):
     """Stamp the unread count into the bottom-right corner of an icon."""
-    d = pixmap.width()
+    # Logical size, not pixmap.width(): the tray icon is requested at ICON_SIZE
+    # but comes back at ICON_SIZE * devicePixelRatio physical pixels, while
+    # QPainter still addresses it in logical coordinates. Sizing the badge off
+    # the physical width put it entirely outside the canvas on a scaled screen —
+    # painted, and invisible.
+    d = pixmap.deviceIndependentSize().width()
     box = QRectF(d * 0.45, d * 0.45, d * 0.55, d * 0.55)
     p = QPainter(pixmap)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -373,6 +397,17 @@ class Notifier(QObject):
                     self.on_closed)
 
     def present(self, notification):
+        # Nothing to say, so nothing is shown. A site that believes it is an
+        # installed app receives background pushes with no user-visible payload,
+        # and the push contract still obliges its service worker to raise a
+        # notification for each one — which arrives here with an empty title and
+        # an empty body, and would be a popup carrying only our own "Ouvrir".
+        # The page is still told it was displayed, which is what it waits on.
+        if not notification.title() and not notification.message():
+            log("NOTIFY", "empty payload -> dropped")
+            notification.show()
+            return
+
         reply = self.iface.call(
             "Notify", CONFIG.title, QDBusArgument(0, DBUS_UINT), self.icon,
             notification.title(), notification.message(),
@@ -464,7 +499,52 @@ PROBE_JS = r"""
 """
 
 
+# The Badging API, which QtWebEngine leaves unimplemented: a page that asks for
+# it gets `undefined` and falls back to flashing its title. Providing it is not
+# scraping — it is the site telling us its own unread count, through the standard
+# call it already makes as a PWA. console.info is the transport because it needs
+# no QWebChannel and no injected object the page could trip over.
+BADGE_MARKER = "[chat-shell:badge]"
+BADGE_SHIM = f"""
+(() => {{
+  // A site only reaches for the Badging API once it believes it is an
+  // installed app, and this window is exactly that: its own process, its own
+  // app_id, no browser chrome. Claiming standalone is a description, not a lie.
+  // A plain stand-in, not a doctored MediaQueryList: its `matches` is a
+  // read-only accessor, so assigning to it throws and takes the shim with it.
+  const media = window.matchMedia.bind(window);
+  const noop = () => {{}};
+  window.matchMedia = q => /display-mode:\\s*standalone/.test(q)
+    ? {{matches: true, media: q, onchange: null, addEventListener: noop,
+       removeEventListener: noop, addListener: noop, removeListener: noop,
+       dispatchEvent: () => false}}
+    : media(q);
+
+  const send = n => console.info("{BADGE_MARKER} " + Math.max(0, n | 0));
+  navigator.setAppBadge = n => (send(n === undefined ? 1 : n), Promise.resolve());
+  navigator.clearAppBadge = () => (send(0), Promise.resolve());
+  console.info("{BADGE_MARKER} ready " + (window.matchMedia("(display-mode: standalone)").matches ? "standalone" : "browser"));
+}})();
+"""
+
+
 class ShellPage(QWebEnginePage):
+    # The unread count the page published through the shimmed Badging API.
+    badgePublished = pyqtSignal(int)
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        if message.startswith(BADGE_MARKER):
+            payload = message[len(BADGE_MARKER):].strip()
+            if payload.isdigit():
+                log("BADGE", f"page published {payload}")
+                self.badgePublished.emit(int(payload))
+            else:
+                # The shim's own liveness line, which also says whether the page
+                # believes it is standalone — the condition for it to ask at all.
+                log("BADGE", payload)
+            return
+        super().javaScriptConsoleMessage(level, message, line, source)
+
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         scheme = url.scheme()
 
@@ -532,8 +612,25 @@ class ShellPage(QWebEnginePage):
         return holder
 
 
+def badge_shim():
+    """The Badging API polyfill, in the page's own world at document creation.
+
+    MainWorld and DocumentCreation both matter: an isolated world would leave
+    the page's own `navigator` untouched, and a later injection point would
+    arrive after the site has already decided the API is missing.
+    """
+    script = QWebEngineScript()
+    script.setName("badge-shim")
+    script.setSourceCode(BADGE_SHIM)
+    script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+    script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+    script.setRunsOnSubFrames(False)
+    return script
+
+
 def build_profile(app):
     profile = QWebEngineProfile(CONFIG.app_id, app)
+    profile.scripts().insert(badge_shim())
     state = state_dir()
     profile.setPersistentStoragePath(str(state / "profile"))
     profile.setCachePath(str(state / "cache"))
@@ -850,12 +947,31 @@ def run(config: ChatApp) -> int:
         log("PERM", f"request {kind.name} from {permission.origin().host()}"
                     f" -> {'grant' if allow else 'deny'}")
 
-    def on_title(page_title):
-        count = unread_count(page_title)
-        view.setWindowTitle(window_title(count))
+    # Set once the page publishes its own count, after which the title is no
+    # longer read: a site that calls setAppBadge knows what is unread, while its
+    # title only ever meant "arrived while you were away" — dropped the moment
+    # the window takes focus, and flashed on and off in the meantime.
+    published = False
+
+    def show_unread(count):
         if tray is not None:
             tray.set_unread(count)
 
+    def on_title(page_title):
+        count, title = parse_title(page_title)
+        title = window_title(title)
+        log("TITLE", f"{page_title!r} -> {title!r} / {count} unread")
+        if title:
+            view.setWindowTitle(title)
+        if not published:
+            show_unread(count)
+
+    def on_badge(count):
+        nonlocal published
+        published = True
+        show_unread(count)
+
+    page.badgePublished.connect(on_badge)
     page.permissionRequested.connect(on_permission)
     profile.downloadRequested.connect(lambda download: download.accept())
     view.titleChanged.connect(on_title)
