@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Maintain the local T3 Code fork: rebase our patches onto upstream, then
-# build and install the AppImage over the one the desktop entry points at.
+# Maintain the local T3 Code fork: rebase our patches onto upstream, then build
+# the AppImage and point the desktop at it. This is the only thing that installs
+# T3 Code — `dots apps` deliberately tracks no source for it, so nothing else
+# ever writes that AppImage.
 #
 #   t3fork update       take in origin, rebase the fork branch onto upstream,
 #                       then offer to publish it (force-with-lease, asks first)
-#   t3fork install      build a Linux AppImage and replace the installed one,
-#                       then offer to restart T3 Code onto it
+#   t3fork install      build a Linux AppImage, install it as the launcher's
+#                       T3 Code, then offer to restart onto it
 #     -y, --yes         restart without asking (for unattended runs)
 #     -n, --no-restart  install only, leave the running app alone
 #   t3fork restart      restart T3 Code onto the installed AppImage as-is
@@ -16,6 +18,11 @@ set -euo pipefail
 
 repo="${T3CODE_REPO:-$HOME/Projects/labs/t3code}"
 branch="${T3CODE_FORK_BRANCH:-moinax}"
+
+# $app_name is what `dots apps` slugifies, and the slug is what names every
+# file it owns — so "T3 Code" is what makes $target the path it is. The two are
+# one decision written twice; change the name and $target has to follow.
+app_name="T3 Code"
 target="$HOME/.local/share/AppImages/t3-code.AppImage"
 
 [[ -d "$repo" ]] || { echo "t3fork: no repo at $repo" >&2; exit 1; }
@@ -427,9 +434,38 @@ case "${1:-}" in
     built="$(echo release/*.AppImage)"
     [[ -f "$built" ]] || { echo "t3fork: build produced no AppImage" >&2; exit 1; }
 
-    # Safe while T3 Code is running: install(1) creates a new file, so the
-    # mounted AppImage keeps its own inode until the app is restarted.
-    install -Dm755 "$built" "$target"
+    # Install through `dots apps import-appimage` rather than a bare copy: it
+    # writes the desktop entry and the icon alongside the AppImage, which a copy
+    # does not. Copying alone is what left the fork one launch away from being
+    # unreachable — the build landed at $target while every launcher entry, and
+    # the t3code:// handler with them, still pointed at a separately installed
+    # upstream AppImage. Nothing said so, because `t3fork restart` execs $target
+    # directly and looked right; the next launch from the desktop was upstream
+    # again, with our patches nowhere in it.
+    #
+    # --name is not cosmetic. Left off, the importer takes the name embedded in
+    # the build, which electron-builder stamps from productName — "T3 Code
+    # (Alpha)" — slugging to t3-code-alpha and installing a *second* app beside
+    # this one. That is the split above, recreated by the command meant to close
+    # it.
+    #
+    # Resolved like vp above, and for the same reason: an agent shell inside T3
+    # Code replays a PATH snapshot older than ~/.local/bin.
+    for dots in \
+      "$(command -v dots || true)" \
+      "$HOME/.local/bin/dots"
+    do
+      if [[ -x "$dots" ]]; then break; fi
+    done
+    if [[ -x "$dots" ]]; then
+      "$dots" apps import-appimage "$built" --name "$app_name"
+    else
+      # A missing `dots` costs the launcher entry, never the build. Safe while
+      # T3 Code is running: install(1) creates a new file, so the mounted
+      # AppImage keeps its own inode until the app is restarted.
+      echo "t3fork: dots not found — installing the AppImage, launcher entry left as it is" >&2
+      install -Dm755 "$built" "$target"
+    fi
     echo "t3fork: installed $version -> $target"
 
     # Asking needs someone to answer: run from an agent or a hook there is no
@@ -459,7 +495,12 @@ case "${1:-}" in
     ;;
 
   *)
-    sed -n '2,10p' "$0" | sed 's/^# \?//'
+    # Print the header block by asking where it *ends* — the first line that is
+    # not a comment — rather than by line number. The number was '2,10' and went
+    # stale the moment the header gained a sentence: `restart` and both install
+    # flags dropped out of the usage while the block that documents them sat
+    # right there, and nothing failed to say so.
+    awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
     exit 1
     ;;
 esac
