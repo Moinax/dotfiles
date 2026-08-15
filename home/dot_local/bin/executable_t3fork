@@ -170,14 +170,16 @@ origin_sha=""    # what origin/$branch held at that moment ("" = no such branch)
 # force-push that eventually follows would delete them — a loss that leaves no
 # trace anywhere, since the push succeeds and the branch looks healthy.
 #
+# It returns only when `$branch` carries, by patch-id, everything
+# `origin/$branch` does — by taking origin in, or not at all. offer_push's
+# force-push rests on that postcondition, so state it here and cite it there
+# rather than deriving it twice from the mechanism.
+#
 # The obvious test for it is wrong. A branch rebased here and not yet pushed has
 # *already* diverged from origin by construction, so refusing on divergence
 # would block every update for anyone who does not push after each one. What
-# actually matters is whether origin carries commits this checkout does not, and
-# `git cherry` answers that by patch-id: a locally rewritten commit still counts
-# as present, a genuinely new one from elsewhere comes back `+`. Verified across
-# all three states — rewritten-only (0), rewritten plus a foreign commit (1),
-# plainly behind (fast-forwards).
+# actually matters is which side holds work the other lacks *by patch-id*, so
+# that a locally rewritten commit still counts as present on both.
 #
 # A missing origin, or a fetch that fails offline, is a warning and not a stop:
 # the `git fetch upstream` on the next line has to work anyway for this command
@@ -231,40 +233,58 @@ sync_with_origin() {
   # was observed, which is the point of capturing it above.
   [[ -n "$origin_sha" ]] || return 0
 
-  if git merge-base --is-ancestor "$branch" "origin/$branch"; then
-    # Behind, or level. Nothing local is at risk, so take it in silently — but
-    # a fast-forward still touches the working tree, so uncommitted changes over
-    # one of the incoming files stop it. Under `set -e` that ended the run on
-    # git's own message and none of ours, the same way `git switch` did before
-    # the rebase guard above.
-    git merge --ff-only "origin/$branch" || {
-      echo "t3fork: cannot fast-forward to origin/$branch — uncommitted changes are in the way." >&2
+  # One walk, both sides. `--cherry-pick` drops from each side the commits the
+  # other holds a patch-equivalent copy of, so the two counts are exactly what a
+  # `git cherry` in each direction would have counted `+` — verified against
+  # both. Left of `A...B` is A, so `origin/$branch` first puts origin's count in
+  # $foreign.
+  local foreign ours
+  read -r foreign ours < <(git rev-list --left-right --cherry-pick --count "origin/$branch...$branch")
+
+  # Origin holds nothing this checkout lacks: level, or rebased here and not yet
+  # pushed. The postcondition already holds — leave the branch alone, and let
+  # offer_push deal with the difference.
+  [ "$foreign" -gt 0 ] || return 0
+
+  if [ "$ours" -eq 0 ]; then
+    # Divergence alone is not a conflict, and this is the shape it usually takes:
+    # another machine ran this same command, rebasing the same patches onto a
+    # newer upstream and force-pushing, so origin carries our work rewritten
+    # rather than work of its own. Nothing here to lose, and origin is the better
+    # base to rebase from — taking it is what lets the fork be maintained from
+    # two machines with no manual step after every update.
+    #
+    # This is also the plainly-behind case, which is why there is no separate
+    # fast-forward arm: `--keep` lands the branch exactly where `merge --ff-only`
+    # would. And `--keep`, never `--hard`, is what keeps that true in a dirty
+    # tree — it refuses rather than discarding uncommitted work the incoming diff
+    # would overwrite. Under `set -e` git's own message ended the run with none of
+    # ours, the same way `git switch` did before the rebase guard above.
+    echo "t3fork: taking in $foreign commit(s) from origin/$branch"
+    git reset --keep "origin/$branch" || {
+      echo "t3fork: cannot move to origin/$branch — uncommitted changes are in the way." >&2
       echo "t3fork: commit or stash them, then re-run: t3fork update" >&2
       exit 1
     }
     return 0
   fi
 
-  local foreign
-  foreign=$(git cherry "$branch" "origin/$branch" | grep -c '^+' || true)
-  [ "$foreign" -eq 0 ] || {
-    echo "t3fork: origin/$branch carries $foreign commit(s) this checkout does not have." >&2
-    echo "t3fork: another machine pushed work here. Rebasing now would drop it, and" >&2
-    echo "        the force-push afterwards would delete it for good. Take it first:" >&2
-    echo "  git rebase origin/$branch          # replay our patches on top of theirs" >&2
-    echo "  git reset --hard origin/$branch    # or throw ours away, if they were pushed" >&2
-    echo "Then re-run: t3fork update" >&2
-    exit 1
-  }
+  echo "t3fork: origin/$branch carries $foreign commit(s) this checkout does not have," >&2
+  echo "        and this checkout carries $ours origin does not. Rebasing now would drop" >&2
+  echo "        one side, and the force-push afterwards would delete it for good." >&2
+  echo "  git rebase origin/$branch          # replay our patches on top of theirs" >&2
+  echo "Then re-run: t3fork update" >&2
+  exit 1
 }
 
 # Publish the rebased branch — offered, never done on its own.
 #
 # A rebase rewrites a branch that is already on GitHub, so the only way to put
 # origin back in step is a force-push. That is safe *here specifically* and
-# nowhere else in this script: sync_with_origin fetched seconds ago and refused
-# to go on if origin held anything this checkout lacked, so what the push
-# overwrites is patch-equivalent to what we hold. The lease closes the only
+# nowhere else in this script: sync_with_origin fetched seconds ago and returns
+# only on its postcondition — this checkout carries, by patch-id, everything
+# origin does — so what the push overwrites is patch-equivalent to what we hold,
+# whether it took origin in or found nothing to take. The lease closes the only
 # window left — someone pushing between that fetch and this push makes the
 # command fail rather than silently win.
 #
