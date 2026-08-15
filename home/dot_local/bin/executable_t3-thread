@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# t3-thread — the automation surface T3 Code does not ship.
+#
+#   t3-thread projects                    JSON: every project T3 Code knows
+#   t3-thread threads [PROJECT_ID]        JSON: live threads, newest first
+#   t3-thread project-add PATH [TITLE]    register a project, print its id
+#   t3-thread new PROJECT_ID [TITLE]      create a thread, print its id
+#   t3-thread focus THREAD_ID             open that thread and raise the window
+#
+# T3 Code's own CLI (`t3`) manages projects but has no thread verbs at all, so
+# anything outside the app that wants to open work has to speak to the server
+# directly. Three different doors are used below, each because it is the only
+# one that fits:
+#
+#   read  → state.sqlite, opened read-only. No auth, no server round trip, and
+#           it is the same projection the sidebar renders, so a list here can
+#           never disagree with what is on screen.
+#   write → POST /api/orchestration/dispatch, which takes a whole orchestration
+#           command. This is the only way to create a thread.
+#   focus → the deep-link socket, ~10ms against ~1.4s for `xdg-open` (which
+#           launches a second copy of the app just to hand the URL over).
+#
+# Deliberately a shell script rather than logic inside the vicinae extension:
+# the extension is build output, and this has to stay callable from a keybind,
+# a status bar or a shell the same way `dev-projects` is.
+set -euo pipefail
+
+state_dir="$HOME/.t3/userdata"
+db="$state_dir/state.sqlite"
+runtime="$state_dir/server-runtime.json"
+env_file="$state_dir/environment-id"
+
+# The fork's own build, not a published `t3`: it is version-locked to the
+# AppImage that is actually running, which matters because the token this mints
+# is validated by that server's signing key.
+t3_repo="${T3CODE_REPO:-$HOME/Projects/labs/t3code}"
+cli="$t3_repo/apps/server/dist/bin.mjs"
+
+# Long-lived on purpose. Minting costs a node start (~1s), so a token per call
+# would put that on the path of every keystroke-driven action; a cached one
+# turns thread creation into a single curl. Re-minted only when the server
+# rejects it, which covers both expiry and a revoked session.
+token_file="${XDG_STATE_HOME:-$HOME/.local/state}/dots/t3-thread/token"
+token_ttl="30d"
+
+die() { printf 't3-thread: %s\n' "$1" >&2; exit 1; }
+
+# Two readers, because the callers want two different things. `sql` feeds the
+# extension, which parses JSON; `scalar` answers the one-value questions this
+# script asks itself, where -json would only be peeled straight back off by jq.
+sql() { sqlite3 -json "file:$db?mode=ro" "$1"; }
+scalar() { sqlite3 "file:$db?mode=ro" "$1"; }
+
+origin() {
+    [[ -f "$runtime" ]] || die "T3 Code is not running (no $runtime)"
+    jq -re '.origin' "$runtime" 2>/dev/null || die "no origin in $runtime"
+}
+
+# fnm's default alias rather than whatever `node` PATH happens to hold: this
+# runs from the vicinae extension host and from a Hyprland keybind, neither of
+# which has necessarily sourced fnm. The aliased path survives node upgrades,
+# unlike the per-shell `fnm_multishells` one — same resolution `t3fork` uses.
+node_bin() {
+    command -v node 2>/dev/null && return 0
+    local aliased="$HOME/.local/share/fnm/aliases/default/bin/node"
+    [[ -x "$aliased" ]] && printf '%s' "$aliased" && return 0
+    return 1
+}
+
+run_cli() {
+    [[ -f "$cli" ]] || die "no t3 CLI at $cli — build it in $t3_repo"
+    local node
+    node="$(node_bin)" || die "no node on PATH and none at fnm's default alias"
+    "$node" "$cli" "$@"
+}
+
+mint_token() {
+    mkdir -p "$(dirname "$token_file")"
+    # umask rather than a chmod afterwards: the token must never exist, even for
+    # an instant, in a mode another user could read.
+    local previous
+    previous="$(umask)"
+    umask 077
+    run_cli auth session issue --token-only --ttl "$token_ttl" --label "t3-thread" > "$token_file"
+    umask "$previous"
+    [[ -s "$token_file" ]] || { rm -f "$token_file"; die "could not issue a token"; }
+}
+
+# POST a command, minting a token first if there is none and once more if the
+# one we had is refused. Prints the server's response body.
+#
+# The status code rides on the last line of stdout rather than going to a temp
+# file. A temp file would have to be cleaned up on the way out, and every
+# failure here leaves through `die` — which exits the shell outright, so no
+# function-scoped trap ever fires. One less thing to own.
+dispatch() {
+    local payload="$1" url response code body
+    [[ -s "$token_file" ]] || mint_token
+    url="$(origin)/api/orchestration/dispatch"
+
+    for attempt in 1 2; do
+        response="$(curl -sS -w $'\n%{http_code}' \
+            -X POST "$url" \
+            -H "Authorization: Bearer $(< "$token_file")" \
+            -H 'Content-Type: application/json' \
+            --data-binary "$payload")"
+        code="${response##*$'\n'}"
+        body="${response%$'\n'*}"
+        case "$code" in
+            2??) printf '%s' "$body"; return 0 ;;
+            401|403)
+                [[ "$attempt" == 1 ]] || die "server refused the token twice"
+                mint_token ;;
+            *) die "dispatch failed (HTTP $code): ${body:0:300}" ;;
+        esac
+    done
+}
+
+# The model a new thread opens with. A thread cannot be created without one, and
+# guessing it wrong is not cosmetic — it decides which agent actually runs, at
+# which effort and context size. So it is never invented here, only copied from
+# something the user already chose, in the order they would expect:
+#
+#   1. the project's own default, when one is set;
+#   2. the newest thread *of that project* — "what I am using on this repo";
+#   3. the newest thread anywhere, for a project opened for the first time.
+#
+# Step 2 is what makes it predictable. Ordering globally on `updated_at` alone
+# picked whichever thread happened to receive a token last, so the same action
+# produced a different model minute to minute.
+# One statement, because COALESCE already expresses "first of these that is not
+# null" — the three-call version spawned six processes on exactly the path this
+# picker exists to create, a project registered seconds ago with no default and
+# no thread of its own.
+model_selection() {
+    local project_id="${1//\'/}" selection newest
+    newest="SELECT model_selection_json FROM projection_threads
+            WHERE deleted_at IS NULL AND model_selection_json IS NOT NULL"
+    selection="$(scalar "
+        SELECT COALESCE(
+          (SELECT default_model_selection_json FROM projection_projects
+            WHERE project_id = '$project_id' AND deleted_at IS NULL),
+          ($newest AND project_id = '$project_id' ORDER BY updated_at DESC LIMIT 1),
+          ($newest ORDER BY updated_at DESC LIMIT 1))")"
+    [[ -n "$selection" ]] || die "no model to copy — open one thread in T3 Code first"
+    printf '%s' "$selection"
+}
+
+case "${1:-}" in
+    projects)
+        sql "SELECT project_id, title, workspace_root FROM projection_projects
+             WHERE deleted_at IS NULL ORDER BY title"
+        ;;
+
+    # Live threads only: archived ones are the sidebar's business, and a picker
+    # that lists them buries today's work under months of finished tasks.
+    # `status` comes from the session row, which is absent until a thread has
+    # actually run — hence the join and the "idle" default.
+    threads)
+        project_filter=""
+        [[ -n "${2:-}" ]] && project_filter="AND t.project_id = '${2//\'/}'"
+        sql "SELECT t.thread_id, t.title, t.project_id,
+                    COALESCE(s.status, 'idle') AS status,
+                    t.updated_at,
+                    (SELECT COUNT(*) FROM projection_pending_approvals a
+                      WHERE a.thread_id = t.thread_id AND a.status = 'pending') AS pending
+             FROM projection_threads t
+             LEFT JOIN projection_thread_sessions s ON s.thread_id = t.thread_id
+             WHERE t.deleted_at IS NULL AND t.archived_at IS NULL $project_filter
+             ORDER BY t.updated_at DESC"
+        ;;
+
+    project-add)
+        [[ -n "${2:-}" ]] || die "project-add needs a path"
+        path="$(cd "$2" 2>/dev/null && pwd)" || die "no such directory: $2"
+        args=(project add "$path")
+        [[ -n "${3:-}" ]] && args+=(--title "$3")
+        run_cli "${args[@]}" >&2
+        # The CLI prints prose, not an id, so the id is read back from the
+        # projection it just wrote — matched on the path, which is the key the
+        # server itself normalises and stores.
+        id="$(scalar "SELECT project_id FROM projection_projects
+                      WHERE workspace_root = '${path//\'/}' AND deleted_at IS NULL
+                      LIMIT 1")"
+        [[ -n "$id" ]] || die "project added but not found at $path"
+        printf '%s\n' "$id"
+        ;;
+
+    new)
+        [[ -n "${2:-}" ]] || die "new needs a project id"
+        project_id="$2"
+        thread_id="$(uuidgen)"
+        # `interactionMode` is left out: the schema defaults it, and naming it
+        # here would be a second place to keep in step with the app's default.
+        # `branch`/`worktreePath` are null — this opens a thread on the project's
+        # main checkout, which is the whole point of the picker; a worktree is a
+        # separate, deliberate act inside T3 Code.
+        payload="$(jq -nc \
+            --arg cmd "$(uuidgen)" --arg tid "$thread_id" --arg pid "$project_id" \
+            --arg title "${3:-New thread}" \
+            --arg now "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
+            --argjson model "$(model_selection "$project_id")" \
+            '{type:"thread.create", commandId:$cmd, threadId:$tid, projectId:$pid,
+              title:$title, modelSelection:$model, runtimeMode:"full-access",
+              branch:null, worktreePath:null, createdAt:$now}')"
+        dispatch "$payload" >/dev/null
+        printf '%s\n' "$thread_id"
+        ;;
+
+    focus)
+        [[ -n "${2:-}" ]] || die "focus needs a thread id"
+        [[ -f "$env_file" ]] || die "no environment id at $env_file"
+        url="t3code://threads/$(< "$env_file")/$2"
+        socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/t3code-deeplink.sock"
+
+        # No socket means the app is down. Starting it through the launcher and
+        # then using the socket costs one Electron process; handing the URL to
+        # `xdg-open` instead costs two, because the launcher that has to raise
+        # the window afterwards finds none mapped yet and starts its own. The
+        # socket exists by the time the window does — the app binds it during
+        # startup, well before the renderer paints.
+        [[ -S "$socket" ]] || t3-code-launch.sh
+        printf '%s\n' "$url" | socat - "UNIX-CONNECT:$socket" 2>/dev/null \
+            || die "the deep-link socket refused the URL"
+
+        # The app asks for focus itself and Hyprland refuses it — measured: the
+        # link landed and the thread opened while the browser stayed in front.
+        # So the compositor has to be told, and it has to be told *after* the
+        # caller is gone: a vicinae action still owns the keyboard while it
+        # runs, and the compositor hands focus back to whatever it took it from
+        # as the launcher closes. Detached, the raise outlives that dismissal
+        # and lands on the real final state instead of racing it.
+        setsid -f t3-code-launch.sh >/dev/null 2>&1
+        ;;
+
+    # Prints the banner above by finding it, never by line number: a hard-coded
+    # range goes stale the moment a verb is added, and drops it from the help
+    # with nothing failing to say so. The title line and the indented verb lines
+    # are the usage; a bare `#` is a separator, and the first line of prose (a
+    # comment that is neither) is where it stops.
+    ""|-h|--help|help)
+        awk '
+            NR == 1            { next }
+            /^#[[:space:]]*$/  { next }
+            NR == 2 || /^#   / { sub(/^# ?/, ""); print; next }
+                               { exit }' "$0"
+        ;;
+
+    *) die "unknown command: $1" ;;
+esac

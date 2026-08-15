@@ -19,6 +19,13 @@
       "mode": "view"
     },
     {
+      "name": "t3",
+      "title": "T3 Code",
+      "subtitle": "Moinax",
+      "description": "Pick a project and open or create a T3 Code thread in it.",
+      "mode": "view"
+    },
+    {
       "name": "kill-window",
       "title": "Kill Window",
       "subtitle": "Moinax",

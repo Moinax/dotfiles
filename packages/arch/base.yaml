@@ -29,7 +29,10 @@ packages:
              # packages`/`dots update` scan pays it. Was present only as a
              # cachyos-fish-config dependency, so a package change could have
              # dropped it and silently un-done that.
-    - socat  # talk to herdr's unix-socket API (tab.move, etc.) from dev scripts
+    - socat  # unix-socket clients: herdr's API (tab.move, etc.) and T3 Code's deep-link socket
+    - sqlite  # `t3-thread` reads T3 Code's state.sqlite projections read-only; every
+              # verb needs sqlite3. Present today only as a transitive dependency,
+              # which is the same trap `expac` above documents.
     - rsync
     - unzip
     - age  # encrypt project backups (dots backup)

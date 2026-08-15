@@ -18,7 +18,8 @@ local home = assert(os.getenv("HOME"), "HOME not set")
 --
 -- ── 1. Application Shortcuts ──────────────────────────────────────
 hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                 -- Open terminal
-hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/dev?toggle=true'"))             -- Pick main project & open dev workspace (Shift+Enter → worktrees)
+hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/t3?toggle=true'"))              -- Pick a project & open/create a T3 Code thread
+hl.bind(mod .. " + CTRL + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/dev?toggle=true'"))            -- Pick main project & open dev workspace (Shift+Enter → worktrees)
 hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("vicinae vicinae://toggle"))                                              -- Launcher (apps, files, maths, everything)
 hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/bin/browser-launch.sh"))                                 -- Open default browser
 hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/browser?toggle=true'"))         -- Pick browser (default marked)
