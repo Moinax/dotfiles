@@ -111,11 +111,19 @@ state-driven offer on the update side.
 
 **Its trigger is machine state, never `CHANGED_FILES`.** The anchor had already
 moved past the commit that introduced the feature by the time the black lock
-screen was noticed, so a diff-driven gate could never have fired again. Same
-reasoning as `reconcile_custom_requires`: a question asked off the machine's own
-state re-offers itself for as long as the machine needs it, and declining costs
-nothing. It is gated on `install_purpose_is desktop` and on a tty, since two sudo
-prompts under a pipe would sit unanswered.
+screen was noticed, so a diff-driven gate could never have fired again. Reading
+off machine state also means it re-offers itself for as long as the machine needs
+it, the same property `reconcile_custom_requires` relies on. It is gated on
+`install_purpose_is desktop` and on a tty, since sudo under a pipe would sit
+unanswered.
+
+**It does not ask, it just does it.** sudo already prompts for a password, which
+is the same question with a way out built in, and the only alternative to
+answering it is a lock screen that stays black — there is nothing else the machine
+could sensibly do with a "no". A `confirm_or_abort` in front of it was a second
+question for one decision, and it came with four lines explaining the situation
+that nobody needs in order to answer "yes". One line and a header is the whole
+report; `apply_login_wallpaper`'s own success lines say what actually happened.
 
 `login_wallpaper_needs_setup` asks only about the two privileged steps. A
 published file that is merely *missing* is deliberately not a trigger: with a

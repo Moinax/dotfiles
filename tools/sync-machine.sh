@@ -783,8 +783,8 @@ reconcile_login_wallpaper() {
     install_purpose_is desktop || return 0
     login_wallpaper_needs_setup || return 0
 
-    # Two sudo calls with a password prompt of their own: under a pipe or a cron
-    # there is nobody to answer, the same judgement update_system_packages makes.
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
     #
     # Last of the three guards rather than first, though it is the only free one:
     # ahead of them it would announce a skip on every non-interactive run of a
@@ -796,28 +796,13 @@ reconcile_login_wallpaper() {
         return 0
     fi
 
+    # No confirmation in front of this. sudo asks for a password, which is the
+    # same question with a way out already built in, and the alternative to
+    # answering it is a lock screen that stays black — there is no second thing
+    # the machine could sensibly do. `install -d` and two config writes on a
+    # machine that is already missing them is not a transaction worth a prompt.
     print_header "Login Wallpaper"
-    if [ ! -w "$LOGIN_WALLPAPER_DIR" ]; then
-        print_warning "$LOGIN_WALLPAPER_DIR does not exist, or is not yours to write"
-        print_info "  hyprlock reads that one file and nothing else, so the lock"
-        print_info "  screen is currently black. Picking a wallpaper cannot repair"
-        print_info "  it — the picker has nowhere to publish to."
-    else
-        print_warning "The login greeter is not pointed at $LOGIN_WALLPAPER_FILE"
-        print_info "  It keeps its own wallpaper rather than the one the desktop"
-        print_info "  and the lock screen share. Opening System Settings → Login"
-        print_info "  Screen is one way this happens."
-    fi
-    print_info "  This is the only step in the wallpaper path that needs sudo."
-    echo ""
-    if ! confirm_or_abort "Set it up now?"; then
-        # No shortfall, and nothing for the anchor to record: the question comes
-        # off the machine's own state, so it returns by itself at the next update
-        # for as long as the machine is missing this.
-        print_info "Skipped — run 'dots update' again to be offered it"
-        return 0
-    fi
-
+    print_info "The lock and login screens have no wallpaper of their own yet — publishing it (needs sudo)"
     apply_login_wallpaper || return 0
 }
 
