@@ -88,15 +88,17 @@
   // Memory
   "memory": {
     "format": " {used}G",
-    // "on-click": "alacritty -e htop"
-    "on-click": "kitty btop",
+    // Same command as cpu on purpose: the two are one visible pill (group/stats)
+    // and the whole pill has to be clickable. The -T is load-bearing — it is what
+    // the float+center window rule matches on (hypr/conf/windowrules.lua).
+    "on-click": "kitty -T btop btop",
   },
   // Harddisc space used
   "disk": {
     "interval": 30,
     "format": "D {percentage_used}% ",
     "path": "/",
-    "on-click": "kitty btop",
+    "on-click": "kitty -T btop btop",
   },
   "hyprland/language": {
     "format": "/ K {short}",

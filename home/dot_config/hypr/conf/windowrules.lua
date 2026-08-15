@@ -8,11 +8,18 @@ hl.window_rule({
     center = true,
 })
 
--- btop in kitty: float at 1280x720
+-- btop in kitty (the waybar performance module's on-click): float at 1280x720.
+--
+-- `center` is not redundant. A native-Wayland floating window has no position of
+-- its own, so Hyprland centers it and the rule never needed to say so. kitty runs
+-- on XWayland on the desktop (see kitty/display-server.conf.tmpl), and an X11
+-- client maps with a requested geometry that Hyprland honours — which put the
+-- popup at the monitor's top-left corner instead.
 hl.window_rule({
-    match = { class = "^(kitty)$", title = "^(btop)$" },
-    float = true,
-    size  = { 1280, 720 },
+    match  = { class = "^(kitty)$", title = "^(btop)$" },
+    float  = true,
+    size   = { 1280, 720 },
+    center = true,
 })
 
 -- Bitwarden: width-constrained Electron window tiles awkwardly; float it centered
