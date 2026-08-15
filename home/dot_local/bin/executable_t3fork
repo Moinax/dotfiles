@@ -246,35 +246,43 @@ sync_with_origin() {
   # offer_push deal with the difference.
   [ "$foreign" -gt 0 ] || return 0
 
-  if [ "$ours" -eq 0 ]; then
-    # Divergence alone is not a conflict, and this is the shape it usually takes:
-    # another machine ran this same command, rebasing the same patches onto a
-    # newer upstream and force-pushing, so origin carries our work rewritten
-    # rather than work of its own. Nothing here to lose, and origin is the better
-    # base to rebase from — taking it is what lets the fork be maintained from
-    # two machines with no manual step after every update.
-    #
-    # This is also the plainly-behind case, which is why there is no separate
-    # fast-forward arm: `--keep` lands the branch exactly where `merge --ff-only`
-    # would. And `--keep`, never `--hard`, is what keeps that true in a dirty
-    # tree — it refuses rather than discarding uncommitted work the incoming diff
-    # would overwrite. Under `set -e` git's own message ended the run with none of
-    # ours, the same way `git switch` did before the rebase guard above.
-    echo "t3fork: taking in $foreign commit(s) from origin/$branch"
-    git reset --keep "origin/$branch" || {
-      echo "t3fork: cannot move to origin/$branch — uncommitted changes are in the way." >&2
-      echo "t3fork: commit or stash them, then re-run: t3fork update" >&2
-      exit 1
-    }
-    return 0
+  # Divergence alone is not a conflict, and this is the shape it usually takes:
+  # another machine ran this same command, rebasing the same patches onto a
+  # newer upstream and force-pushing, so origin carries our work rewritten
+  # rather than work of its own. Nothing here to lose, and origin is the better
+  # base to rebase from — taking it is what lets the fork be maintained from
+  # two machines with no manual step after every update.
+  if [ "$ours" -gt 0 ]; then
+    # Commits only this checkout holds do not change that answer: origin still
+    # wins. Every update ends on the push offer, so by the time another machine
+    # has force-pushed, a commit sitting only here is a stale iteration of a
+    # patch origin already carries amended or evolved — and an amend is exactly
+    # what breaks the patch-id match that would otherwise have paired them up.
+    # This case used to refuse and ask for a manual `git rebase origin/$branch`,
+    # which failed on every machine switch: the replay hit add/add conflicts on
+    # those stale iterations, and the only correct resolution was `--skip` on
+    # each — i.e. what taking origin does wholesale. Naming what is dropped,
+    # and the sha it lived at, is what keeps a genuinely new never-pushed patch
+    # survivable: the reset only moves the ref, the commits stay in the reflog.
+    echo "t3fork: this checkout carries $ours commit(s) origin does not — stale iterations"
+    echo "        of work another machine already rebased and pushed; taking origin drops them:"
+    git --no-pager log --oneline --cherry-pick --right-only "origin/$branch...$branch"
+    echo "        If one of those was real unpushed work, it is still in the reflog:"
+    echo "  git branch t3fork-rescue $(git rev-parse --short "$branch")"
   fi
 
-  echo "t3fork: origin/$branch carries $foreign commit(s) this checkout does not have," >&2
-  echo "        and this checkout carries $ours origin does not. Rebasing now would drop" >&2
-  echo "        one side, and the force-push afterwards would delete it for good." >&2
-  echo "  git rebase origin/$branch          # replay our patches on top of theirs" >&2
-  echo "Then re-run: t3fork update" >&2
-  exit 1
+  # This is also the plainly-behind case, which is why there is no separate
+  # fast-forward arm: `--keep` lands the branch exactly where `merge --ff-only`
+  # would. And `--keep`, never `--hard`, is what keeps that true in a dirty
+  # tree — it refuses rather than discarding uncommitted work the incoming diff
+  # would overwrite. Under `set -e` git's own message ended the run with none of
+  # ours, the same way `git switch` did before the rebase guard above.
+  echo "t3fork: taking in $foreign commit(s) from origin/$branch"
+  git reset --keep "origin/$branch" || {
+    echo "t3fork: cannot move to origin/$branch — uncommitted changes are in the way." >&2
+    echo "t3fork: commit or stash them, then re-run: t3fork update" >&2
+    exit 1
+  }
 }
 
 # Publish the rebased branch — offered, never done on its own.
