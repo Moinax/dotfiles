@@ -190,6 +190,10 @@ hl.bind(mod .. " + CTRL + L",  hl.dsp.exec_cmd("systemctl suspend"))            
 hl.bind(mod .. " + SHIFT + L", hl.dsp.exec_cmd(home .. "/.local/bin/compositor-logout.sh"))                -- Logout
 hl.bind(mod .. " + H",         hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/keybindings?toggle=true'")) -- Keybinding help
 
+-- No lid bind on purpose: logind keeps HandleLidSwitch=suspend, and locking
+-- before the screen stops being drawable is handled once for every suspend path
+-- by lock-before-sleep.service, not per trigger. See that script's header.
+
 -- ── 15. Mouse ────────────────────────────────────────────────────
 hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })                   -- Move window
 hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })                   -- Resize window
