@@ -1351,18 +1351,28 @@ enable_selected_services() {
         print_info "Setting Tailscale operator to $USER"
         sudo tailscale set --operator="$USER"
 
-        # Never let Tailscale override system DNS. Otherwise tailscaled installs
-        # itself as the default DNS route in systemd-resolved; bringing Tailscale
-        # down then leaves a stale, server-less tailscale0 default route that
-        # breaks/slows resolution. Off means our NetworkManager DNS is always used.
-        tailscale set --accept-dns=false
-        print_success "Tailscale operator set; accept-dns disabled (system DNS preserved)"
+        # MagicDNS on, and it is a requirement rather than a taste: the remote
+        # T3 Code host is reached at its `*.ts.net` name because that is what its
+        # TLS certificate is issued for, so a 100.x address cannot stand in for
+        # it (`dots droplet`, docs/adr/0002).
+        #
+        # This was --accept-dns=false for a long time, to stop tailscaled taking
+        # over system DNS. Measured on 1.102.2 that fear does not apply to this
+        # tailnet: it declares no global resolvers, so tailscale0 only claims
+        # `*.ts.net` and the 100.x reverse zones as routing domains and every
+        # other lookup still goes through NetworkManager. The other half of the
+        # old rationale — a stale server-less route left after `down` breaking
+        # resolution — does not reproduce either: the leftover link has
+        # `Current Scopes: none` and resolved skips it, lookups answering in
+        # ~10ms with Tailscale down.
+        tailscale set --accept-dns=true
+        print_success "Tailscale operator set; MagicDNS enabled"
 
         # Authenticate once if needed, then leave Tailscale DISCONNECTED so it
         # never comes up automatically at boot.
         if ! tailscale status &>/dev/null; then
             print_info "Logging into Tailscale (a browser/URL will open for authentication)..."
-            tailscale up --accept-dns=false
+            tailscale up
             tailscale down
             print_info "Authenticated. Tailscale left disconnected — toggle it via the waybar module or Super+Ctrl+N."
         else
