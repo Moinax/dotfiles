@@ -44,4 +44,4 @@ else
     msg="Opacity off (all windows solid)"
 fi
 
-notify-send -u low "Opacity" "$msg" || true
+notify-send -u low -h int:transient:1 "Opacity" "$msg" || true
