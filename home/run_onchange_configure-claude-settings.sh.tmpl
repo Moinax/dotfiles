@@ -1,6 +1,7 @@
 {{- if .install_development -}}
 #!/bin/bash
-# Converge canonical Claude Code settings into ~/.claude/settings.json.
+# Converge canonical Claude Code settings into ~/.claude/settings.json, then
+# make the marketplaces and plugins they declare actually exist on this machine.
 # create_settings.json.tmpl only applies when the target file is missing, so
 # machines where it already exists never pick up later edits — this script
 # jq-merges the canonical keys on every change while leaving machine-specific
@@ -38,6 +39,43 @@ else
     echo "claude-settings: failed to update Claude Code settings"
     exit 1
 fi
+
+# Declaring a plugin in enabledPlugins only *enables* it — it never installs it,
+# and nothing else in the pipeline runs `claude plugin install`. Left at the
+# merge above, a fresh machine ends up with the marketplaces cloned and not one
+# plugin installed, silently: `claude plugin list` simply omits them. So drive
+# both off the canonical settings here, which is what makes the declaration
+# self-sufficient. Additive only, mirroring the merge: a plugin dropped from
+# CANONICAL is left installed rather than uninstalled behind the user's back.
+if ! command -v claude &>/dev/null; then
+    echo "claude-settings: claude not found, skipping plugin reconciliation"
+    exit 0
+fi
+
+known=$(claude plugin marketplace list --json 2>/dev/null | jq -r '.[].name')
+while IFS=$'\t' read -r name kind source; do
+    if [ -z "$name" ] || grep -qxF "$name" <<<"$known"; then continue; fi
+    # A directory marketplace whose repo is not checked out here is not an
+    # error — that machine just does not have it, and `add` would only fail.
+    if [ "$kind" = "directory" ] && [ ! -d "$source" ]; then
+        echo "claude-settings: marketplace '$name' skipped ($source not on this machine)"
+        continue
+    fi
+    claude plugin marketplace add "$source" >/dev/null \
+        && echo "claude-settings: registered marketplace '$name'" \
+        || echo "claude-settings: failed to register marketplace '$name'"
+done < <(jq -r '.extraKnownMarketplaces // {} | to_entries[]
+                | [.key, .value.source.source, (.value.source.repo // .value.source.path)] | @tsv' <<<"$CANONICAL")
+
+installed=$(claude plugin list --json 2>/dev/null | jq -r '.[].id')
+while read -r id; do
+    if [ -z "$id" ] || grep -qxF "$id" <<<"$installed"; then continue; fi
+    # -y: a marketplace-declared install command prompts, and this runs headless
+    # under `dots update` where stdin is not a TTY.
+    claude plugin install "$id" -y >/dev/null \
+        && echo "claude-settings: installed plugin '$id'" \
+        || echo "claude-settings: failed to install plugin '$id'"
+done < <(jq -r '.enabledPlugins // {} | to_entries[] | select(.value) | .key' <<<"$CANONICAL")
 {{- else -}}
 #!/bin/bash
 # Development group not selected — nothing to do

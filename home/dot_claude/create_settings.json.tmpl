@@ -13,7 +13,16 @@
     "skill-creator@claude-plugins-official": true,
     "mbrella@mbrella": true,
     "worktrunk@worktrunk": true,
-    "context7@claude-plugins-official": true
+    "context7@claude-plugins-official": true,
+    {{- /* mattpocock-skills also ships in claude-plugins-official, but pinned
+           to a catalog SHA — sourcing its own marketplace tracks main instead.
+           ponytail is not in the official catalog at all, and only works in
+           plugin form: its ruleset arrives through lifecycle hooks, so a bare
+           SKILL.md in ~/.claude/skills/ never self-activates. Those hooks need
+           `node` on PATH (fnm provides it). Per-repo `/setup-matt-pocock-skills`
+           is still a manual step — it writes into each project, not into $HOME. */}}
+    "mattpocock-skills@mattpocock": true,
+    "ponytail@ponytail": true
   },
   "extraKnownMarketplaces": {
     "mbrella": {
@@ -26,6 +35,18 @@
       "source": {
         "source": "github",
         "repo": "max-sixty/worktrunk"
+      }
+    },
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
       }
     }
   },
