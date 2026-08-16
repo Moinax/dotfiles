@@ -302,7 +302,12 @@ push_to_backup_repo() {
     fi
 
     cp "$archive" "$BACKUP_REPO_DIR/$ARCHIVE_NAME"
-    git -C "$BACKUP_REPO_DIR" add "$ARCHIVE_NAME"
+    # -A, not just $ARCHIVE_NAME: this repo is now the home of a second archive
+    # too. `dots droplet snapshot` writes the host's credentials here precisely
+    # so they ride off-site with this one, and staging only our own filename left
+    # that file untracked forever — the ride-along it was placed here for never
+    # happened. Nothing else is ever written into this directory.
+    git -C "$BACKUP_REPO_DIR" add -A
     if git -C "$BACKUP_REPO_DIR" diff --cached --quiet; then
         print_info "Backup unchanged since last push"
         return 0

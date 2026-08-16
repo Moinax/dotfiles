@@ -186,6 +186,11 @@ finish() {
 
 
 
+# A stage that MINTS A CREDENTIAL belongs in STATE_PATHS in provision-droplet.sh
+# as well, or `dots droplet restore` rebuilds a host still missing it and you
+# find out by being asked for it again. The drift only runs this way — a stale
+# entry there is harmless, a missing one silently costs a stage. Stages that
+# merely do work on the host (the scoped restore, pairing) are not credentials.
 TOTAL_STAGES=10
 
 # Non-secret bookkeeping only: the Tailscale auth key is single-use, so it is
