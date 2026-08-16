@@ -1,0 +1,18 @@
+#? Config file for btop v.1.4.7
+#
+# Only the keys this repo has an opinion about: btop fills every other option
+# with its default, so nothing is lost by not repeating the whole file here.
+#
+# The theme follows dark/light because apply-dark-mode.sh re-renders this file
+# on every toggle (its "Chezmoi templated configs" list) — btop reads its config
+# once at startup, and the waybar cpu/memory click starts a fresh one each time.
+color_theme = "catppuccin_{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}"
+
+#* False, so btop draws on the terminal's default background instead of painting
+#* the theme's own — kitty is translucent and an explicit bg renders as a solid
+#* slab over the wallpaper.
+theme_background = False
+
+#* btop rewrites this file on exit when true, which would put the previous
+#* mode's theme back whenever a btop outlives a toggle. chezmoi owns the file.
+save_config_on_exit = False

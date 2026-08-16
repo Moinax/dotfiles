@@ -232,6 +232,7 @@ done
 if command -v chezmoi &>/dev/null; then
     chezmoi apply \
         ~/.gitconfig \
+        ~/.config/btop/btop.conf \
         ~/.config/ccstatusline/settings.json \
         ~/.config/gh-dash/config.yml \
         ~/.config/hunk/config.toml \
