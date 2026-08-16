@@ -2,7 +2,7 @@ import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { useCallback, useMemo, useState } from "react";
 import type { Project } from "./projects";
 import { focusT3Thread, isThreadLive, listT3Threads, newT3Thread, type T3Thread } from "./t3";
-import { closeAfter, useLoader } from "./ui";
+import { closeAfterProgress, useLoader } from "./ui";
 
 /**
  * Session state, as the picker shows it.
@@ -75,7 +75,14 @@ export function ThreadList({ project, projectId }: { project: Project; projectId
                 <Action
                   title="Open Thread"
                   icon={Icon.ArrowRight}
-                  onAction={closeAfter(() => focusT3Thread(thread.thread_id), `Opening ${thread.title}`)}
+                  // Progress rather than a plain close: with T3 Code down this
+                  // waits out an Electron cold start, and the app paints
+                  // nothing for its first 2-3s. Without a live toast the
+                  // launcher just sits there looking wedged.
+                  onAction={closeAfterProgress(() => focusT3Thread(thread.thread_id), {
+                    start: `Opening ${thread.title}…`,
+                    hud: `Opening ${thread.title}`,
+                  })}
                 />
                 <Action.CopyToClipboard
                   title="Copy Thread Id"
@@ -115,9 +122,13 @@ export function ThreadList({ project, projectId }: { project: Project; projectId
               <Action
                 title="Create and Open"
                 icon={Icon.Plus}
-                onAction={closeAfter(
-                  async () => focusT3Thread(await newT3Thread(projectId, title)),
-                  `Opening ${title}`,
+                onAction={closeAfterProgress(
+                  async (report) => {
+                    const threadId = await newT3Thread(projectId, title);
+                    report(`Opening ${title}…`);
+                    await focusT3Thread(threadId);
+                  },
+                  { start: `Creating ${title}…`, hud: `Opening ${title}` },
                 )}
               />
             </ActionPanel>
