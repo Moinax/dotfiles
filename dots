@@ -27,6 +27,7 @@ Commands:
   setup       Run the full installer (first install; --force to redo one)
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
+  droplet     Build and reach the remote T3 Code host (create/setup/pair/status)
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
 
@@ -323,6 +324,19 @@ do_backup() {
     "$SCRIPT_DIR/tools/backup-projects.sh" "$@"
 }
 
+# The remote DigitalOcean host. `wizard` is the human half — the browser logins
+# and key registrations no script can do — and everything else forwards to the
+# machine half. Both live in tools/ and are the only things in this repo that
+# target a non-Arch OS; see docs/adr/0002 for why the host exists at all.
+do_droplet() {
+    if [[ "${1:-}" == wizard ]]; then
+        shift
+        "$SCRIPT_DIR/tools/droplet-wizard.sh" "$@"
+    else
+        "$SCRIPT_DIR/tools/provision-droplet.sh" "$@"
+    fi
+}
+
 do_lazy_lock() {
     local src="$HOME/.config/nvim/lazy-lock.json"
     local dest="$SCRIPT_DIR/home/dot_config/nvim/lazy-lock.json"
@@ -375,6 +389,11 @@ do_menu() {
             options+=("Gaming HDR launch")
         fi
         options+=("Backup projects")
+        # Gated on doctl, not on the droplet existing: asking DigitalOcean
+        # whether it has one is a network call, and this menu is redrawn on
+        # every loop — the same reason the HDR probe above runs once. No doctl,
+        # no remote host worth offering.
+        command_exists doctl && options+=("Remote T3 Code host")
         # Reachable, but last and named for what it is: on a managed machine it
         # only proceeds with --force, and reinstalling from scratch is not
         # something to land on by cursor drift.
@@ -395,6 +414,7 @@ do_menu() {
             "Update whisper model")    do_whisper || true ;;
             "Gaming HDR launch")       do_gaming || true ;;
             "Backup projects")         do_backup || true ;;
+            "Remote T3 Code host")     do_droplet status || true ;;
             "Exit")                    break ;;
         esac
     done
@@ -411,7 +431,7 @@ do_menu() {
 case "${2:-}" in
     help|--help|-h)
         case "${1:-}" in
-            packages|update|apps|backup|gaming) ;;  # forward: these answer for themselves
+            packages|update|apps|backup|gaming|droplet) ;;  # forward: these answer for themselves
             # setup answers for itself too, but going through tools/setup.sh
             # would install git and gum first — far too much for a help request
             # or a completion probe. The installer parses --help before it
@@ -435,6 +455,7 @@ case "${1:-}" in
     apps)       shift; do_apps "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
     backup)     shift; do_backup "$@" ;;
+    droplet)    shift; do_droplet "$@" ;;
     lazy-lock)  do_lazy_lock ;;
     help|--help|-h) usage ;;
     *)          do_menu ;;
