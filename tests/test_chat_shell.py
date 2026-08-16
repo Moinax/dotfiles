@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent
 import chat_shell
 from chat_shell import ChatApp, paint_badge, parse_title, window_title
 from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
 
@@ -55,8 +57,21 @@ def check_titles():
         assert window_title(parse_title(given)[1]) is None, given
 
 
+def check_reload_deferrals():
+    """The two guards IdleReloader.tick has to get past to reload.
+
+    They run once every twelve idle hours, so a misspelled Qt getter is an
+    AttributeError nobody sees until then — and PyQt turns one raised in a slot
+    into abort(), which is what killed both windows overnight.
+    """
+    for owner, method in ((QWebEngineView, "isActiveWindow"),
+                          (QWebEnginePage, "recentlyAudible")):
+        assert hasattr(owner, method), f"{owner.__name__}.{method}() is gone"
+
+
 def main():
     check_titles()
+    check_reload_deferrals()
     # Held: collecting it mid-test aborts Qt. Built after chat_shell is
     # imported, deliberately — QtWebEngine aborts if it arrives second.
     app = QApplication([])

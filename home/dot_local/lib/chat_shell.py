@@ -772,7 +772,7 @@ class IdleReloader(QObject):
             return
         # Audible means a call or a voice note is playing, and a reload would
         # cut it. Same deferral, same reasoning.
-        if self.page.isRecentlyAudible():
+        if self.page.recentlyAudible():
             log("RELOAD", "page audible -> deferred")
             return
         log("RELOAD", f"idle {IDLE_RELOAD_HOURS}h -> reclaiming")
