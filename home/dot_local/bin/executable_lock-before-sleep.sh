@@ -83,6 +83,17 @@ done < <(gdbus monitor --system \
 # `NRestarts` stuck at 0, is the signature.
 logger -t lock-before-sleep -- "PrepareForSleep(true) — waiting for the lock frame"
 
+# Already locked — a manual Mod+Alt+L, or the idle timer — means the frame landed
+# long ago and there is nothing to wait for. Settling anyway is pure delay, and it
+# is what made `Mod+Alt+L` followed by `Mod+Ctrl+L` feel like the machine had hung:
+# a locked, unresponsive screen for the whole settle before the suspend.
+if pidof hyprlock >/dev/null 2>&1; then
+    logger -t lock-before-sleep -- "already locked — releasing immediately"
+    exit 0
+fi
+
+started=$(date +%s.%N)
+
 # hyprlock's pid appears well before its first frame, so the settle is what
 # actually buys the painted frame. What it has to cover is the **screencopy**, not
 # the fade: hypridle's lock_cmd passes --no-fade-in, and measured across two locks
@@ -107,7 +118,21 @@ for ((i = 0; i < 30; i++)); do
     sleep 0.1
 done
 
-logger -t lock-before-sleep -- "settled — releasing the inhibitor"
+# Report the margin instead of assuming it. A settle that is too short reopens the
+# leak, and that is the one failure here nothing else would report: the machine
+# suspends, wakes, and only a human looking at the screen would notice. hyprlock's
+# own output lands in hypridle's journal because hypridle spawns it, and
+# "onLockLocked" is the moment its frame is final — so the margin we actually had
+# is measurable, every cycle, for one journalctl in a path that runs a few times a
+# day. A negative margin, or no frame at all, then says so in words.
+locked=$(journalctl --user -u hypridle --since "@${started%%.*}" -o short-unix --no-pager 2>/dev/null |
+    grep -F "onLockLocked" | tail -n1 | cut -d' ' -f1)
+if [ -n "$locked" ]; then
+    logger -t lock-before-sleep -- "$(awk -v a="$started" -v b="$locked" -v c="$(date +%s.%N)" \
+        'BEGIN { printf "settled — frame landed %dms in, margin %dms", (b - a) * 1000, (c - b) * 1000 }')"
+else
+    logger -t lock-before-sleep -- "settled — NO LOCK FRAME OBSERVED, the desktop may show on wake"
+fi
 
 # Exiting is the release: systemd-inhibit holds the lock for exactly as long as
 # this process lives, so there is nothing to drop by hand. The unit's Restart=

@@ -173,12 +173,18 @@ hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screensh
 hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh region")) -- Screenshot a region
 
 -- ── 13. Media & Volume ───────────────────────────────────────────
-hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume raise"))
-hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume lower"))
-hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("swayosd-client --output-volume mute-toggle"))
-hl.bind("XF86AudioMicMute",      hl.dsp.exec_cmd("swayosd-client --input-volume mute-toggle"))
-hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("swayosd-client --brightness raise"), { repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lower"), { repeating = true })
+-- `locked = true` on all six: Hyprland dispatches only flagged binds while a
+-- session lock holds the screen, so without it the volume and brightness keys are
+-- dead the whole time the laptop sits locked. The test for the flag is not "is it
+-- convenient" but "would I let anyone standing at the locked machine do this" —
+-- these change no data and reveal nothing, so they pass; anything that displays or
+-- modifies something must never carry it.
+hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume raise"),   { locked = true })
+hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume lower"),   { locked = true })
+hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("swayosd-client --output-volume mute-toggle"), { locked = true })
+hl.bind("XF86AudioMicMute",      hl.dsp.exec_cmd("swayosd-client --input-volume mute-toggle"),  { locked = true })
+hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("swayosd-client --brightness raise"), { repeating = true, locked = true })
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lower"), { repeating = true, locked = true })
 
 -- ── 14. Session & System ─────────────────────────────────────────
 hl.bind(mod .. " + N",         hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dark-mode.sh"))                 -- Toggle dark/light mode
@@ -186,7 +192,9 @@ hl.bind(mod .. " + ALT + N",   hl.dsp.exec_cmd(home .. "/.local/bin/toggle-caffe
 hl.bind(mod .. " + CTRL + N",  hl.dsp.exec_cmd(home .. "/.local/bin/toggle-tailscale.sh"))                 -- Toggle Tailscale VPN
 hl.bind(mod .. " + L",         hl.dsp.exec_cmd("wlogout-wrapper.sh"))                                      -- Power menu (wlogout)
 hl.bind(mod .. " + ALT + L",   hl.dsp.exec_cmd("loginctl lock-session"))                                   -- Lock screen
-hl.bind(mod .. " + CTRL + L",  hl.dsp.exec_cmd("systemctl suspend"))                                       -- Suspend
+-- locked = true so it also works from the lock screen — see the note on the media
+-- keys. Suspending is something anyone at the machine can already do with the lid.
+hl.bind(mod .. " + CTRL + L",  hl.dsp.exec_cmd("systemctl suspend"), { locked = true })                    -- Suspend (works while locked)
 hl.bind(mod .. " + SHIFT + L", hl.dsp.exec_cmd(home .. "/.local/bin/compositor-logout.sh"))                -- Logout
 hl.bind(mod .. " + H",         hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/keybindings?toggle=true'")) -- Keybinding help
 

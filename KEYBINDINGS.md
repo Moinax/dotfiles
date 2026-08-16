@@ -130,6 +130,8 @@
 
 ## 12. Media & Volume
 
+> All six keys below carry the `locked` bind flag, so they keep working while hyprlock holds the screen — Hyprland dispatches only flagged binds during a session lock, and without it volume and brightness were dead the whole time the laptop sat locked. The bar for that flag is not convenience but "would I let anyone standing at the locked machine do this": these change no data and reveal nothing.
+
 | Action | Keys | Notes |
 |---|---|---|
 | Volume up / down | `XF86AudioRaiseVolume` / `XF86AudioLowerVolume` | swayosd-client OSD |
@@ -143,7 +145,7 @@
 |---|---|---|
 | Power menu (wlogout) | `Mod+L` | Centered vertical list with keybind hints |
 | Lock screen | `Mod+Alt+L` | `loginctl lock-session` |
-| Suspend | `Mod+Ctrl+L` | `systemctl suspend` |
+| Suspend | `Mod+Ctrl+L` | `systemctl suspend`. Works from the lock screen too (`locked` bind) — hyprlock locks first and the suspend waits for its frame, see `lock-before-sleep.service` |
 | Logout | `Mod+Shift+L` | `compositor-logout.sh` |
 | Toggle dark/light mode | `Mod+N` | Switches Catppuccin Mocha/Latte + portal |
 | Toggle caffeine mode | `Mod+Alt+N` | Inhibits idle (prevents lock/sleep) |
