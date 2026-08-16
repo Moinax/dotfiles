@@ -75,6 +75,13 @@ restore:
   --force        Overwrite existing secret files (default: skip them)
   --home-only    Only restore home secrets (~/.ssh, ~/.npmrc, ~/.config/gh, ...);
                  skip re-cloning ~/Projects repos
+  --no-home      The inverse: repos and their secrets, but no home secrets.
+                 What you want on a machine that must not hold your keyring
+  --only a,b     Restore only these top-level ~/Projects directories
+  --exclude a,b  Restore everything except these ones
+
+A scoped restore describes part of the machine, so it never offers to trash the
+repos it left out.
 
 Config files in ~/.config/projects-backup/ (one entry per line, # comments):
   extra-includes       extra path regexes to back up (repo-relative paths)
@@ -367,16 +374,98 @@ restore_repo_extras() {
     done < <(read_config_lines "$stage/manifest/remotes.tsv")
 }
 
+# Which top-level ~/Projects directory a manifest path belongs to. Scoping is
+# deliberately one level deep: it is the level the directories mean something at
+# (labs, o27, mbrella), and a deeper spec would just be a repo list.
+scope_of() { printf '%s\n' "${1%%/*}"; }
+
+# Comma-list membership, without splitting: the commas that fence the needle are
+# what stop `o2` matching `o27`. An empty list matches nothing, which is what
+# makes "no opinion" work — an unset --only lets everything through, an unset
+# --exclude rejects nothing.
+scope_in_list() {
+    case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac
+}
+
+# Drop everything outside the scope from the decrypted stage, so the manifest
+# loop, restore_tree and the unlisted-repo check all agree without each
+# re-deriving the filter. Exactly one of $only / $exclude is non-empty.
+prune_stage_to_scope() {
+    local stage="$1" only="$2" exclude="$3"
+    local row scope dir kept="$stage/manifest/repos.kept"
+
+    # The --only/--exclude polarity, said once. Written per loop it was the same
+    # four lines twice, and the second copy is the one where getting it backwards
+    # deletes staged secrets instead of skipping a manifest row.
+    in_scope() {
+        if [ -n "$only" ]; then scope_in_list "$1" "$only"
+        else                  ! scope_in_list "$1" "$exclude"; fi
+    }
+
+    # Rows pass through whole: nothing here reads a column, and reassembling one
+    # with printf is the only thing that could ever change a manifest's bytes.
+    # The scope still comes from the first FIELD, not the row — cut the row at
+    # its first `/` and a repo sitting directly in ~/Projects yields
+    # "name<TAB>https:", because the first slash it has is the remote's.
+    : > "$kept"
+    while IFS= read -r row; do
+        scope=${row%%$'\t'*}
+        in_scope "$(scope_of "$scope")" && printf '%s\n' "$row" >> "$kept"
+    done < "$stage/manifest/repos.tsv"
+    mv "$kept" "$stage/manifest/repos.tsv"
+
+    [ -d "$stage/projects" ] || return 0
+    while IFS= read -r dir; do
+        scope=${dir##*/}
+        in_scope "$scope" || rm -rf "$dir"
+    done < <(find "$stage/projects" -mindepth 1 -maxdepth 1 -type d)
+
+    # Not decorative: the loop's status is the last scope test, so a final
+    # "kept" directory makes this function return 1 and `set -e` aborts the
+    # restore halfway through the prune.
+    return 0
+}
+
 do_restore() {
-    local archive="" force=false home_only=false
-    for arg in "$@"; do
-        case "$arg" in
+    local archive="" force=false home_only=false no_home=false only="" exclude=""
+    local scope_given=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
             --force) force=true ;;
             --home-only) home_only=true ;;
-            -*) print_error "Unknown option: $arg"; return 1 ;;
-            *) archive="$arg" ;;
+            --no-home) no_home=true ;;
+            --only) shift; only="${1:-}"; scope_given=true ;;
+            --only=*) only="${1#*=}"; scope_given=true ;;
+            --exclude) shift; exclude="${1:-}"; scope_given=true ;;
+            --exclude=*) exclude="${1#*=}"; scope_given=true ;;
+            -*) print_error "Unknown option: $1"; return 1 ;;
+            *) archive="$1" ;;
         esac
+        # `|| break`, not a bare shift: the two value-consuming branches may have
+        # emptied $@ already, and a failing `shift` under `set -e` ends the whole
+        # process with nothing printed.
+        shift || break
     done
+
+    # A scope flag whose value went missing must not fall through as "no scope":
+    # that restores everything and re-arms the offer to trash every repo the
+    # scope was meant to leave out — the exact inversion this feature prevents.
+    if $scope_given && [ -z "$only$exclude" ]; then
+        print_error "--only/--exclude need a comma-separated list of top-level ~/Projects directories"
+        return 1
+    fi
+    if $home_only && $no_home; then
+        print_error "--home-only and --no-home ask for opposite things"
+        return 1
+    fi
+    if [ -n "$only" ] && [ -n "$exclude" ]; then
+        print_error "Use --only or --exclude, not both"
+        return 1
+    fi
+    if $home_only && { [ -n "$only" ] || [ -n "$exclude" ]; }; then
+        print_error "--home-only restores no repos, so scoping them means nothing"
+        return 1
+    fi
 
     require_tools git tar zstd age
     archive=$(resolve_archive "$archive") || return 1
@@ -385,6 +474,24 @@ do_restore() {
     stage=$(mktemp -d)
     trap 'rm -rf "$stage"' EXIT
     decrypt_to "$archive" "$stage"
+
+    # Filter once, on the staged copy, rather than at each of the three places
+    # that read it (the manifest loop, restore_tree, the unlisted-repo check).
+    # Whatever is pruned here is simply not in the backup as far as the rest of
+    # this function is concerned.
+    local scoped=false
+    if [ -n "$only" ] || [ -n "$exclude" ]; then
+        scoped=true
+        prune_stage_to_scope "$stage" "$only" "$exclude"
+        print_info "Scoped restore: $(wc -l < "$stage/manifest/repos.tsv") repos in the manifest"
+    fi
+
+    # --no-home is the inverse of --home-only, and the reason it exists: a
+    # remote host needs the project secrets without inheriting ~/.ssh, which the
+    # backup carries whole. Dropping the staged copy is enough — restore_tree
+    # returns early on a missing directory.
+    # ${stage:?} rather than $stage: an empty one would make this `rm -rf /home`.
+    $no_home && rm -rf "${stage:?}/home"
 
     if $home_only; then
         print_header "Restoring home secrets"
@@ -445,7 +552,10 @@ do_restore() {
     # kept unless --force, so a restore never silently clobbers newer state.
     restore_tree "$stage/projects" "$PROJECTS_DIR" "$force"
 
-    offer_remove_unlisted_repos "$stage/manifest/repos.tsv"
+    # A scoped manifest no longer describes the whole machine, so every repo
+    # outside the scope would look "absent from the backup" and be offered for
+    # the trash. Exactly backwards.
+    $scoped || offer_remove_unlisted_repos "$stage/manifest/repos.tsv"
 
     print_success "Restore complete"
     print_info "Repos are fresh clones — reinstall dependencies per project (npm install, uv sync, ...)"
@@ -547,6 +657,10 @@ do_menu() {
     # needs to read before the manager menu redraws over it.
     pause_for_user
 }
+
+# Sourced (by tests/test_backup_scope.sh) rather than run: define the functions
+# and stop, instead of falling into the menu with no arguments.
+(return 0 2>/dev/null) && return 0
 
 case "${1:-}" in
     create)  shift; do_create "$@" ;;
