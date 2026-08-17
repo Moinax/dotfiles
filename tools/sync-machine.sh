@@ -811,7 +811,7 @@ reconcile_encrypted_dns() {
 # machine state and never CHANGED_FILES — the anchor moves past the commit that
 # ships a step like this long before anyone notices the step never ran. Which
 # other installer-only steps have the same shape is in
-# .claude/rules/manage-tools.md.
+# .claude/rules/sync-machine.md.
 reconcile_login_wallpaper() {
     install_purpose_is desktop || return 0
     login_wallpaper_needs_setup || return 0

@@ -1,12 +1,38 @@
 ---
-description: How a herdr pane's purpose is stored — the role sidecar that revive-panes reads, and why pane and tab labels are display-only and safe to rename.
+description: How a herdr pane's purpose is stored — the role sidecar that revive-panes reads, why pane and tab labels are display-only, and the two reconciliations a layout or config change needs after an apply.
 paths:
   - home/dot_local/bin/executable_herdr-*
   - home/dot_local/bin/executable_dev-herdr
   - home/dot_local/bin/executable_dev-agent-argv
   - home/dot_local/bin/executable_wtclean
   - home/dot_local/bin/executable_dev-clean
+  - home/dot_config/herdr/config.toml
 ---
+
+# Two reconciliations, and neither is the other's job
+
+**A layout change needs `herdr-clients migrate-layout` after the apply.** That
+means pane/tab structure or labels in `herdr-agent-layout`, `dev-herdr` or
+`herdr-pane-cmd`. Existing workspaces persist their old layout (dev-herdr
+reattaches as-is, never migrates), so without it the previous iteration silently
+comes back at the next server restart.
+
+**A `config.toml` change needs `herdr-clients reload-config`** — keybindings,
+popups, UI. Servers read `config.toml` only at boot, so without it every running
+session but the current one keeps the old config. This is *not* a job for
+`migrate-layout`, which reconciles persisted `session.json` structure and never
+the config.
+
+Both run inside `apply_dotfiles` and `dots update` — but not in a hand
+`chezmoi apply`, so they fall to you.
+
+# Agent tabs are named after the task, not the provider
+
+A tab label is "fix-flaky-updater-tests", set from the name typed in the
+ctrl+alt+a picker or written later by `herdr-agent-title` (a Claude Code
+Stop/SessionStart hook that follows Claude's own session title). So never identify
+an agent tab by parsing its label — go through its panes (`pane.agent`, or the
+recorded role), the way `herdr-nav agent-tab` picks its insertion point.
 
 # herdr pane identity: roles are state, labels are decoration
 
@@ -59,6 +85,10 @@ Roles are validated on write against those same two owners, so a typo fails at
 the call site instead of becoming a pane that silently never returns.
 
 ## Who writes what
+
+**Anything that creates a pane must record its role in the same breath — that is
+the one rule.** The table below lists today's writers, not the eligible ones: a
+new pane-creating script inherits the obligation without appearing here.
 
 | writer | when |
 |---|---|

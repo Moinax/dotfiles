@@ -12,7 +12,7 @@
 # needs it to switch modes and `install/lib/post-apply.sh` to reconcile after an
 # apply, and two copies of the list would go stale the first time a surface was
 # added to one and not the other — which is the bug above, again. The whole story
-# is in `.claude/rules/manage-tools.md`.
+# is in `.claude/rules/post-apply.md`.
 #
 # Reload policy is deliberately *not* here. The two callers need different
 # things: a mode toggle only changes colours, so swaync takes a cheap

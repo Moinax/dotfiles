@@ -31,7 +31,7 @@ LOGIN_WALLPAPER_GREETER_URL="file://$LOGIN_WALLPAPER_FILE"
 
 # Where the greeter names its image. Every level matters, [Greeter] included —
 # the same three groups written at the top level are read by nothing, which is a
-# bug that has already been shipped once (see .claude/rules/manage-tools.md). The
+# bug that has already been shipped once (see .claude/rules/sync-machine.md). The
 # reader and the writer below share this one array so it cannot recur one-sided.
 LOGIN_WALLPAPER_GREETER_GROUPS=(--group Greeter --group Wallpaper --group org.kde.image --group General)
 
