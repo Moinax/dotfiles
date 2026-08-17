@@ -93,3 +93,30 @@
 .config/hypr/hyprpaper.conf
 .config/systemd/user/hyprpaper.service.d
 .config/systemd/user/hyprpaper.service.d/**
+
+# fish config retired — it was set up to try fish out, never used, and drifted
+# as a second copy of every zsh rc.d file. Same pruning rule as rofi above:
+# deleting the source tree does not clean a machine that already applied it.
+# The `fish` package stays in base.yaml, and must: cachyos-fish-config,
+# fisher, fish-autopair and fish-pure-prompt all require it, so dropping it
+# from the yaml would not take it off any machine anyway.
+# Listed file by file rather than as `.config/fish/**` on purpose — conf.d also
+# holds uv's own uv.env.fish, and fish_variables is fish's state, not ours. Same
+# reason functions/ and completions/ are not globbed either: those two are where
+# `fisher` installs a plugin's halves, and a glob would delete them on every
+# apply and leave the conf.d half behind. These are every fish file this repo
+# ever shipped — `git log --diff-filter=D` over home/dot_config/fish/ is the
+# list, and the five older entries above complete it.
+.config/fish/config.fish
+.config/fish/local.fish
+.config/fish/conf.d/00-env.fish
+.config/fish/conf.d/05-options.fish
+.config/fish/conf.d/10-completions.fish
+.config/fish/conf.d/30-aliases.fish
+.config/fish/conf.d/40-tools.fish
+.config/fish/conf.d/60-worktree.fish
+.config/fish/conf.d/70-zoxide.fish
+.config/fish/functions/big.fish
+.config/fish/functions/wtstart.fish
+.config/fish/functions/y.fish
+.config/fish/completions/dots.fish

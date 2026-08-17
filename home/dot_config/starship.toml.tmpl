@@ -1,22 +1,22 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
 # Jetpack-style layout: bare prompt character on the left, context on the right
-# prompt (needs a shell with right-prompt support; zsh/fish are fine).
+# prompt (needs a shell with right-prompt support; zsh is fine).
 format = """
 $username\
 $cmd_duration\
 $character"""
 
 # No segment carries a background — see the translucent-pane convention in
-# CLAUDE.md. The trailing space is for fish, which flushes the right prompt to
-# the last column; zsh already indents by one (ZLE_RPROMPT_INDENT default).
-# Empty style rather than a bare trailing space, which an editor would strip.
+# CLAUDE.md. No trailing space: it existed for fish, which flushes the right
+# prompt to the last column, and zsh already indents by one on its own
+# (ZLE_RPROMPT_INDENT default) — so with the fish config retired it was simply
+# a second column of margin.
 right_format = """
 $directory\
 $git_branch\
 $git_status\
-$conda\
-[ ]()"""
+$conda"""
 
 palette = '{{ if eq .dark_mode "light" }}light{{ else }}dark{{ end }}'
 

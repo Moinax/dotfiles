@@ -85,8 +85,6 @@ LICENSE
 .claude
 .claude/**
 .zsh/rc.d/60-worktree.zsh
-.config/fish/conf.d/60-worktree.fish
-.config/fish/functions/wtstart.fish
 .local/bin/wtclean
 .local/bin/wtupdate
 .local/bin/dev-clean

@@ -7,7 +7,10 @@ packages:
     - zsh
     - zsh-autosuggestions
     - zsh-syntax-highlighting
-    - fish
+    - fish  # nothing here configures it any more (the config was retired to
+            # .chezmoiremove), but cachyos-fish-config, fisher, fish-autopair and
+            # fish-pure-prompt all require it — dropping the line would neither
+            # uninstall it nor stop it being pulled back in as a dependency.
     - starship
     - zellij
 

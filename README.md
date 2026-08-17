@@ -31,8 +31,8 @@ cd ~/dotfiles
 ```
 
 Once the dotfiles are applied, the same entry point is on `PATH` as `dots` — `dots`,
-`dots update`, `dots apps list` — usable from any directory, with zsh and fish
-completion for its commands and subcommands.
+`dots update`, `dots apps list` — usable from any directory, with zsh completion
+for its commands and subcommands.
 
 The interactive installer will:
 1. Detect your distribution
@@ -205,7 +205,7 @@ After running the installer:
 
 ## Included Configurations
 
-- **Shell**: zsh and fish, both with the starship prompt, zoxide, television
+- **Shell**: zsh, with the starship prompt, zoxide, television
 - **Terminal**: kitty
 - **Editor**: Neovim (AstroNvim-based), Cursor, Zed
 - **Git**: hunk for diffs, tuicr for reviews, lazygit for Git operations, `gh-dash` for pull requests, WorkTrunk for worktrees
