@@ -74,14 +74,6 @@ The `home/` directory is the Chezmoi source.
 - **The DigitalOcean host has no backups, so `tools/provision-droplet.sh` *is* the recovery path** — every phase is idempotent and re-running `setup` on a live host is the repair, not a reinstall (see `docs/adr/0002`). Three traps it already encodes, none of which announce themselves: `firewall` must run **after** Tailscale is up, since deny-all removes SSH and leaves only the DO web console; `destroy` waits for the droplet to leave the listing, because `doctl`'s delete returns first and a following `create` then finds it "already exists" and silently skips; and `just` comes from just.systems, not apt, because Ubuntu 24.04 ships 1.21 while socle's justfiles use the `[group]`/`[doc]` attributes added in 1.27 — apt's build fails parsing the recipe list before running anything. The manual half is `tools/droplet-wizard.sh`, which sends `tools/backup-projects.sh` from **the working tree**, never a clone of the published repo: the scoped-restore flags it depends on may not be pushed yet
 - **Anything that runs per pane, per session, or on a timer**: measure one invocation, then multiply by the real fanout before calling it cheap. A normal desktop runs ~15 agent panes across ~15 workspaces, so a per-unit cost is a two-orders-of-magnitude cost in practice. Two instances of this have already been fixed: the statusline ran `npx -y ccstatusline@latest` (0.44s CPU per refresh × every session × every tick ≈ 1.4 cores), and review panes ran hunk through its node wrapper (an idle ~80MB node process per pane ≈ 1GB). Both looked free at one unit. In particular, never launch a long-lived pane command through `npx`/`npm exec` or a language wrapper around a native binary — resolve the real executable, dynamically, with a fallback to the wrapper. Also prefer stable paths over per-shell ones: `~/.local/share/fnm/aliases/default/bin/` survives node upgrades, `/run/user/*/fnm_multishells/*` does not
 
-## Git
-
-The three rules — never stage/commit/push unannounced, one authorization per
-change, never branch unasked — live in `claude/global.md`, which is symlinked to
-`~/.claude/CLAUDE.md` and therefore loaded in *every* repo, not only this one.
-They were duplicated here word for word; two copies of one rule is how they come
-to disagree, and the user-scope copy is the one that already applies everywhere.
-
 ## Agent skills
 
 ### Issue tracker
