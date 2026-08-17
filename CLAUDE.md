@@ -76,9 +76,11 @@ The `home/` directory is the Chezmoi source.
 
 ## Git
 
-- **Never `git add`, `git commit` or `git push`** unless the user or a user-invoked skill asks for it. Finish the work, leave it **unstaged** in the working tree, and say it is ready — hunk (the user's reviewer) watches unstaged changes, so staging a file removes it from review. This applies to `git add` on its own: staging is not a harmless intermediate step, and not a nicer way to present a rename.
-- **Each authorization covers only the change in front of you.** "Commit this" is not standing consent for the rest of the session, for follow-up edits, or for a fix made seconds later; ask again. "Commit" never implies push, and "push" of one commit never implies pushing later ones.
-- **Never create a branch or a worktree** unless the user or a user-invoked skill asked for it. Work on the current branch, even when the change feels branch-worthy — say so and let the user decide.
+The three rules — never stage/commit/push unannounced, one authorization per
+change, never branch unasked — live in `claude/global.md`, which is symlinked to
+`~/.claude/CLAUDE.md` and therefore loaded in *every* repo, not only this one.
+They were duplicated here word for word; two copies of one rule is how they come
+to disagree, and the user-scope copy is the one that already applies everywhere.
 
 ## Agent skills
 
