@@ -191,7 +191,7 @@ finish() {
 # find out by being asked for it again. The drift only runs this way — a stale
 # entry there is harmless, a missing one silently costs a stage. Stages that
 # merely do work on the host (the scoped restore, pairing) are not credentials.
-TOTAL_STAGES=10
+TOTAL_STAGES=11
 
 # Non-secret bookkeeping only: the Tailscale auth key is single-use, so it is
 # asked for and used, never written. Not guarded with `:-` on ENV_FILE — the
@@ -580,11 +580,96 @@ if stage_or_skip "Codex — sign in" \
   else
     SKIPPED+=("codex login on the host")
   fi
-  note "Linear's MCP is OAuth too, but it authenticates on first use inside a"
-  note "session in socle — nothing to do here."
 fi
 
 # ── 9 ────────────────────────────────────────────────────────────────────────
+# Stage 8 used to end by claiming Linear's MCP "authenticates on first use inside
+# a session in socle — nothing to do here." It does not, and the cost of that
+# sentence was a real `/start OCT-382` that stopped dead: an unauthorized server
+# is not a degraded session but a halted one, since the agent has no description
+# and no acceptance criteria and correctly refuses to build the wrong thing.
+#
+# TWO locks, and the first does not look like an auth problem at all. A
+# project-scoped .mcp.json server is only approved once the PROJECT is trusted
+# (`hasTrustDialogAccepted`, false on a fresh host), which reports as "Pending
+# approval"; OAuth is the second. Both are cleared from inside the checkout, so
+# this stage has to come after the restore of stage 6.
+#
+# Nothing here needs re-doing on a rebuilt host: the tokens live under `mcpOAuth`
+# in ~/.claude/.credentials.json, and the trust flag in ~/.claude.json — both
+# already carried by `dots droplet snapshot`. One pass, then a re-snapshot.
+MCP_DIR='$HOME/Projects/o27/socle'
+# The http ones only; headless_playwright and grafana-o27 are stdio and have
+# nothing to authorize.
+MCP_SERVERS="linear-o27 wiki-o27 errors-o27"
+# Behavioural, like the forge stages and unlike a file test: `mcp get`
+# health-checks the server, so "Connected" means the token works right now rather
+# than that one was written at some point. One round trip for all three.
+#
+# `rsh`, not `remote_done`: this one is a question about the host, asked again
+# *after* a login to confirm it took. remote_done answers "should this stage
+# re-run", which FORCE_ALL flips to no unconditionally — through it, a login that
+# just succeeded verified as a failure and was reported as still to do.
+mcp_connected() { rsh "cd $MCP_DIR && claude mcp get $1 2>/dev/null | grep -q Connected" >/dev/null 2>&1; }
+if remote_done "cd $MCP_DIR && for s in $MCP_SERVERS; do claude mcp get \$s 2>/dev/null | grep -q Connected || exit 1; done"; then
+  skip_line "MCP servers — how an agent reads the ticket" "all connected"
+else
+  stage "MCP servers — how an agent reads the ticket"
+  if ! rsh "[ -d $MCP_DIR ]" >/dev/null 2>&1; then
+    warn "socle is not on the host yet — run the repo restore stage first."
+    SKIPPED+=("authorize the o27 MCP servers (socle absent)")
+  else
+    say "Linear, the wiki and the error tracker reach the agents through MCP."
+    say "Without them '/start <ticket>' has nothing to read and stops."
+    say ""
+    # The trust dialog first, because until it is accepted every server reports
+    # "Pending approval" and a login would authorize something still switched off.
+    if rsh "cd $MCP_DIR && claude mcp get linear-o27 2>/dev/null | grep -q Pending"; then
+      say "First, the project itself has to be trusted — a fresh host has never"
+      say "opened this checkout, so its .mcp.json servers sit unapproved."
+      step "Answer yes to the trust prompt, then to 'Use this .mcp.json?'."
+      step "Then leave Claude with /exit."
+      if confirm "Open 'claude' in socle on the host to approve them?"; then
+        rsht "cd $MCP_DIR && claude" || true
+      else
+        SKIPPED+=("trust socle on the host (its MCP servers stay unapproved)")
+      fi
+      say ""
+    fi
+    for _s in $MCP_SERVERS; do
+      # FORCE_ALL is honoured here rather than inside mcp_connected, so it still
+      # reopens a server that is already connected without costing the check
+      # below its honesty.
+      if [[ -z "${FORCE_ALL:-}" ]] && mcp_connected "$_s"; then
+        note "$_s is connected."
+      elif declined "MCP_$_s"; then
+        note "$_s declined previously — FORCE_ALL=1 reopens it."
+      elif confirm "Authorize $_s now?"; then
+        # --no-browser is documented for exactly this: it prints the URL instead
+        # of launching a browser the host does not have, and takes the redirect
+        # URL back by paste. The same shape as Codex's --device-auth above, and
+        # for the same reason — a callback to the HOST's localhost is a callback
+        # to a port your desktop browser cannot reach.
+        rsht "cd $MCP_DIR && claude mcp login $_s --no-browser" || true
+        # Verified by asking the server, not by trusting the exit status — the
+        # lesson the tea stage paid for.
+        if mcp_connected "$_s"; then
+          printf '  %s✓%s %s connected\n' "$GREEN" "$RESET" "$_s"
+        else
+          warn "$_s still not connected — the errors above are the reason."
+          SKIPPED+=("authorize $_s on the host")
+        fi
+      else
+        record_decline "MCP_$_s"
+        SKIPPED+=("authorize $_s on the host")
+      fi
+    done
+    note "Re-run 'dots droplet snapshot' afterwards: these tokens are in the"
+    note "archive, so a rebuilt host will not ask again."
+  fi
+fi
+
+# ── 10 ───────────────────────────────────────────────────────────────────────
 stage "Pair your desktop and your phone"
 note "The service itself is already installed and running — provisioning does"
 note "that, since it needs nobody. This stage is only the pairing."
@@ -622,7 +707,7 @@ else
   SKIPPED+=("t3 pair --tailscale (run 'provision-droplet.sh pair' when you want it)")
 fi
 
-# ── 10 ───────────────────────────────────────────────────────────────────────
+# ── 11 ───────────────────────────────────────────────────────────────────────
 stage "Close the public IP"
 # The one probe that is local, not remote — DO owns this fact, not the host.
 # It still honours FORCE_ALL, and it keeps a pause of its own: this is the last

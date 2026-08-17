@@ -13,9 +13,9 @@
 #   dots droplet destroy && dots droplet create && dots droplet setup \
 #     && dots droplet restore
 #
-# That leaves the wizard three stages instead of ten — repos, pairing, firewall
-# — and none of them opens a browser. It is NOT "no wizard": the scoped repo
-# restore is stage 6, driven by an archive on the desktop, and STATE_PATHS
+# That leaves the wizard three stages instead of eleven — repos, pairing,
+# firewall — and none of them opens a browser. It is NOT "no wizard": the scoped
+# repo restore is stage 6, driven by an archive on the desktop, and STATE_PATHS
 # deliberately carries no repos.
 #
 # `firewall` is deliberately not chained on either: restore only *queues* the
@@ -24,8 +24,10 @@
 # locked-out host.
 #
 # The manual steps this cannot do — Tailscale auth, registering the host's SSH
-# key on GitHub and Forgejo, the sops key, `claude`/`codex` login, Linear OAuth —
-# are walked by tools/droplet-wizard.sh.
+# key on GitHub and Forgejo, the sops key, the `claude`/`codex` logins and the
+# o27 MCP servers — are walked by tools/droplet-wizard.sh. That last one was
+# listed here as "Linear OAuth" for a while with no stage behind it, which is
+# worse than an omission: it reads as covered.
 #
 # Self-contained on purpose: the remote half is scp'd to a bare Ubuntu box that
 # has none of this repo, so it must not source install/lib/common.sh.
