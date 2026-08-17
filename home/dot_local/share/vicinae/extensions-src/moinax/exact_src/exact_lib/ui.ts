@@ -46,11 +46,13 @@ export function useLoader<T>(load: () => Promise<T[]>, errorTitle: string) {
 /**
  * Build the "act, re-read, say so" handler these lists share.
  *
- * Unlike `closeAfter`, the launcher stays open: switching a sink or toggling an
- * output is something you may want to do twice in a row, and the mark that
- * moved is the confirmation. `settleMs` exists for the compositor, which
- * retires a window slightly after `closewindow` returns — re-reading
- * immediately would list the row that was just closed.
+ * Unlike `closeAfter`, this keeps the launcher open for repeated actions such
+ * as closing several windows or toggling several monitors. Single-choice
+ * commands such as audio output and keyboard layout use `closeAfter` instead.
+ *
+ * `settleMs` exists for the compositor, which retires a window slightly after
+ * `closewindow` returns — re-reading immediately would list the row that was
+ * just closed.
  */
 export function actionRunner(refresh: () => Promise<void>, settleMs = 0) {
   return (label: string, run: () => Promise<unknown>) =>

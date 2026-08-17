@@ -1,20 +1,20 @@
 import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { keyboardLayouts, setKeyboardLayout, type KeyboardLayout } from "./lib/system";
-import { actionRunner, useLoader } from "./lib/ui";
+import { closeAfter, useLoader } from "./lib/ui";
 
 /**
  * Mod+K — the replacement for the rofi menu inside toggle-keyboard-layout.sh.
  *
  * The rofi version listed three names and nothing else: it could not tell you
  * which layout you were already on, which is the one question you have when you
- * open it. Here the active one is marked and sorted to the top, and switching
- * refreshes in place so the mark moves where you can see it.
+ * open it. Here the active one is marked and sorted to the top.
+ *
+ * Switching closes the launcher: you are on one layout at a time, so the switch
+ * ends the interaction, and the HUD is the confirmation the compositor cannot
+ * give you.
  */
 export default function Command() {
-  const { rows: layouts, isLoading, refresh } = useLoader<KeyboardLayout>(keyboardLayouts, "Could not list layouts");
-  // The compositor picks the new input.lua up on its own; refreshing is only
-  // so the "active" mark moves where you can see it.
-  const act = actionRunner(refresh);
+  const { rows: layouts, isLoading } = useLoader<KeyboardLayout>(keyboardLayouts, "Could not list layouts");
 
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Search layouts" navigationTitle="Keyboard Layout">
@@ -35,7 +35,7 @@ export default function Command() {
               <Action
                 title="Switch to This Layout"
                 icon={Icon.Keyboard}
-                onAction={act(`Layout: ${layout.name}`, () => setKeyboardLayout(layout.name))}
+                onAction={closeAfter(() => setKeyboardLayout(layout.name), `Layout: ${layout.name}`)}
               />
             </ActionPanel>
           }

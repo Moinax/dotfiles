@@ -108,7 +108,12 @@ if [[ "${state_of[$name]}" == "1" ]]; then
         || abort "Failed to disable $name"
     notify "Disabled $name"
 else
-    hyprctl eval "$(hypr_lua_for "$name")" 2>/dev/null | grep -qx ok \
+    # A monitor rule does not reliably clear an existing disabled state with
+    # Hyprland's Lua parser. Re-enable the output explicitly before restoring
+    # its configured mode, position, scale and transform.
+    hyprctl eval "hl.monitor({ output = \"${name}\", disabled = false })" 2>/dev/null | grep -qx ok \
         || abort "Failed to enable $name"
+    hyprctl eval "$(hypr_lua_for "$name")" 2>/dev/null | grep -qx ok \
+        || abort "Failed to restore configuration for $name"
     notify "Enabled $name"
 fi

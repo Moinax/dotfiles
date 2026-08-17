@@ -1,6 +1,6 @@
 import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { setDefaultSink, sinks, type Sink } from "./lib/system";
-import { actionRunner, useLoader } from "./lib/ui";
+import { closeAfter, useLoader } from "./lib/ui";
 
 /**
  * Mod+A — the replacement for the rofi menu inside toggle-audio-switch.sh.
@@ -10,10 +10,13 @@ import { actionRunner, useLoader } from "./lib/ui";
  * whenever one description contains another. This reads pactl's JSON, so the
  * row carries the sink name as data and the row you pick is the sink that gets
  * set. The current default is marked instead of being indistinguishable.
+ *
+ * Picking a sink closes the launcher: there is one default output, so the pick
+ * is the whole interaction and a list still on screen afterwards reads as if
+ * nothing happened.
  */
 export default function Command() {
-  const { rows, isLoading, refresh } = useLoader<Sink>(sinks, "Could not list audio outputs");
-  const act = actionRunner(refresh);
+  const { rows, isLoading } = useLoader<Sink>(sinks, "Could not list audio outputs");
 
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Search outputs" navigationTitle="Audio Output">
@@ -34,7 +37,7 @@ export default function Command() {
               <Action
                 title="Set as Default Output"
                 icon={Icon.SpeakerHigh}
-                onAction={act(`Output: ${sink.description}`, () => setDefaultSink(sink.name))}
+                onAction={closeAfter(() => setDefaultSink(sink.name), `Output: ${sink.description}`)}
               />
               <Action.CopyToClipboard title="Copy Sink Name" content={sink.name} shortcut={{ modifiers: ["ctrl"], key: "c" }} />
             </ActionPanel>
