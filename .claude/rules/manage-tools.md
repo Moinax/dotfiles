@@ -7,6 +7,7 @@ paths:
   - tools/sync-machine.sh
   - install/lib/post-apply.sh
   - install/lib/login-wallpaper.sh
+  - install/lib/dns-encrypted.sh
 ---
 
 # dots helper internals
@@ -140,6 +141,66 @@ The value is a `file://` URL, matching what KDE's Login Screen KCM writes throug
 its KAuth helper — the only reference we can check ourselves against. That is why
 `login_wallpaper_greeter_image` exists as a reader and not just a writer: the
 detection and the write share one group path, so they cannot drift apart again.
+
+### `reconcile_encrypted_dns` — the same shape, for a failure with no symptom
+
+`install/lib/dns-encrypted.sh` writes two files — a `systemd-resolved` drop-in
+naming Cloudflare and Quad9 over TLS, and an NM dispatcher script — and both
+`dots setup` and this call it, for the reason spelled out above: setup is not
+re-run, so an installer-only owner reaches no machine that already exists. This
+one is worse than the wallpaper in one respect and that is the whole argument for
+the split: a black lock screen is at least *visible*, while a machine still
+sending every lookup to its ISP looks and behaves exactly like one that is not.
+
+**The lever is the link's default-route flag, and finding that took three wrong
+turns.** resolved keeps one server list per *link* and picks the link from the
+name being resolved; a global `DNS=` is read only when no link has a server at
+all, so a drop-in on its own changes nothing. `ipv4.ignore-auto-dns` does work but
+takes the link's search domain with it, losing every local name; `ipv4.dns-search
+"~home"` keeps routing but drops short-name completion, and hardcodes the domain.
+Clearing `default-route` alone keeps the servers, the domain *and* the completion,
+and names nothing — which is why the dispatcher has no interface, connection, IP
+or domain in it and is the same file on every machine.
+
+**`encrypted_dns_needs_setup` compares content, not existence.** Both file bodies
+come from functions the writer also uses, so changing a resolver later reads as
+drift on machines carrying the old drop-in and is repaired; an existence check
+would leave them behind silently. This already earned itself once — the first
+hand-placed dispatcher lacked the `~.` guard below, and the content check is what
+noticed.
+
+**The `~.` guard is not hypothetical.** A link routing `~.` is claiming every name
+deliberately — that is what tailscaled sets for an exit node or a tailnet-wide
+resolver — and `tailscale0` is NM-managed, so the dispatcher fires for it. Without
+the guard, switching on an exit node would break its DNS months later with nothing
+tying the two together. Matched as a whole token: the reverse zones tailscale also
+installs read `~0.e.1.a…`, which a naive `grep '~\.'` would hit.
+
+**`opportunistic`, not strict TLS**, and that is a captive-portal decision rather
+than a weak one: hotel and airport networks authenticate by hijacking DNS, so
+strict mode means the login page never appears and the machine never gets online.
+Verify the TLS is actually negotiated rather than assuming — `ss -tn | grep :853`
+shows the established connection; `resolvectl status` reports the *configuration*
+either way.
+
+**`reload`, not `restart`, and that is measured rather than assumed.** The unit is
+`Type=notify-reload` with `CanReload=yes`, and SIGHUP makes resolved re-read its
+configuration files — drop-ins included — since systemd 256. Verified by adding a
+third server to the drop-in and watching it appear, then disappear, on a bare
+`reload`. A restart tears the resolver down and has NetworkManager re-push every
+link's DNS on the way back up, for nothing. Note the trap in verifying it:
+`resolvectl status` **wraps** a long server list onto a continuation line, so a
+`grep -m1 'DNS Servers'` reports the reload as having done nothing and sends you
+back to `restart`. Read the whole `Global` block.
+
+**`apply_encrypted_dns` re-runs the dispatcher over the active links itself**,
+because the script only fires on a link coming *up* — without that pass the
+machine it was just installed on keeps its default route until the next reconnect.
+It invokes the installed script rather than repeating its one line, so the `~.`
+guard cannot come to exist in two places and drift.
+
+Not gated on `install_purpose_is desktop` — a headless box resolves names too —
+but the lib skips itself where `resolvectl` or `nmcli` is absent.
 
 ### Fork drift is discovered, not declared
 

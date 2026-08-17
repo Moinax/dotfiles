@@ -36,6 +36,7 @@ done
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/hyprvoice.sh"
+source "$SCRIPT_DIR/lib/dns-encrypted.sh"
 source "$SCRIPT_DIR/lib/login-wallpaper.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
@@ -1847,6 +1848,20 @@ restore_ssh_from_backup() {
     print_success "SSH key restored from backup"
 }
 
+# The installer's framing over install/lib/dns-encrypted.sh (`dots update`'s is
+# reconcile_encrypted_dns in tools/sync-machine.sh). Not gated on the install
+# purpose — unlike the wallpaper below, which is desktop-only: a headless box
+# resolves names too, and the lib skips itself where systemd-resolved or
+# NetworkManager is absent. Unconditional, since setup has no state to reconcile
+# against and re-running costs two file writes and a daemon reload.
+setup_encrypted_dns() {
+    print_header "Encrypted DNS"
+    # A failure is already tracked as a warning by apply_encrypted_dns, and must
+    # not abort the install over a resolver — the machine still has the one the
+    # network handed it.
+    apply_encrypted_dns || return 0
+}
+
 # The installer's framing over install/lib/login-wallpaper.sh — the lib holds the
 # mechanism, each caller frames it (dots update's framing is
 # reconcile_login_wallpaper in tools/sync-machine.sh). Unconditional, since setup
@@ -2120,6 +2135,7 @@ main() {
     tune_boot_performance
     setup_clamav
     setup_biometric
+    setup_encrypted_dns
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_login_wallpaper
         setup_plymouth

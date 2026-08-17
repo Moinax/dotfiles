@@ -27,6 +27,7 @@ GROUPS_DIR="$PACKAGES_DIR/groups"
 
 source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
+source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
 
@@ -768,6 +769,38 @@ remove_dropped_packages() {
     return 0
 }
 
+# ── DNS ─────────────────────────────────────────────────────────────────────
+
+# The two files behind encrypted DNS — see install/lib/dns-encrypted.sh, which
+# both this and `dots setup` call.
+#
+# Same shape as reconcile_login_wallpaper below, and for the same reason: setup
+# is not re-run, so a machine that already existed when this landed would never
+# get it. The trigger is machine state and never CHANGED_FILES — the anchor moves
+# past the commit long before anyone wonders why their ISP still answers every
+# lookup, and unlike a black lock screen this failure has no symptom at all.
+#
+# Reading the *content* rather than mere existence is what makes changing a
+# resolver here reach machines that already carry the old drop-in.
+reconcile_encrypted_dns() {
+    encrypted_dns_needs_setup || return 0
+
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the encrypted DNS setup"
+        return 0
+    fi
+
+    # No confirmation in front of this, for the reason spelled out at
+    # reconcile_login_wallpaper: sudo already asks a question with a way out in
+    # it, and two file writes plus a daemon reload is not a transaction worth a
+    # second one.
+    print_header "Encrypted DNS"
+    print_info "DNS still goes to whatever resolver this network handed out — moving it to TLS (needs sudo)"
+    apply_encrypted_dns || return 0
+}
+
 # ── The lock and login screens ──────────────────────────────────────────────
 
 # The two privileged steps behind /var/lib/wallpaper/current — see
@@ -1051,6 +1084,7 @@ do_sync() {
     # After the apply, which is what puts wallpaper-picker.sh on the machine that
     # is missing this — the seed inside it runs the picker.
     reconcile_login_wallpaper
+    reconcile_encrypted_dns
 
     # record_synced_state declines on its own while a package shortfall is
     # outstanding — mark_sync_shortfall in common.sh carries the why. Everything
