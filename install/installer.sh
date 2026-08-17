@@ -77,12 +77,14 @@ HYPRVOICE_MODEL="small"
 HYPRVOICE_PROVIDER="whisper-cpp"
 INSTALL_PURPOSE="desktop"
 
-# Check if gum is available
-check_gum() {
-    if ! command_exists gum; then
-        print_error "gum is required but not installed"
-        exit 1
-    fi
+# gum draws every prompt, yq parses every packages/ yaml. tools/setup.sh installs
+# both before it execs this script, so the guard is for the direct invocation that
+# skips it: a missing gum is loud on its own, but a missing yq is not — every
+# parser would return nothing and the selector would offer an empty catalogue
+# rather than fail. That silence is what the hand-rolled yq fallbacks used to
+# cover; this is what replaces them.
+check_prerequisites() {
+    require_tools gum yq || exit 1
 }
 
 # Display welcome banner
@@ -590,9 +592,6 @@ install_base_packages() {
         return 1
     fi
     
-    # Install yq first for better YAML parsing
-    install_yq
-
     # Parse and install core packages
     local packages=()
     while IFS= read -r pkg; do
@@ -1165,94 +1164,6 @@ refresh_preinstalled_tools() {
         exit 130
     elif [ "$rc" -ne 0 ]; then
         track_warning "Some tools could not be refreshed — run 'dots update' to retry"
-    fi
-}
-
-# Migrate from old notification daemons (mako/dunst) to swaync
-migrate_notification_daemon() {
-    if ! group_selected hyprland; then
-        return 0
-    fi
-
-    local old_daemons=()
-    local old_packages=()
-
-    # Check for running old daemons
-    if pgrep -x mako &>/dev/null; then
-        old_daemons+=("mako")
-    fi
-    if pgrep -x dunst &>/dev/null; then
-        old_daemons+=("dunst")
-    fi
-
-    # Check for installed old packages
-    for pkg in mako dunst; do
-        if is_package_installed "$pkg" 2>/dev/null; then
-            old_packages+=("$pkg")
-        fi
-    done
-
-    if [ ${#old_daemons[@]} -eq 0 ] && [ ${#old_packages[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    print_info "Migrating notification daemon to SwayNC..."
-
-    # Kill old daemons
-    for daemon in "${old_daemons[@]}"; do
-        print_info "Stopping $daemon..."
-        killall "$daemon" 2>/dev/null || true
-    done
-
-    # Remove old packages
-    if [ ${#old_packages[@]} -gt 0 ]; then
-        print_info "Removing old notification packages: ${old_packages[*]}"
-        remove_packages "${old_packages[@]}" || true
-    fi
-
-    # Start swaync if not running and we're in a desktop session
-    if command -v swaync &>/dev/null && ! pgrep -x swaync &>/dev/null; then
-        if [ -n "$WAYLAND_DISPLAY" ] || [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-            print_info "Starting swaync..."
-            swaync &>/dev/null &
-            disown
-        fi
-    fi
-
-    print_success "Notification daemon migrated to SwayNC"
-}
-
-# One-shot migration: switch from a distro-packaged Dropbox to the official
-# dist tarball at ~/.dropbox-dist/ used by our chezmoi-managed dropbox.service.
-# Dropbox's in-app auto-updater downloads newer dist binaries to ~/.dropbox-dist/
-# and SIGKILLs the running daemon to swap them in — that fights any distro
-# package and produces a restart loop. Idempotent: silently returns when there
-# is nothing left to clean up.
-migrate_dropbox_to_dist() {
-    if ! [[ " ${SELECTED_GROUP_NAMES[*]} " =~ " productivity " ]]; then
-        return 0
-    fi
-
-    local did_something=false
-
-    if is_package_installed dropbox 2>/dev/null; then
-        print_info "Removing distro dropbox package (superseded by ~/.dropbox-dist/)..."
-        # Free the binary before the package manager yanks it — otherwise the
-        # SIGKILL-on-update loop keeps respawning during pacman/dnf/apt removal.
-        systemctl --user stop dropbox.service 2>/dev/null || true
-        pkill -9 -f "/opt/dropbox"  2>/dev/null || true
-        pkill -9 -f "dropbox-lnx"   2>/dev/null || true
-        remove_packages dropbox || track_warning "Failed to remove dropbox package"
-        did_something=true
-    fi
-
-    if $did_something; then
-        systemctl --user daemon-reload      2>/dev/null || true
-        systemctl --user reset-failed dropbox.service 2>/dev/null || true
-        if [ -n "$WAYLAND_DISPLAY" ] || [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
-            systemctl --user start dropbox.service 2>/dev/null || true
-        fi
-        print_success "Dropbox migrated to ~/.dropbox-dist/"
     fi
 }
 
@@ -2018,7 +1929,7 @@ show_completion() {
     # chezmoi just put the manager on PATH; the shell that ran ./dots setup
     # picked up its PATH before that, so it takes a new shell to see it.
     body+=("" "This manager is now on PATH as 'dots' — run it from anywhere" \
-              "(new shell required), with tab-completion in zsh and fish.")
+              "(new shell required), with tab-completion in zsh.")
     if [ ${#steps[@]} -gt 0 ]; then
         body+=("" "Next steps:" "${steps[@]}")
     fi
@@ -2070,7 +1981,7 @@ main() {
     fi
 
     # Check for gum
-    check_gum
+    check_prerequisites
     
     # Welcome (displays the detected distro; support is already hard-gated
     # by setup.sh and the distros/ check above)
@@ -2126,8 +2037,6 @@ main() {
     # reconciliation runs.
     run_post_apply
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
-        migrate_notification_daemon
-        migrate_dropbox_to_dist
         configure_localsend_firewall
         apply_dark_mode_defaults
     fi

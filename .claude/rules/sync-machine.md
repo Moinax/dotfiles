@@ -288,7 +288,8 @@ helpers that served the first three are deleted; `load_group_meta` is the one re
 reason. Callers take the custom flag from the row instead of parsing the names again
 — `declared_packages_at`, `group_package_states` and `build_manage_json` all used to. This machine has **python-yq**, ~180ms of interpreter start
 per call, so the invocation count dominated the scan. `base_desired_packages` is one call for
-the same reason. Both keep their yq-less fallback by delegating to the old parsers.
+the same reason. Neither has a yq-less fallback any more: `tools/setup.sh` installs
+yq alongside gum, before the installer's first parse, so every parser can assume it.
 `list_installed_packages` prefers `expac -Q '%n %S %R'` (48ms) over the
 `pacman -Qi | awk` pass (830ms) for the identical name+provides+replaces set —
 which is why base.yaml declares expac; it was previously present only as somebody

@@ -294,62 +294,22 @@ pause_for_user() {
     echo ""
 }
 
-# Get the script directory
-get_script_dir() {
-    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
-}
-
-# Get the dotfiles root directory
-get_dotfiles_dir() {
-    local script_dir
-    script_dir="$(get_script_dir)"
-    # Go up two levels from install/lib to get to dotfiles root
-    cd "$script_dir/../.." && pwd
-}
-
 # Parse YAML file and extract package list for a distro
 # Usage: parse_packages "file.yaml" "arch"
 parse_yaml_nested_list() {
     local file="$1" parent="$2" child="$3"
 
-    if command_exists yq; then
-        # grep exits non-zero when a section has no matching lines; tolerate it so
-        # callers running under `set -o pipefail` don't abort on an empty section.
-        yq -r ".${parent}.${child}[]? // \"\"" "$file" 2>/dev/null \
-            | grep -v "^#" | grep -v '^[[:space:]]*$' || true
-    else
-        local in_parent=false in_child=false line
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^${parent}:[[:space:]]*$ ]]; then
-                in_parent=true; in_child=false; continue
-            fi
-            if $in_parent; then
-                # Any other top-level key ends the parent block.
-                [[ "$line" =~ ^[a-z] ]] && break
-                if [[ "$line" =~ ^[[:space:]]+${child}:[[:space:]]*$ ]]; then
-                    in_child=true; continue
-                fi
-                if $in_child; then
-                    # A sibling section at the same level ends this one.
-                    if [[ "$line" =~ ^[[:space:]]+[a-z_]+:[[:space:]]*$ ]]; then
-                        in_child=false; continue
-                    fi
-                    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-                        echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
-                    fi
-                fi
-            fi
-        done < "$file"
-    fi
+    # grep exits non-zero when a section has no matching lines; tolerate it so
+    # callers running under `set -o pipefail` don't abort on an empty section.
+    yq -r ".${parent}.${child}[]? // \"\"" "$file" 2>/dev/null \
+        | grep -v "^#" | grep -v '^[[:space:]]*$' || true
 }
 
 # Packages for a distro/section — `packages.<name>`.
 #
-# Anchored on the `packages:` parent rather than matching the section name
-# wherever it appears, which is what this fallback used to do. base.yaml now
-# carries both `packages.desktop` and `services.desktop`, and a bare
-# `^\s*desktop:` match cannot tell those apart — it would have handed the package
-# list back as the service list, on exactly the machines that have no yq.
+# Anchored on the `packages:` parent, not on the section name alone: base.yaml
+# carries both `packages.desktop` and `services.desktop`, and those two must
+# never be confused — one list is installed, the other is enabled.
 parse_packages() {
     parse_yaml_nested_list "$1" packages "$2"
 }
@@ -359,47 +319,11 @@ parse_packages() {
 parse_descriptions() {
     local file="$1"
 
-    if command_exists yq; then
-        yq -r '.descriptions // {} | to_entries[] | .key + "=" + .value' "$file" 2>/dev/null
-    else
-        # Fallback: simple grep-based parsing
-        local in_section=false
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^descriptions:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                # Exit when hitting another top-level key
-                if [[ "$line" =~ ^[a-z] ]]; then
-                    break
-                fi
-                # Match "  package_name: some description"
-                if [[ "$line" =~ ^[[:space:]]+([^:]+):[[:space:]]+(.+)$ ]]; then
-                    local pkg="${BASH_REMATCH[1]}"
-                    local desc="${BASH_REMATCH[2]}"
-                    # Strip surrounding quotes if present
-                    desc="${desc#\"}"
-                    desc="${desc%\"}"
-                    desc="${desc#\'}"
-                    desc="${desc%\'}"
-                    echo "${pkg}=${desc}"
-                fi
-            fi
-        done < "$file"
-    fi
+    yq -r '.descriptions // {} | to_entries[] | .key + "=" + .value' "$file" 2>/dev/null
 }
 
 # Read a top-level YAML list — a `key:` header followed by `- item` lines — and
 # emit one item per line, blanks dropped.
-#
-# One parser for every such list in the schema, because the fallback below is
-# precisely the part that drifts. It existed in three hand-copied versions, and
-# only the desktop_only one ever learned to strip an inline comment: on a machine
-# without yq, `- vicinae.service  # the launcher` parsed correctly as a
-# desktop_only entry and yielded a unit name with the comment glued on as a
-# service. The yq path never had that bug, so it would only ever have shown up on
-# the fallback nobody tests.
 #
 # The named wrappers below are the API — call those. A bare key at a call site is
 # how `services` and `user_services` get confused, and those two must not be:
@@ -408,30 +332,11 @@ parse_descriptions() {
 parse_yaml_list() {
     local file="$1" key="$2"
 
-    if command_exists yq; then
-        # No comment handling needed here — yq is a real YAML parser and has
-        # already dropped them. `// ""` turns a null entry into an empty line,
-        # which is what the grep removes; `|| true` because grep exits non-zero
-        # when it filters everything out, and callers run under `set -e`.
-        yq -r ".${key}[]? // \"\"" "$file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
-    else
-        local in_section=false line
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^${key}:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                # Any other top-level key ends the list.
-                [[ "$line" =~ ^[a-z] ]] && break
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*(.+)$ ]]; then
-                    # xargs trims; it also prints nothing for a line that was
-                    # only a comment, so no blank survives the strip.
-                    echo "${BASH_REMATCH[1]}" | sed 's/#.*//' | xargs
-                fi
-            fi
-        done < "$file"
-    fi
+    # No comment handling needed here — yq is a real YAML parser and has
+    # already dropped them. `// ""` turns a null entry into an empty line,
+    # which is what the grep removes; `|| true` because grep exits non-zero
+    # when it filters everything out, and callers run under `set -e`.
+    yq -r ".${key}[]? // \"\"" "$file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
 }
 
 # The declared lists, one wrapper each. Adding a list to the schema means adding
@@ -485,25 +390,7 @@ group_hardware_available() {
 parse_entry_names() {
     local file="$1" section="$2"
 
-    if command_exists yq; then
-        yq -r "(.${section} // [])[].name" "$file" 2>/dev/null | grep -v "^$" || true
-    else
-        # Fallback: simple parsing
-        local in_section=false line
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^${section}:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                # Exit when hitting another top-level key
-                [[ "$line" =~ ^[a-z] ]] && break
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*(.+)$ ]]; then
-                    echo "${BASH_REMATCH[1]}"
-                fi
-            fi
-        done < "$file"
-    fi
+    yq -r "(.${section} // [])[].name" "$file" 2>/dev/null | grep -v "^$" || true
 }
 
 # One field of one entry, empty when unset.
@@ -511,42 +398,7 @@ parse_entry_names() {
 parse_entry_field() {
     local file="$1" section="$2" name="$3" field="$4"
 
-    if command_exists yq; then
-        yq -r "(.${section} // [])[] | select(.name == \"$name\") | .${field} // \"\"" "$file" 2>/dev/null
-    else
-        local in_section=false found=false line
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^${section}:[[:space:]]*$ ]]; then
-                in_section=true
-                continue
-            fi
-            if $in_section; then
-                [[ "$line" =~ ^[a-z] ]] && break
-                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*${name}[[:space:]]*$ ]]; then
-                    found=true
-                    continue
-                fi
-                if $found && [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name: ]]; then
-                    break
-                fi
-                if $found && [[ "$line" =~ ^[[:space:]]*${field}:[[:space:]]*(.+)$ ]]; then
-                    _unquote_yaml_scalar "${BASH_REMATCH[1]}"
-                    return 0
-                fi
-            fi
-        done < "$file"
-    fi
-}
-
-# Strip the quotes off a YAML scalar, so the fallback parser returns what yq
-# would. Without this a quoted value comes back with its quotes attached and
-# eval'ing it looks for a command literally named `'[ -x "$HOME/..." ]'`.
-_unquote_yaml_scalar() {
-    local value="$1"
-    if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
-        value="${BASH_REMATCH[1]}"
-    fi
-    printf '%s\n' "$value"
+    yq -r "(.${section} // [])[] | select(.name == \"$name\") | .${field} // \"\"" "$file" 2>/dev/null
 }
 
 # Several fields of one entry in a single yq call — reading them one at a time
@@ -564,19 +416,12 @@ parse_entry_fields() {
     shift 3
     local field
 
-    if command_exists yq; then
-        local list=""
-        for field in "$@"; do
-            list+="(.${field} // \"\" | tostring),"
-        done
-        yq -r "(.${section} // [])[] | select(.name == \"$name\") | [${list}\"\"] | join(\"$YAML_FIELD_SEP\")" \
-            "$file" 2>/dev/null
-    else
-        for field in "$@"; do
-            printf '%s%s' "$(parse_entry_field "$file" "$section" "$name" "$field")" "$YAML_FIELD_SEP"
-        done
-        echo ""
-    fi
+    local list=""
+    for field in "$@"; do
+        list+="(.${field} // \"\" | tostring),"
+    done
+    yq -r "(.${section} // [])[] | select(.name == \"$name\") | [${list}\"\"] | join(\"$YAML_FIELD_SEP\")" \
+        "$file" 2>/dev/null
 }
 
 # Every value of one field across a section, one per line, skipping entries that
@@ -586,16 +431,8 @@ parse_entry_fields() {
 parse_entry_field_values() {
     local file="$1" section="$2" field="$3"
 
-    if command_exists yq; then
-        yq -r "(.${section} // [])[] | select(.${field}) | .${field}" "$file" 2>/dev/null \
-            | grep -v "^$" || true
-    else
-        local name value
-        while IFS= read -r name; do
-            value=$(parse_entry_field "$file" "$section" "$name" "$field")
-            if [ -n "$value" ]; then printf '%s\n' "$value"; fi
-        done < <(parse_entry_names "$file" "$section")
-    fi
+    yq -r "(.${section} // [])[] | select(.${field}) | .${field}" "$file" 2>/dev/null \
+        | grep -v "^$" || true
 }
 
 parse_custom_install_names() { parse_entry_names "$1" "custom_install"; }
@@ -768,59 +605,6 @@ group_enabled() {
     [ "$(chezmoi_data_get "$(get_chezmoi_flag "$(get_group_id "$1")")")" = "true" ]
 }
 
-# Fallback parser for requires_packages (used when yq is unavailable).
-# Emits one package per line for the given distro family. Supports inline
-# list form only (e.g. `arch: [rust, cargo]`) — which is what the yaml uses.
-_parse_custom_install_requires_packages_fallback() {
-    local file="$1" pkg_name="$2" family="$3"
-    local in_section=false
-    local found=false
-    local in_req_pkgs=false
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^custom_install:[[:space:]]*$ ]]; then
-            in_section=true
-            continue
-        fi
-        if $in_section; then
-            if [[ "$line" =~ ^[a-z] ]]; then
-                break
-            fi
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name:[[:space:]]*${pkg_name}[[:space:]]*$ ]]; then
-                found=true
-                in_req_pkgs=false
-                continue
-            fi
-            if $found && [[ "$line" =~ ^[[:space:]]*-[[:space:]]*name: ]]; then
-                break
-            fi
-            if $found && [[ "$line" =~ ^[[:space:]]*requires_packages:[[:space:]]*$ ]]; then
-                in_req_pkgs=true
-                continue
-            fi
-            if $found && $in_req_pkgs; then
-                # Leaving the map when a line is not further indented under it.
-                if [[ "$line" =~ ^[[:space:]]{0,4}[a-zA-Z_]+: ]] && ! [[ "$line" =~ ^[[:space:]]{6,} ]]; then
-                    in_req_pkgs=false
-                    continue
-                fi
-                if [[ "$line" =~ ^[[:space:]]*${family}:[[:space:]]*\[(.+)\][[:space:]]*$ ]]; then
-                    local list="${BASH_REMATCH[1]}"
-                    # Split on comma, trim whitespace and quotes.
-                    local IFS=','
-                    for item in $list; do
-                        item="${item#"${item%%[![:space:]]*}"}"
-                        item="${item%"${item##*[![:space:]]}"}"
-                        item="${item%\"}"; item="${item#\"}"
-                        item="${item%\'}"; item="${item#\'}"
-                        [ -n "$item" ] && echo "$item"
-                    done
-                    return 0
-                fi
-            fi
-        fi
-    done < "$file"
-}
-
 # Get the packages to auto-install when a custom_install entry's `requires`
 # command is missing. Resolves DISTRO_FAMILY (arch) and emits one package per
 # line; empty output if nothing is declared for this family.
@@ -829,11 +613,7 @@ parse_custom_install_requires_packages() {
     local family="${DISTRO_FAMILY:-}"
     [ -z "$family" ] && return 0
 
-    if command_exists yq; then
-        yq -r "(.custom_install // [])[] | select(.name == \"$pkg_name\") | .requires_packages.$family // [] | .[]" "$file" 2>/dev/null
-    else
-        _parse_custom_install_requires_packages_fallback "$file" "$pkg_name" "$family"
-    fi
+    yq -r "(.custom_install // [])[] | select(.name == \"$pkg_name\") | .requires_packages.$family // [] | .[]" "$file" 2>/dev/null
 }
 
 # ── Chezmoi data helpers ─────────────────────────────────────────────────────
@@ -1070,51 +850,28 @@ selected_requires_packages() {
 #   N name · I icon · E pkg=description · D desktop_only · C custom name ·
 #   R custom name=prerequisite · P package
 # Metadata first, then the two sets classify_declared_rows needs before the rows
-# they classify. The yq-less fallback calls the same parsers as before rather than
-# reimplementing their line-oriented scanning — that path is for a machine that has
-# not got yq yet, so correctness there matters and speed does not.
+# they classify.
 group_declared_lists() {
     local file="$1"
-    if command_exists yq; then
-        # Every value is coerced with tostring before it is concatenated. jq's `+`
-        # refuses string + number and one error aborts the whole comma-expression,
-        # so a single unquoted yaml scalar — `descriptions: {foo: 1.5}`, a version
-        # number read as a float — emitted *no rows at all* for the file. The group
-        # then looked empty everywhere at once: absent from `dots packages`, nothing
-        # missing in its sync, and no packages in the update delta, with stderr
-        # discarded and `|| true` swallowing the status. The four separate parsers
-        # this replaced could only ever lose the one list they parsed.
-        yq -r "
-          (\"N\t\" + ((.name // \"\") | tostring)),
-          (\"I\t\" + ((.icon // \"\") | tostring)),
-          ((.descriptions // {}) | to_entries[] | \"E\t\" + (.key | tostring) + \"=\" + ((.value // \"\") | tostring)),
-          ((.desktop_only // [])[]?   | select(. != null) | \"D\t\" + tostring),
-          ((.custom_install // [])[]? | .name | select(. != null) | \"C\t\" + tostring),
-          ((.custom_install // [])[]? | select(.name != null) | (.name | tostring) as \$n
-             | (.requires_packages.${DISTRO_FAMILY} // [])[]? | select(. != null)
-             | \"R\t\" + \$n + \"=\" + tostring),
-          ((.packages.${DISTRO_FAMILY} // [])[]? | select(. != null) | \"P\t\" + tostring)
-        " "$file" 2>/dev/null | grep -v "^.	#" || true
-    else
-        printf 'N\t%s\n' "$(grep -m1 '^name:' "$file" | sed 's/^name:[[:space:]]*//')"
-        printf 'I\t%s\n' "$(grep -m1 '^icon:' "$file" | sed 's/^icon:[[:space:]]*//')"
-        parse_descriptions "$file" | sed 's/^/E\t/'
-        parse_desktop_only "$file" | sed 's/^/D\t/'
-        parse_custom_install_names "$file" | sed 's/^/C\t/'
-        # Guarded by the same grep install_custom_requires opens with: the
-        # per-entry parse is a whole extra read of the file each, and only a
-        # handful of entries across packages/ declare the key at all.
-        if grep -q '^[[:space:]]*requires_packages:' "$file" 2>/dev/null; then
-            local _gdl_entry _gdl_dep
-            while IFS= read -r _gdl_entry; do
-                [ -n "$_gdl_entry" ] || continue
-                while IFS= read -r _gdl_dep; do
-                    [ -n "$_gdl_dep" ] && printf 'R\t%s=%s\n' "$_gdl_entry" "$_gdl_dep"
-                done < <(parse_custom_install_requires_packages "$file" "$_gdl_entry")
-            done < <(parse_custom_install_names "$file")
-        fi
-        parse_packages "$file" "$DISTRO_FAMILY" | sed 's/^/P\t/'
-    fi
+    # Every value is coerced with tostring before it is concatenated. jq's `+`
+    # refuses string + number and one error aborts the whole comma-expression,
+    # so a single unquoted yaml scalar — `descriptions: {foo: 1.5}`, a version
+    # number read as a float — emitted *no rows at all* for the file. The group
+    # then looked empty everywhere at once: absent from `dots packages`, nothing
+    # missing in its sync, and no packages in the update delta, with stderr
+    # discarded and `|| true` swallowing the status. The four separate parsers
+    # this replaced could only ever lose the one list they parsed.
+    yq -r "
+      (\"N\t\" + ((.name // \"\") | tostring)),
+      (\"I\t\" + ((.icon // \"\") | tostring)),
+      ((.descriptions // {}) | to_entries[] | \"E\t\" + (.key | tostring) + \"=\" + ((.value // \"\") | tostring)),
+      ((.desktop_only // [])[]?   | select(. != null) | \"D\t\" + tostring),
+      ((.custom_install // [])[]? | .name | select(. != null) | \"C\t\" + tostring),
+      ((.custom_install // [])[]? | select(.name != null) | (.name | tostring) as \$n
+         | (.requires_packages.${DISTRO_FAMILY} // [])[]? | select(. != null)
+         | \"R\t\" + \$n + \"=\" + tostring),
+      ((.packages.${DISTRO_FAMILY} // [])[]? | select(. != null) | \"P\t\" + tostring)
+    " "$file" 2>/dev/null | grep -v "^.	#" || true
 }
 
 # One read of a group file, exposing everything a view needs from it: GROUP_NAME,
@@ -1174,22 +931,15 @@ _base_desired_list() {
         sections+=("${extra[@]}")
     fi
 
-    local section
-    if command_exists yq; then
-        # `select(. != null)` for the reason group_declared_lists carries one: `[]?`
-        # tolerates a missing key but not a null *entry*, and with -r a null list
-        # item prints as the literal string `null`, which then reaches pacman as a
-        # package name. Parenthesised because `|` binds looser than `,`.
-        local query=""
-        for section in "${sections[@]}"; do
-            query+="((.${key}.${section} // [])[]? | select(. != null)),"
-        done
-        yq -r "${query%,}" "$base_file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
-    else
-        for section in "${sections[@]}"; do
-            parse_yaml_nested_list "$base_file" "$key" "$section"
-        done
-    fi
+    # `select(. != null)` for the reason group_declared_lists carries one: `[]?`
+    # tolerates a missing key but not a null *entry*, and with -r a null list
+    # item prints as the literal string `null`, which then reaches pacman as a
+    # package name. Parenthesised because `|` binds looser than `,`.
+    local section query=""
+    for section in "${sections[@]}"; do
+        query+="((.${key}.${section} // [])[]? | select(. != null)),"
+    done
+    yq -r "${query%,}" "$base_file" 2>/dev/null | grep -v '^[[:space:]]*$' || true
 }
 
 base_desired_packages() { _base_desired_list packages "${1:-}" "core aur" "desktop desktop_aur"; }
@@ -1325,27 +1075,3 @@ install_curl_tool() {
     fi
 }
 
-# Clone a git repository
-install_git_repo() {
-    local name="$1"
-    local url="$2"
-    local dest="$3"
-    
-    # Expand ~ to $HOME
-    dest="${dest/#\~/$HOME}"
-    
-    if [ -d "$dest" ]; then
-        print_info "$name already exists at $dest"
-        return 0
-    fi
-    
-    print_info "Cloning $name to $dest..."
-    mkdir -p "$(dirname "$dest")"
-    if git clone "$url" "$dest"; then
-        print_success "$name cloned successfully"
-        return 0
-    else
-        print_error "Failed to clone $name"
-        return 1
-    fi
-}

@@ -68,7 +68,7 @@ none of it.
 dotfiles/
 ├── dots                     # Management script (single entry point)
 ├── tools/                   # One helper per `dots` subcommand
-│   ├── setup.sh             # Bootstrap (installs gum + git, runs installer)
+│   ├── setup.sh             # Bootstrap (installs git + gum + yq, runs installer)
 │   ├── manage-packages.sh   # dots packages
 │   ├── manage-updates.sh    # dots update
 │   ├── manage-external-apps.py  # dots apps

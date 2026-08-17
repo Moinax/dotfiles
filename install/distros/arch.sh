@@ -264,42 +264,6 @@ install_optional_packages() {
     install_packages "$@"
 }
 
-# Install packages using pacman
-install_pacman_packages() {
-    local packages=("$@")
-    
-    if [ ${#packages[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    mapfile -t packages < <(_strip_ignored_pkgs "${packages[@]}")
-    if [ ${#packages[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    print_info "Installing ${#packages[@]} packages with pacman..."
-    _install_with_db_recovery sudo pacman -S --needed --noconfirm "${packages[@]}"
-}
-
-# Install packages using paru (for AUR packages)
-install_paru_packages() {
-    local packages=("$@")
-    
-    if [ ${#packages[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    mapfile -t packages < <(_strip_ignored_pkgs "${packages[@]}")
-    if [ ${#packages[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    ensure_paru
-
-    print_info "Installing ${#packages[@]} packages with paru..."
-    _install_with_db_recovery paru -S --needed --noconfirm "${packages[@]}"
-}
-
 # Install all packages (handles both official and AUR)
 install_packages() {
     local packages=("$@")
@@ -475,43 +439,30 @@ plan_removal() {
     LC_ALL=C pacman -Rs --print --print-format '%n' "$@" 2>/dev/null
 }
 
-# Install gum for interactive prompts
-install_gum() {
-    if command_exists gum; then
-        print_info "gum is already installed"
+# The bootstrap tools — installed before the package phase, so they are not
+# "declared packages" and must not count towards the sync anchor. yq goes
+# through pacman: it is in the official repos and this runs before paru exists
+# on a fresh machine.
+install_bootstrap_pkg() {
+    local pkg="$1"
+    if command_exists "$pkg"; then
+        print_info "$pkg is already installed"
         return 0
     fi
-    
-    print_info "Installing gum..."
-    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
-    ensure_paru
-    _install_with_db_recovery paru -S --needed --noconfirm gum
+
+    print_info "Installing $pkg..."
+    local _PKG_DECLARED=false
+    if [ "$pkg" = "yq" ]; then
+        _install_with_db_recovery sudo pacman -S --needed --noconfirm yq
+    else
+        ensure_paru
+        _install_with_db_recovery paru -S --needed --noconfirm "$pkg"
+    fi
 }
 
-# Install chezmoi
-install_chezmoi() {
-    if command_exists chezmoi; then
-        print_info "chezmoi is already installed"
-        return 0
-    fi
-    
-    print_info "Installing chezmoi..."
-    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
-    ensure_paru
-    _install_with_db_recovery paru -S --needed --noconfirm chezmoi
-}
-
-# Install yq for YAML parsing
-install_yq() {
-    if command_exists yq; then
-        print_info "yq is already installed"
-        return 0
-    fi
-    
-    print_info "Installing yq..."
-    local _PKG_DECLARED=false   # bootstrap tool, not a declared package
-    _install_with_db_recovery sudo pacman -S --needed --noconfirm yq
-}
+install_gum()     { install_bootstrap_pkg gum; }
+install_chezmoi() { install_bootstrap_pkg chezmoi; }
+install_yq()      { install_bootstrap_pkg yq; }
 
 # Install AppImage runtime support
 install_appimage_support() {

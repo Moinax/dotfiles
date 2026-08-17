@@ -32,8 +32,16 @@ fi
 source "$REPO_DIR/install/distros/$(get_distro_family "$DISTRO").sh"
 
 print_info "Installing dependencies..."
-command_exists git || install_pacman_packages git
+# Through _install_with_db_recovery, not bare pacman: this is the first package
+# command on a fresh machine, so it is the most likely one to meet a sync
+# database older than the mirrors — which 404s on every mirror and cannot be
+# fixed by retrying. install_gum and install_yq below already go through it.
+command_exists git || _install_with_db_recovery sudo pacman -S --needed --noconfirm git
 install_gum
+# yq before the installer, not inside it: the package-selection TUI parses every
+# YAML in packages/ before install_base_packages would have run, so installing it
+# there left the first-install parse — and only that one — without a YAML parser.
+install_yq
 
 # Enable the repo's git hooks (shellcheck on staged shell scripts)
 git -C "$REPO_DIR" config core.hooksPath .githooks

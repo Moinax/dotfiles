@@ -177,19 +177,6 @@ disable_service_in() {
 disable_service()      { disable_service_in system "$1"; }
 disable_user_service() { disable_service_in user   "$1"; }
 
-# Check service status
-check_service() {
-    local service="$1"
-    
-    if systemctl is-active "$service" &>/dev/null; then
-        print_success "Service $service is running"
-        return 0
-    else
-        print_warning "Service $service is not running"
-        return 1
-    fi
-}
-
 # Add user to a group (e.g., docker)
 add_user_to_group() {
     local group="$1"

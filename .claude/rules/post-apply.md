@@ -81,12 +81,13 @@ leave a daemon dead.
 `user_services:` in a group yaml is the per-user list, read by
 `parse_user_services` — one of four one-line wrappers over `parse_yaml_list`,
 along with `parse_dotfiles`, `parse_services` and `parse_desktop_only`. Adding
-this key is what forced that generalisation: the yq-less fallback loop existed in
-three hand-copied versions, and **only the `desktop_only` copy ever learned to
-strip an inline comment**, so `- vicinae.service  # the launcher` parsed cleanly
-as one list and yielded a unit name with the comment glued on as another. The yq
-path never had the bug, so it lived only on the fallback nobody tests. Add a list
-to the schema by adding a wrapper, never another copy of the loop.
+this key is what forced that generalisation: the hand-rolled fallback loop these
+replaced existed in three copies, and **only the `desktop_only` copy ever learned
+to strip an inline comment**, so `- vicinae.service  # the launcher` parsed cleanly
+as one list and yielded a unit name with the comment glued on as another. Those
+fallbacks are gone (yq is now guaranteed from `tools/setup.sh` onward), and the
+lesson survives them: add a list to the schema by adding a wrapper, never another
+copy of the loop.
 
 **Which systemd instance a unit belongs to is data, not something to infer.**
 Nothing in `vicinae.service` says it is a user unit, so the two lists stay
