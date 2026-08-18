@@ -59,22 +59,16 @@
          is the one sync hook, as vibewatch installs it. */}}
   {{- /* Built as data and serialized, not printed as text: hand-placed commas
          between a variable number of hook objects is the one part of this that
-         can emit invalid JSON. This carried a second family (herdr-agent-title,
-         on SessionStart and Stop) until herdr was retired, and a second family
-         is one more `if` here. */}}
-  {{- $vibe_events := list }}
-  {{- if .install_vibewatch }}
-  {{-   $vibe_events = list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "SubagentStop" "UserPromptSubmit" }}
-  {{- end }}
+         can emit invalid JSON. A second family — this carried herdr-agent-title
+         on SessionStart and Stop until herdr was retired — is one more range
+         over the same dict, which is why the shape stays even at one. */}}
   {{- $hooks := dict }}
-  {{- range $event := $vibe_events | uniq | sortAlpha }}
-  {{-   $cmds := list }}
-  {{-   if has $event $vibe_events }}
+  {{- if .install_vibewatch }}
+  {{-   range $event := list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "SubagentStop" "UserPromptSubmit" }}
   {{-     $vibe := dict "type" "command" "command" (printf "~/.cargo/bin/vibewatch notify %s --agent claude-code" (kebabcase $event)) }}
   {{-     if ne $event "PermissionRequest" }}{{ $vibe = set $vibe "async" true }}{{ end }}
-  {{-     $cmds = append $cmds $vibe }}
+  {{-     $hooks = set $hooks $event (list (dict "matcher" "" "hooks" (list $vibe))) }}
   {{-   end }}
-  {{-   $hooks = set $hooks $event (list (dict "matcher" "" "hooks" $cmds)) }}
   {{- end }}
   "hooks": {{ $hooks | toPrettyJson | indent 2 | trim }}
 }

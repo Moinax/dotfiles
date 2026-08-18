@@ -127,9 +127,18 @@ discover_repo() { # $1: index into repos
   fi
   # `wt step prune` keeps its own default --min-age of 1 day, which is a guard
   # the local script it replaces never had: a worktree just branched off main
-  # reads as integrated because its branch points at the same commit.
+  # reads as integrated because its branch points at the same commit. Only its
+  # `--dry-run` is used, for the plan; `wt remove` is what applies it below.
+  #
+  # `select(.path != null)` is what keeps the line below true. prune also
+  # reports integrated branches that no worktree holds (`kind: "branch_only"`,
+  # `path: null`), which is `git cleanup`'s job — and the same branch really
+  # does come back from both, measured in o27/socle. Left in, it rendered
+  # twice in the table, inflated the confirmation count, and had both appliers
+  # go after one ref: prune deleted it, then `git cleanup --apply` failed on
+  # the missing branch and reported the whole project as a failed cleanup.
   if ! wt step prune -C "$repo" --dry-run --format=json 2>>"$out.log" \
-       | jq -r '.[].branch' >"$out.plan"; then
+       | jq -r '.[] | select(.path != null) | .branch' >"$out.plan"; then
     printf 'warning: worktree discovery failed in %s\n' "$name" >>"$out.log"
     failed=$((failed + 1))
   fi
@@ -182,18 +191,21 @@ if [[ "$assume_yes" != true ]]; then
   [[ "$reply" =~ ^[Yy]$ ]] || exit 0
 fi
 
-# The apply re-detects rather than replaying the plan: `wt step prune` has no
-# apply-this-exact-list mode, and no longer needs one — detection is a local
-# commit-graph walk now, not a `gh` call per candidate. The rows shown and the
-# rows removed can therefore differ if something changed in between, and only
-# in the safe direction: a worktree that has since gone dirty or gained commits
-# stops qualifying and is skipped.
+# Hand each confirmed plan back to `wt remove`, which takes the exact branches
+# it is given — so the user's "y" applies to the rows they were shown, and not
+# to whatever `wt step prune` would decide a second time. prune's --min-age
+# guard still holds, because the plan came from its --dry-run. `wt remove`
+# applies the same six integration checks, so a squash-merged worktree still
+# takes its branch with it and no -D is needed (verified), and a worktree that
+# has gone dirty since the plan is refused rather than forced.
 clean_repo() { # $1: index into repos — one of them has at least one plan to apply
   local index="$1"
   local repo="${repos[$index]}" name="${names[$index]}" out="$work/$index" failed=0
+  local -a worktrees=()
 
-  if [[ -s "$out.plan" ]] \
-    && ! wt step prune -C "$repo" -y --foreground >>"$out.log" 2>&1; then
+  mapfile -t worktrees <"$out.plan"
+  if (( ${#worktrees[@]} > 0 )) \
+    && ! wt remove -C "$repo" -y --foreground "${worktrees[@]}" >>"$out.log" 2>&1; then
     printf 'warning: worktree cleanup failed in %s\n' "$name" >>"$out.log"
     failed=$((failed + 1))
   fi

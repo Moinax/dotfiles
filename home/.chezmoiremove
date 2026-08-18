@@ -67,6 +67,7 @@
 .local/bin/herdr-workspace
 .local/bin/dev-herdr
 .local/bin/dev-agent-argv
+
 .local/bin/dev-zellij
 .local/bin/dev-zellij-session
 .local/bin/dev-server-cmd

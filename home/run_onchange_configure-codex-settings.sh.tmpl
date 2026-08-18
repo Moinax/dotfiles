@@ -11,8 +11,10 @@
 # vibewatch does speak Codex natively (`notify --agent codex`), so pointing the
 # key there is a small follow-up if Codex turns should reach the panel again.
 #
-# Hash the source template in so chezmoi reruns this when it changes:
-# {{ include "dot_codex/private_create_config.toml" | sha256sum }}
+# No trigger hash: nothing here is derived from a template any more, so this is
+# a one-shot migration that chezmoi reruns only if this script's own text
+# changes. Keeping the old `include` of private_create_config.toml would have
+# re-fired it on every unrelated edit to that file.
 set -euo pipefail
 
 config="$HOME/.codex/config.toml"
