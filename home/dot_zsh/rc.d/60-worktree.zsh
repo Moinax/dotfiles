@@ -32,6 +32,6 @@ wtstart() {
 }
 
 alias wts=wtstart
-alias wtc=wtclean      # standalone script in ~/.local/bin
+alias wtc='wt step prune'  # remove worktrees merged into the default branch
 alias wtu=wtupdate     # standalone script in ~/.local/bin
 alias dcl=dev-clean    # clean merged worktrees across all dev projects

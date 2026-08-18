@@ -4,7 +4,6 @@ paths:
   - home/dot_local/bin/executable_herdr-*
   - home/dot_local/bin/executable_dev-herdr
   - home/dot_local/bin/executable_dev-agent-argv
-  - home/dot_local/bin/executable_wtclean
   - home/dot_local/bin/executable_dev-clean
   - home/dot_config/herdr/config.toml
 ---
@@ -140,9 +139,9 @@ them collapses into one delimiter and every later field shifts left. Since
 `worktree.checkout_path` is empty for most workspaces, `wA<TAB><TAB>working`
 parsed as path=`working`, status=`""`, and *every* workspace read back as idle,
 i.e. free to destroy: a `working` agent's checkout was reported `free`, inverting
-the polarity the paragraph above exists to protect. `herdr-workspace` and
-`wtclean` therefore join jq's fields with US (`0x1f`), which is not IFS
+the polarity the paragraph above exists to protect. `herdr-workspace` therefore joins jq's fields with US (`0x1f`), which is not IFS
 whitespace and so delimits exactly one field however empty its neighbours are.
+`wtclean` carried the same rule until it was replaced by `wt step prune`.
 
 ## What the labels are for now
 

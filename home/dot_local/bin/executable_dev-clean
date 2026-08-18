@@ -15,7 +15,7 @@ if (( $# > 0 )); then
   exit 2
 fi
 
-for command in dev-projects wtclean git-cleanup; do
+for command in dev-projects wt jq git-cleanup; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "dev-clean: '$command' not found" >&2
     exit 1
@@ -53,7 +53,7 @@ trap 'rm -rf -- "$work"' EXIT
 scan_jobs=12
 clean_jobs=4
 
-row() { printf '%-24s  %-32s  %-14s  %s\n' "$1" "$2" "$3" "$4"; }
+row() { printf '%-24s  %-32s  %s\n' "$1" "$2" "$3"; }
 
 # Every phase here has the same shape: independent per-project work, writing
 # into $work, collected afterwards in project order. The indices are passed in
@@ -125,7 +125,11 @@ discover_repo() { # $1: index into repos
     printf '1\n' >"$out.failures"
     return 0
   fi
-  if ! (cd "$repo" && wtclean --plan) >"$out.plan" 2>>"$out.log"; then
+  # `wt step prune` keeps its own default --min-age of 1 day, which is a guard
+  # the local script it replaces never had: a worktree just branched off main
+  # reads as integrated because its branch points at the same commit.
+  if ! wt step prune -C "$repo" --dry-run --format=json 2>>"$out.log" \
+       | jq -r '.[].branch' >"$out.plan"; then
     printf 'warning: worktree discovery failed in %s\n' "$name" >>"$out.log"
     failed=$((failed + 1))
   fi
@@ -147,13 +151,13 @@ drain
 # from the same rows and cannot disagree.
 table=$(
   for index in "${!repos[@]}"; do
-    while IFS=$'\t' read -r branch _kind herdr_status; do
+    while IFS= read -r branch; do
       [[ -n "$branch" ]] || continue
-      row "${names[$index]}" "$branch" worktree "$herdr_status"
+      row "${names[$index]}" "$branch" worktree
     done <"$work/$index.plan"
     while IFS=$'\t' read -r branch kind; do
       [[ -n "$branch" ]] || continue
-      row "${names[$index]}" "$branch" "$kind branch" "—"
+      row "${names[$index]}" "$branch" "$kind branch"
     done <"$work/$index.branches"
   done
 )
@@ -170,7 +174,7 @@ if [[ -z "$table" ]]; then
 fi
 
 echo
-row PROJECT BRANCH TYPE HERDR
+row PROJECT BRANCH TYPE
 printf '%s\n' "$table"
 echo
 if [[ "$assume_yes" != true ]]; then
@@ -178,17 +182,18 @@ if [[ "$assume_yes" != true ]]; then
   [[ "$reply" =~ ^[Yy]$ ]] || exit 0
 fi
 
-# Hand each confirmed plan straight back to the command that drew it up, so the
-# user's "y" applies to exactly the rows they were shown, and so neither the
-# `-d`/`-D` choice nor the graph/squash distinction has to be repeated here.
-# Replaying a plan also skips re-detection: wtclean would otherwise hit GitHub
-# again for every squash candidate it is about to remove.
+# The apply re-detects rather than replaying the plan: `wt step prune` has no
+# apply-this-exact-list mode, and no longer needs one — detection is a local
+# commit-graph walk now, not a `gh` call per candidate. The rows shown and the
+# rows removed can therefore differ if something changed in between, and only
+# in the safe direction: a worktree that has since gone dirty or gained commits
+# stops qualifying and is skipped.
 clean_repo() { # $1: index into repos — one of them has at least one plan to apply
   local index="$1"
   local repo="${repos[$index]}" name="${names[$index]}" out="$work/$index" failed=0
 
   if [[ -s "$out.plan" ]] \
-    && ! (cd "$repo" && wtclean --apply <"$out.plan") >>"$out.log" 2>&1; then
+    && ! wt step prune -C "$repo" -y --foreground >>"$out.log" 2>&1; then
     printf 'warning: worktree cleanup failed in %s\n' "$name" >>"$out.log"
     failed=$((failed + 1))
   fi

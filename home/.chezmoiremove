@@ -43,6 +43,11 @@
 # wtstart-launch built the "<project>.<branch>" title and picked an agent
 # provider; `dev` names its own tabs now and there is no agent pane to pick for.
 .local/bin/wtstart-launch
+# wtclean's whole job is `wt step prune` now: worktrunk detects squash merges
+# from the commit graph (patch-id / simulated merge), so the `gh` probe that
+# justified a local script is redundant, and its min-age guard is a protection
+# wtclean never had.
+.local/bin/wtclean
 .local/bin/dev-zellij
 .local/bin/dev-zellij-session
 .local/bin/dev-server-cmd

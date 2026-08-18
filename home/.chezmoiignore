@@ -85,7 +85,6 @@ LICENSE
 .claude
 .claude/**
 .zsh/rc.d/60-worktree.zsh
-.local/bin/wtclean
 .local/bin/wtupdate
 .local/bin/dev-clean
 {{- end }}
