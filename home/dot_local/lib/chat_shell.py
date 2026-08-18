@@ -180,6 +180,30 @@ def unread_count(page_title):
     return int(m.group(1)) if m else 0
 
 
+def window_title(page_title, url):
+    """"Messenger - Jessica Laureys": the app's name, then what the page says.
+
+    Always the app's name first, because the label has to say which window it
+    names before it says anything else — and no chat site can be relied on for
+    that. Messenger titles an open conversation with the bare contact name, and
+    it is the site's to change; whatever it publishes goes after the dash,
+    verbatim, "(3)" prefix and the line it flashes while a message waits
+    included. A title that already carries the app's name keeps it and gains
+    nothing, which is Messenger's own inbox.
+
+    The one thing dropped is the URL Qt stands in when a page publishes no
+    title at all. That is web.whatsapp.com's permanent state rather than a
+    passing one during load, so the label would otherwise read
+    "web.whatsapp.com" for the life of the window. Case is what tells the
+    stand-in from a real title: "Messenger" is not the "messenger.com" its own
+    URL carries.
+    """
+    title = (page_title or "").strip()
+    if not title or title in url:
+        return CONFIG.title
+    return title if CONFIG.title in title else f"{CONFIG.title} - {title}"
+
+
 def paint_badge(pixmap, count):
     """Stamp the unread count into the bottom-right corner of an icon."""
     # Logical size, not pixmap.width(): the tray icon is requested at ICON_SIZE
@@ -938,16 +962,10 @@ def run(config: ChatApp) -> int:
             tray.set_unread(count)
 
     def on_title(page_title):
-        # Verbatim, "(3)" prefix and the line a site flashes while a message
-        # waits ("Julie vous a envoyé un message") included: a Waybar label
-        # reading "Messenger" forever is the one thing it never needed to be
-        # told. The cost is a label that flashes with the site, and that shows
-        # the bare URL Qt reports for the second a page spends loading.
-        title = (page_title or "").strip()
-        count = unread_count(title)
-        log("TITLE", f"{title!r} / {count} unread")
-        if title:
-            view.setWindowTitle(title)
+        title = window_title(page_title, page.url().toDisplayString())
+        count = unread_count(page_title)
+        log("TITLE", f"{page_title!r} -> {title!r} / {count} unread")
+        view.setWindowTitle(title)
         if not published:
             show_unread(count)
 

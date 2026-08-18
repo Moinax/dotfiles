@@ -17,7 +17,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "home" / "dot_local" / "lib"))
 
-from chat_shell import paint_badge, unread_count
+import chat_shell
+from chat_shell import ChatApp, paint_badge, unread_count, window_title
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -34,6 +35,11 @@ def red_pixels(image):
 
 
 def check_titles():
+    chat_shell.CONFIG = ChatApp(
+        app_id="messenger", title="Messenger", url="https://www.messenger.com/",
+        domains=("messenger.com",), notification_origins=(),
+        debug_variable="MESSENGER_DEBUG",
+    )
     counted = {
         "(3) Julie Pauwels | Messenger": 3,
         "Julie Pauwels | Messenger": 0,
@@ -42,6 +48,24 @@ def check_titles():
     }
     for given, count in counted.items():
         assert unread_count(given) == count, given
+
+    url = "https://www.messenger.com/e2ee/t/711?locale=fr_FR"
+    labelled = {
+        # What the site publishes, after the app's name and verbatim.
+        "Jessica Laureys": "Messenger - Jessica Laureys",
+        "(3) Jessica Laureys": "Messenger - (3) Jessica Laureys",
+        "Julie vous a envoyé un message": "Messenger - Julie vous a envoyé un message",
+        # Already names the app, so it is left alone rather than doubled.
+        "Messenger": "Messenger",
+        "Julie Pauwels | Messenger": "Julie Pauwels | Messenger",
+        # Qt's stand-in for a page with no title of its own, and the empty
+        # title: the app's name rather than a URL in the label.
+        "messenger.com/e2ee/t/711?locale=fr_FR": "Messenger",
+        "": "Messenger",
+    }
+    for given, label in labelled.items():
+        assert window_title(given, url) == label, given
+    assert window_title(None, url) == "Messenger"
 
 
 def check_reload_deferrals():
