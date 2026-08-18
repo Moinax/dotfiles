@@ -16,11 +16,19 @@
 // `onboarding` managed, and for the same reason.
 show_startup_tips false
 
-// The theme is resolved at apply time, so `Mod+N` does not move it until the
-// next apply. Adding it to theme-copies.sh would need the Catppuccin palettes
-// written out by hand (zellij's builtins cannot be aliased), which is a lot of
-// hex for a status bar; do it if the mismatch turns out to grate.
-theme "catppuccin-{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}"
+// Dark and light named together rather than one theme resolved at apply time:
+// zellij owns the pair natively, and `zellij action set-dark-theme` /
+// `set-light-theme` switch a *running* session between them, which is what lets
+// `Mod+N` reach the terminal at all — apply-dark-mode.sh calls it for every live
+// session. Neither key does anything alone; zellij falls back to `theme` unless
+// both are set.
+//
+// So this file no longer depends on the `dark_mode` template variable, and an
+// apply cannot leave the terminal on the wrong half of the toggle. It also
+// means no palette had to be written out by hand — the builtins are named here,
+// not redefined.
+theme_dark "catppuccin-mocha"
+theme_light "catppuccin-latte"
 
 // Wayland clipboard. copy_on_select matches what kitty already does, so a
 // selection means the same thing inside a pane and outside one.

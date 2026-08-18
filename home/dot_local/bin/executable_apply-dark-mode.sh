@@ -169,6 +169,24 @@ sync_theme_copies "$MODE"
 # on every invocation, so for those the copy alone is the whole job.
 pkill -SIGUSR1 -x kitty 2>/dev/null || true
 
+# zellij holds its colours per *server*, and a server reads config.kdl only at
+# boot — so the terminal is the one surface a copy cannot reach. It names both
+# halves instead (theme_dark / theme_light in config.kdl) and switches a live
+# session between them on command, which is what this is. Per session, because
+# `zellij action` with no `-s` needs a session in the environment and there is
+# none out here.
+#
+# `list-sessions -s` also lists the dead-but-resurrectable ones, so the long
+# form is parsed instead: a resurrected session re-reads the config anyway, and
+# talking to one that is not running just prints an error per Mod+N.
+if command -v zellij >/dev/null 2>&1; then
+    zellij list-sessions --no-formatting 2>/dev/null \
+        | awk '!/\(EXITED/ { print $1 }' \
+        | while IFS= read -r session; do
+            zellij -s "$session" action "set-$MODE-theme" 2>/dev/null || true
+        done
+fi
+
 # A toggle only ever changes colours here, so the cheap stylesheet reload is
 # right: restarting would drop every queued notification on each Mod+N. An
 # apply is the case that needs the daemon replaced, and post-apply.sh does that.
