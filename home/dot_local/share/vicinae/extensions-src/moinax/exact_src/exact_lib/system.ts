@@ -79,7 +79,11 @@ export async function windows(): Promise<HyprWindow[]> {
  * ignore it.
  */
 export async function closeWindow(address: string): Promise<void> {
-  await capture("hyprctl", ["dispatch", "closewindow", `address:${address}`]);
+  // Lua, not `dispatch closewindow address:0x…`: hyprctl hands a dispatch
+  // argument to the same Lua parser the config uses since Hyprland 0.55, and
+  // the classic form comes back as a syntax error having closed nothing —
+  // which is what Mod+Escape had been doing to every window it was pointed at.
+  await capture("hyprctl", ["dispatch", `hl.dsp.window.close({ window = "address:${address}" })`]);
 }
 
 export async function killWindow(pid: number): Promise<void> {
