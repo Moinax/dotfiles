@@ -8,8 +8,7 @@ paths:
 
 What has to happen after any `chezmoi apply` for the running desktop to show it:
 Hyprland reload (its mid-apply autoreload fails on `conf/general.lua` requiring a
-`conf/theme.lua` not yet written), herdr `reload-config`/`migrate-layout`, the
-themed surface copies plus the swaync/swayosd/kitty reloads they need, the
+`conf/theme.lua` not yet written), the themed surface copies plus the swaync/swayosd/kitty reloads they need, the
 declared user services that are enabled but not running, waybar
 restart. Shared because these used to live in the installer only — the one script
 you stop running once the machine is set up.
@@ -176,9 +175,8 @@ apply at exactly the moment a group flag has just rewritten the bar and the hypr
 tree. The one exception is `dots update`, which calls the two halves itself
 because the tool refresh has to land between them — see the waybar rule above.
 
-The herdr layout trigger matches **any** `executable_herdr-*` / `dev-herdr`
-script, not the three that happen to build panes today. A missed
-`migrate-layout` does not fail; it brings the old layout back at the next server
-restart, hours later, with nothing tying it to the update that caused it. A name
-list would go stale silently, and over-triggering costs one idempotent call that
-the full-install path already makes unconditionally.
+A file-list trigger should match **broadly**, not the exact files that matter
+today: a reconciliation that is skipped does not fail loudly, it surfaces hours
+later with nothing tying it to the update that caused it, and a name list goes
+stale silently. Over-triggering costs one idempotent call, which the
+full-install path already makes unconditionally.

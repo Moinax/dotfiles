@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Transparent `claude` wrapper — graceful --resume.
 #
-# herdr's agent-resume replays `claude --resume <id>` into a pane's shell when
-# it restores a session (config `resume_agents_on_restore`). After a reboot the
-# id herdr recorded often points to a transcript that was never persisted (a
-# pane where Claude was opened but not messaged — see the herdr-reboot-behavior
-# note), so the bare replay errors with "No conversation found" and leaves a
-# dead prompt. This shim checks the transcript exists first; if it does not, it
-# drops the --resume so Claude starts a fresh session instead. Everything else
-# passes straight through. Also rescues manual `claude --resume <typo>`.
+# A `--resume <id>` whose transcript was never persisted errors with "No
+# conversation found" and leaves a dead prompt. This shim checks the transcript
+# exists first; if it does not, it drops the --resume so Claude starts a fresh
+# session instead. Everything else passes straight through.
+#
+# It was written for a multiplexer that replayed recorded ids on restore, which
+# is gone; what is left is the hand-typed or stale id, so this is a small net
+# rather than a load-bearing one.
 #
 # Installed ahead of the real claude via PATH (~/.local/bin/shims, prepended in
 # .zshenv). The real binary is the native install symlink at ~/.local/bin/claude

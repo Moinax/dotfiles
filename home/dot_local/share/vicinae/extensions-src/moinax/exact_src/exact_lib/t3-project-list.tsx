@@ -23,7 +23,7 @@ const NO_THREADS: Counts = { threads: 0, live: 0, waiting: 0 };
 /**
  * Projects, from both sides at once.
  *
- * The directory list is `dev-projects` — the same source the herdr picker uses,
+ * The directory list is `dev-projects` — the same source the dev picker uses,
  * so the two pickers never disagree about what a project is. What T3 Code knows
  * is layered on top: registered or not, and how much is running. A project it
  * has never seen is not hidden, because adding one is exactly what this picker

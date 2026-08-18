@@ -6,7 +6,7 @@ import { captureLines } from "./shell";
  *
  * `dev-projects` is the single source of truth CLAUDE.md points at: the root
  * directory, the two-levels-deep listing convention, the pinned out-of-root
- * entries (~/dotfiles), and the directory → herdr session mapping all live
+ * entries (~/dotfiles) all live
  * there and are shared with dev-pick and `dev`. This module only shapes
  * what it prints into something a List can render.
  */

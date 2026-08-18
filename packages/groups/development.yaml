@@ -13,7 +13,6 @@ dotfiles:
   - dot_config/gh-dash
   - dot_config/worktrunk
   - dot_config/ccstatusline
-  - dot_config/herdr
   - dot_gitconfig
 
 # Services to enable
@@ -43,7 +42,6 @@ descriptions:
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
-  herdr: Agent multiplexer — one terminal for all coding agents
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
   vite-plus: Vite+ build toolchain (`vp`, npm vite-plus)
@@ -78,30 +76,14 @@ custom_install:
     binary: codex
     source: openai/codex
     updated_by: self
-  # hunk — review-first diff viewer used as the herdr `dev` review pane.
-  # Not in distro repos; installed via npm like codex. Needs node/npm, which
-  # fnm provides.
+  # hunk — review-first diff viewer for agent changesets. Not in distro repos;
+  # installed via npm like codex. Needs node/npm, which fnm provides.
   - name: hunk
     check: command -v hunk
     install: npm install -g hunkdiff
     requires: npm
     binary: hunk
     npm: hunkdiff
-  # Agent multiplexer (dev/wts herdr backend). Was the AUR herdr-bin, but herdr
-  # only silences its in-app update prompt for Nix/mise/Homebrew — under pacman it
-  # nagged forever and its `herdr update` could not write to a root-owned
-  # /usr/bin/herdr. Its own installer drops the binary in ~/.local/bin, where
-  # self-update works and a protocol bump asks before stopping the server.
-  # The check probes the installer's own target rather than `command -v herdr`:
-  # on a machine still holding herdr-bin, PATH answers yes from /usr/bin and the
-  # entry is never offered, while the same scan offers to drop herdr-bin — which
-  # would take the only herdr away.
-  - name: herdr
-    check: '[ -x "$HOME/.local/bin/herdr" ]'
-    install: curl -fsSL https://herdr.dev/install.sh | sh
-    binary: herdr
-    source: herdrdev/herdr
-    updated_by: self
   # vite-plus — the Vite+ toolchain (`vp`). Declared so a development machine
   # gets it from `dots packages sync` and has it tracked by `dots update`, rather
   # than each consumer hand-installing it: `t3fork install` needs it to build the

@@ -7,11 +7,10 @@ customCommands:
   # tuicr code review on Alt+R, context-aware: working tree in the files
   # panel, branch..HEAD in the branches panel, selected commit(s) in the
   # commits panel (range selection reviews the whole range). Passive live
-  # diff watching stays with hunk (herdr review pane + core.pager); tuicr
-  # is the active review tool — typed comments, batch export, review CLI.
+  # diff watching stays with hunk (core.pager); tuicr is the active review
+  # tool — typed comments, batch export, review CLI.
   # Alt+R is free everywhere: lazygit (Ctrl+R = recent repos / reset
-  # cherry-pick), Kitty, Hyprland. Ctrl+Alt+R is herdr's review popup —
-  # same tool, so the mnemonic lines up.
+  # cherry-pick), Kitty, Hyprland.
   - key: <a-r>
     context: files
     command: tuicr -w

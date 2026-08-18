@@ -13,36 +13,17 @@ If no session exists, ask the user to launch Hunk in their terminal first.
 
 ```text
 1. hunk session list                                    # find live sessions
-2. session="$(herdr-hunk-session)"                      # pair with this Herdr agent tab when available
-3. hunk session get "$session"                          # inspect path / repo / source
-4. hunk session review "$session" --json                # inspect file/hunk structure first
-5. hunk session review "$session" --include-patch --json # opt into raw diff text only when needed
-6. hunk session context "$session"                      # check current focus when needed
-7. hunk session navigate ...                            # move to the right place
-8. hunk session reload -- <command>                     # swap contents if needed
-9. hunk session comment add ...                         # leave one review note
-10. hunk session comment apply ...                      # apply many agent notes in one stdin batch
+2. hunk session get "$session"                          # inspect path / repo / source
+3. hunk session review "$session" --json                # inspect file/hunk structure first
+4. hunk session review "$session" --include-patch --json # opt into raw diff text only when needed
+5. hunk session context "$session"                      # check current focus when needed
+6. hunk session navigate ...                            # move to the right place
+7. hunk session reload -- <command>                     # swap contents if needed
+8. hunk session comment add ...                         # leave one review note
+9. hunk session comment apply ...                       # apply many agent notes in one stdin batch
 ```
 
 ## Session selection
-
-### Herdr agent tabs
-
-When running inside Herdr, resolve the Hunk review pane paired with the current
-agent tab before issuing any session command:
-
-```bash
-session="$(herdr-hunk-session)"
-hunk session review "$session" --json
-```
-
-Do not select by `--repo` when several agent tabs share a checkout. Agent and
-review panes inherit the same `HERDR_TAB_ID`; `herdr-hunk-session` matches that
-tab ID against the environment of each live Hunk process and returns the exact
-Hunk session ID. Use `"$session"` for all subsequent get, review, context,
-navigate, reload, and comment commands.
-
-Outside Herdr, use the standard selection rules below.
 
 Most session commands accept:
 

@@ -70,5 +70,4 @@ has to run **detached**: a vicinae action still owns the keyboard while it runs,
 and the compositor hands focus back to whatever vicinae took it from as the
 launcher closes. Raised in the foreground, the confirm loop is polling for a
 state that cannot occur until the caller returns, so it always burns its full
-budget and then works by accident. Related: [[herdr-layout]] draws the same
-shell-owns-the-rules boundary for the herdr picker.
+budget and then works by accident.

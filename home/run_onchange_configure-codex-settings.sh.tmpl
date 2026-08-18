@@ -1,30 +1,36 @@
 #!/usr/bin/env bash
-# Keep the one machine-local integration key Codex must execute in the live
-# config it owns. The source template is create-only because Codex adds trust,
-# project and feature state to config.toml itself; replacing the file would
-# erase that state. This targeted merge preserves every other key.
+# Take the `notify` key back out of the live config Codex owns.
 #
-# Hash the desired line into the script so chezmoi reruns this when it changes:
+# It used to point at herdr-agent-title, which kept the tab name and vibewatch
+# in step after each Codex turn. herdr is gone, so the key now names a binary
+# that does not exist — and a config.toml is not something chezmoi can rewrite
+# wholesale, because Codex stores its own trust, project and feature state in
+# it. Hence a targeted delete rather than dropping this script: a machine that
+# already has the line would otherwise keep calling the missing binary forever.
+#
+# vibewatch does speak Codex natively (`notify --agent codex`), so pointing the
+# key there is a small follow-up if Codex turns should reach the panel again.
+#
+# Hash the source template in so chezmoi reruns this when it changes:
 # {{ include "dot_codex/private_create_config.toml" | sha256sum }}
 set -euo pipefail
 
 config="$HOME/.codex/config.toml"
-mkdir -p "${config%/*}"
-touch "$config"
+[ -f "$config" ] || exit 0
 
-desired='notify = ["{{ .chezmoi.homeDir }}/.local/bin/herdr-agent-title", "codex-notify"]'
 tmp="$(mktemp "${config}.tmp.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
-awk -v desired="$desired" '
-  BEGIN { written = 0 }
-  /^notify[[:space:]]*=/ && !written { print desired; written = 1; next }
-  /^\[/ && !written { print desired; print ""; written = 1 }
+# Only a top-level `notify = ...` line, and only one: anything inside a [table]
+# belongs to Codex.
+awk '
+  /^\[/ { in_table = 1 }
+  /^notify[[:space:]]*=/ && !in_table { next }
   { print }
-  END { if (!written) print desired }
 ' "$config" >"$tmp"
 
 if ! cmp -s "$tmp" "$config"; then
-  chmod --reference="$config" "$tmp" 2>/dev/null || chmod 600 "$tmp"
-  mv "$tmp" "$config"
+    chmod --reference="$config" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+    mv "$tmp" "$config"
+    echo "codex-settings: removed the notify key (herdr is gone)"
 fi

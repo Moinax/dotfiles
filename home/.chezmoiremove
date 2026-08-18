@@ -48,6 +48,25 @@
 # justified a local script is redundant, and its min-age guard is a protection
 # wtclean never had.
 .local/bin/wtclean
+
+# herdr, retired whole: T3 Code owns the agents and zellij owns the terminal, so
+# the multiplexer had no job left. Its twelve scripts, its config and the two
+# agent-name integrations go together — half of them would leave hooks calling a
+# binary that is gone. `git show herdr-final` is the last tree that carried them.
+.config/herdr
+.config/herdr/**
+.local/bin/herdr-agent-layout
+.local/bin/herdr-agent-title
+.local/bin/herdr-clients
+.local/bin/herdr-hunk-session
+.local/bin/herdr-nav
+.local/bin/herdr-pane-cmd
+.local/bin/herdr-pane-role
+.local/bin/herdr-session
+.local/bin/herdr-task-name
+.local/bin/herdr-workspace
+.local/bin/dev-herdr
+.local/bin/dev-agent-argv
 .local/bin/dev-zellij
 .local/bin/dev-zellij-session
 .local/bin/dev-server-cmd

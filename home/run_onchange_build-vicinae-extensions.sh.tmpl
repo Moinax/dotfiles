@@ -5,9 +5,8 @@
 # `vici build` bundles src/*.tsx into ~/.local/share/vicinae/extensions/<name>/,
 # which is what vicinae actually loads — the tree chezmoi manages under
 # extensions-src/ is only source. So an apply that changes a .tsx changes
-# nothing the launcher can see until this runs, exactly like the herdr
-# migrate-layout / reload-config reconciliations CLAUDE.md describes. Same
-# shape, same reason.
+# nothing the launcher can see until this runs — the same shape, and the same
+# reason, as the post-apply reconciliations in `.claude/rules/post-apply.md`.
 #
 # The hashes below are the trigger. run_onchange re-runs a script when its
 # *rendered content* changes, and a script that only called npm would render

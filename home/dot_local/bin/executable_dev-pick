@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Fuzzy-pick a project and open its dev environment. Bound to a herdr popup
-# (prefix+o, see ~/.config/herdr/config.toml) — the popup closes when this
-# exits — but works from any terminal. Candidates come from dev-projects
+# Fuzzy-pick a project and open its dev environment, from any terminal — the
+# in-shell twin of the vicinae picker on Mod+Ctrl+Return. Candidates come from
+# dev-projects
 # (shared with the vicinae project picker); `dev` owns the detached launch, which is what lets
 # this exit immediately without killing the spawned environment.
 set -euo pipefail

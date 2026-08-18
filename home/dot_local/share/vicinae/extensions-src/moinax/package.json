@@ -15,7 +15,7 @@
       "name": "dev",
       "title": "Dev Project",
       "subtitle": "Moinax",
-      "description": "Pick a project and open its herdr dev workspace.",
+      "description": "Pick a project and open it as a tab in the zellij session.",
       "mode": "view"
     },
     {
