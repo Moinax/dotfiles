@@ -77,28 +77,6 @@
   ],
   "preferences": [
     {
-      "name": "provider",
-      "title": "Agent Provider",
-      "description": "Which AI agent wtstart-launch starts in the workspace's agent pane. Only claude auto-submits /start.",
-      "required": false,
-      "type": "dropdown",
-      "default": "claude",
-      "data": [
-        {
-          "title": "Claude",
-          "value": "claude"
-        },
-        {
-          "title": "Codex",
-          "value": "codex"
-        },
-        {
-          "title": "OpenCode",
-          "value": "opencode"
-        }
-      ]
-    },
-    {
       "name": "wallpaperDir",
       "title": "Wallpaper Directory",
       "description": "Directory the Wallpaper command lists images from.",

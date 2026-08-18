@@ -35,12 +35,14 @@
 # `dev` became a standalone script in ~/.local/bin
 .config/fish/functions/dev.fish
 
-# Zellij backend retired — herdr is the only multiplexer. The zellij package
-# stays installed (base.yaml) but nothing here configures or drives it, and
-# `dev` calls dev-herdr directly instead of dispatching through dev-mux.
-.config/zellij
-.config/zellij/**
+# The zellij *backend* of the herdr era: a second layout builder and the
+# dev-mux dispatcher that chose between the two. `.config/zellij` is NOT listed
+# any more — zellij is the multiplexer again, and a removal entry would delete
+# the config chezmoi has just written on every apply.
 .local/bin/dev-mux
+# wtstart-launch built the "<project>.<branch>" title and picked an agent
+# provider; `dev` names its own tabs now and there is no agent pane to pick for.
+.local/bin/wtstart-launch
 .local/bin/dev-zellij
 .local/bin/dev-zellij-session
 .local/bin/dev-server-cmd

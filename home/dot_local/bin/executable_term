@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# term — put the terminal in front, starting it if it is down.
+#
+# One kitty window, one zellij session, tabs inside it: `Mod+RETURN` focuses it
+# rather than opening a second one, the same contract `t3-code-launch.sh` gives
+# T3 Code. That is what makes zellij worth attaching to at all — a session you
+# open a fresh copy of every time is just a shell with extra chrome.
+#
+# The window is told to call itself "zellij" so it can be found again; every
+# other kitty (btop from waybar, `kitty -e ...`) keeps the default class and is
+# left alone.
+set -euo pipefail
+
+class="zellij"
+session="main"
+
+window_present() {
+    hyprctl clients -j 2>/dev/null | jq -e --arg c "$class" 'any(.[]; .class == $c)' >/dev/null
+}
+
+active_is_term() {
+    [[ "$(hyprctl activewindow -j 2>/dev/null | jq -r '.class // ""')" == "$class" ]]
+}
+
+# Classic dispatcher syntax prints a lua error and still exits 0 on this
+# Hyprland (lua config), so the `hl.dsp.*` form is the only one that works.
+raise() {
+    hyprctl dispatch "hl.dsp.focus({ window = \"class:^(${class})\$\" })" >/dev/null 2>&1 || true
+}
+
+if ! window_present; then
+    # `attach -c` creates the session, or resurrects a serialized one. Panes of
+    # a resurrected session wait on Enter before re-running their command,
+    # which is zellij's safe default and the reason `-f` is not passed here: it
+    # would re-run every command the session held, not only the shells.
+    setsid -f kitty --class "$class" zellij attach -c "$session" >/dev/null 2>&1
+    for _ in $(seq 40); do
+        window_present && break
+        sleep 0.1
+    done
+fi
+
+# Raise, then check it stuck, and raise again while it has not — a caller that
+# is still dismissing itself (a vicinae action) owns the keyboard while it runs
+# and the compositor hands focus back as it closes, silently undoing one raise.
+# The loop can only observe success when the caller reaches it detached; from a
+# plain keybind the first check exits.
+for _ in $(seq 10); do
+    active_is_term && exit 0
+    raise
+    sleep 0.12
+done
+
+active_is_term || echo "term: the terminal did not take focus" >&2

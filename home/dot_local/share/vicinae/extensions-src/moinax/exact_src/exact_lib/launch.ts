@@ -4,16 +4,19 @@ import { capture, captureLines, CommandError, spawnDetached } from "./shell";
 /**
  * The two launches, both delegated to the same helpers the shell functions use.
  *
- * Nothing about *how* a workspace is built lives here. `dev` owns opening a
- * main checkout, `wt-switch-args` owns deciding between a plain switch and a
- * --create, and `wtstart-launch` owns the title, the gitignored-file copy and
- * the detached dev-herdr. This module is the third caller of that same set,
- * after the zsh/fish `wtstart` functions and rofi-wts — which is the point:
- * behaviour cannot drift between the launcher and the shell, because there is
- * only one copy of it.
+ * Nothing about *how* a checkout is opened lives here. `dev` owns the zellij
+ * tab, its "<project>.<branch>" name and the terminal window, and
+ * `wt-switch-args` owns deciding between a plain switch and a --create. This
+ * module is the second caller of that same set, after the zsh `wtstart` — which
+ * is the point: behaviour cannot drift between the launcher and the shell,
+ * because there is only one copy of it.
+ *
+ * A main checkout and a worktree are the same call. They were two only while a
+ * worktree meant an agent pane with a provider and an optional /start; the
+ * agents live in T3 Code now, and what is left is a directory to open.
  */
 
-/** Open a main checkout's dev workspace. `dev` detaches on its own. */
+/** Open a checkout as a tab in the zellij session, and focus the terminal. */
 export async function openDevWorkspace(path: string): Promise<void> {
   await spawnDetached("dev", [path]);
 }
@@ -22,10 +25,6 @@ export type WorktreeLaunch = {
   /** Main checkout of the repository the branch belongs to. */
   repo: string;
   branch: string;
-  /** Send `/start <branch>` to the agent pane. Never implicit — see below. */
-  sendStart: boolean;
-  /** Agent provider for the workspace's agent pane. */
-  provider: string;
   /** Called with a human-readable step, so the caller can drive a Toast. */
   onProgress?: (step: string) => void;
 };
@@ -40,7 +39,7 @@ export type WorktreeLaunch = {
  * is already looking.
  */
 export async function launchWorktree(options: WorktreeLaunch): Promise<string> {
-  const { repo, branch, sendStart, provider, onProgress } = options;
+  const { repo, branch, onProgress } = options;
 
   // wt-switch-args prints "--create" only for a branch that is genuinely new,
   // and nothing for one that exists locally or on origin — the distinction that
@@ -72,23 +71,8 @@ export async function launchWorktree(options: WorktreeLaunch): Promise<string> {
   if (!worktreePath) throw new Error(`Could not locate the worktree for ${branch}`);
 
   onProgress?.(`Launching ${branch}…`);
-  await reopenWorktree(worktreePath, branch, provider, sendStart);
+  await openDevWorkspace(worktreePath);
 
   return worktreePath;
 }
 
-/**
- * Open an existing worktree directly, skipping the switch.
- *
- * Also the tail of `launchWorktree`, so that the `wtstart-launch` argv is
- * decided once — a flag added to one and not the other is a difference between
- * "created then opened" and "reopened" that nothing would surface.
- *
- * /start is never implicit: a task always has to be asked for, and a brand-new
- * branch is no exception. Only the explicit action passes `sendStart`.
- */
-export async function reopenWorktree(worktreePath: string, branch: string, provider: string, sendStart: boolean): Promise<void> {
-  const args = ["-d", worktreePath, "-b", branch, "-p", provider];
-  if (sendStart) args.push("-s");
-  await spawnDetached("wtstart-launch", args);
-}

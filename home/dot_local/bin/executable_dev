@@ -1,44 +1,69 @@
 #!/usr/bin/env bash
-# Open a persistent, detachable dev environment (AI agent + lazygit + nvim)
-# for a directory. Reattach by re-running `dev`. A script rather than a shell
-# function: it has no parent-shell side effects, and one copy serves fish,
-# zsh, and the pickers (dev-pick, the vicinae Dev Project command) alike.
-#   -n <name>  append " - <name>" after the directory name in the title
-#   -p <prov>  AI agent provider: claude (default), codex, opencode
+# Open a directory as a tab in the zellij "main" session, and put the terminal
+# in front. Re-running it on the same directory jumps to the tab that is already
+# there instead of opening a second one.
 #
-# Usage: dev [-n NAME] [-p PROVIDER] [DIR]
+# One session with a tab per checkout, rather than a session per project: there
+# is then no mapping to keep, no window to find, and no session to stop — the
+# three things the herdr backend this replaces spent most of its 182 lines on.
+#
+# The single opener, for main checkouts and linked worktrees alike. The worktree
+# half used to be `wtstart-launch`, which existed only to build the
+# "<project>.<branch>" title and pick an agent provider; the providers went with
+# the agents, and a title rule that lives in the one thing that names tabs
+# cannot drift from the one that opens them.
+#
+# Usage: dev [DIR]
 set -euo pipefail
 
-name_override="" provider="claude"
-while [[ "${1:-}" == -* ]]; do
-  case "$1" in
-    -n)
-      [[ -z "${2:-}" || "$2" == -* ]] && { echo "dev: -n requires a name" >&2; exit 1; }
-      name_override="$2"; shift 2 ;;
-    -p)
-      # Validated by dev-agent-argv, which owns the provider list and prints
-      # its own "unknown provider (want: …)" message. Checking here rather than
-      # letting it fail later matters because dev-herdr does not validate -p:
-      # without this a typo boots a session whose agent pane is broken.
-      dev-agent-argv "${2:-}" >/dev/null || exit 1
-      provider="$2"; shift 2 ;;
-    --) shift; break ;;
-    *) echo "dev: unknown option $1" >&2; exit 1 ;;
-  esac
-done
+session="main"
 dir="${1:-.}"
 [[ -d "$dir" ]] || { echo "dev: no such directory: $dir" >&2; exit 1; }
 dir="$(cd "$dir" && pwd)"
 
-# Always lead with the directory name; -n appends " - <name>" after it.
+# Tab name: "<project>" for a main checkout, "<project>.<branch>" for a linked
+# worktree, whose own basename is only the branch and says nothing about which
+# repository it belongs to. `--git-common-dir` resolves to the *main* repo's
+# .git from either — relative (".git") in the main checkout, absolute in a
+# worktree — so its parent is the project directory in both cases, and
+# comparing it against the toplevel is what tells the two apart.
 name="$(basename "$dir")"
-[[ -n "$name_override" ]] && name="$name - $name_override"
+if common="$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null)"; then
+    project_dir="$(cd "$dir" && cd "$(dirname "$common")" && pwd)"
+    top="$(git -C "$dir" rev-parse --show-toplevel)"
+    name="$(basename "$project_dir")"
+    if [[ "$top" != "$project_dir" ]]; then
+        branch="$(git -C "$dir" branch --show-current)"
+        name="$name.${branch:-$(basename "$top")}"
+    fi
+fi
 
-# dev-herdr creates the workspace and focuses the shared client window itself
-# (it owns its own window spawning; the retired dev-mux only existed to pick
-# between herdr and zellij). setsid detaches it fully so it survives the
-# caller exiting immediately — a herdr popup tears down its pty the instant
-# the picker exits, killing a plain `& disown` child in the same process
-# group before it can create the workspace; a new session (no controlling
-# tty) survives that.
-setsid -f dev-herdr -n "$name" -d "$dir" -p "$provider" >/dev/null 2>&1 </dev/null
+# Create the session if it is not up, or resurrect a serialized one — detached
+# is enough, `term` below attaches it. Already-running is an error here, not a
+# blocking attach (verified), so it is safe to run unconditionally.
+zellij attach -c -b "$session" >/dev/null 2>&1 || true
+
+# `go-to-tab-name` exits 0 whether or not the tab existed, so it cannot be used
+# as the existence check; query-tab-names can. zellij 0.44.3 ignores new-tab's
+# --cwd when it creates its implicit default shell, so provide the shell as an
+# explicit initial command; --cwd is then applied to the pane as documented.
+# (`go-to-tab-name --create` takes no cwd either.)
+if ! zellij -s "$session" action query-tab-names 2>/dev/null | grep -qxF "$name"; then
+    shell="${SHELL:-/usr/bin/zsh}"
+    tab_id="$(zellij -s "$session" action new-tab --cwd "$dir" --name "$name" -- "$shell")"
+
+    # An explicit initial command makes zellij use its path (eg. /usr/bin/zsh)
+    # as the pane title, unlike the implicit shell whose neutral title is
+    # "Pane #1". The tab already carries the useful project name, so restore
+    # that neutral pane title for a consistent UI.
+    pane_id="$(zellij -s "$session" action list-panes --json \
+        | jq -r --argjson tab_id "$tab_id" \
+            '.[] | select(.tab_id == $tab_id and .is_plugin == false) | .id' \
+        | head -n 1)"
+    if [[ -n "$pane_id" ]]; then
+        zellij -s "$session" action rename-pane --pane-id "$pane_id" "Pane #1"
+    fi
+fi
+zellij -s "$session" action go-to-tab-name "$name" >/dev/null
+
+exec term

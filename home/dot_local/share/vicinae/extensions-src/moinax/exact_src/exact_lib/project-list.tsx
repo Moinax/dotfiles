@@ -2,7 +2,7 @@ import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { useEffect, useState } from "react";
 import { repoStatus, type RepoStatus } from "./git";
 import { openDevWorkspace } from "./launch";
-import { listProjects, sessionFor, type Project } from "./projects";
+import { listProjects, type Project } from "./projects";
 import { BranchList } from "./branch-list";
 import { closeAfter, useLoader } from "./ui";
 
@@ -90,18 +90,13 @@ function ProjectActions({ project }: { project: Project }) {
  */
 function ProjectDetail({ project, isSelected }: { project: Project; isSelected: boolean }) {
   const [status, setStatus] = useState<RepoStatus | null>(null);
-  const [session, setSession] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!isSelected || status) return;
     let cancelled = false;
-    Promise.all([repoStatus(project.path), sessionFor(project.path)])
-      .then(([repo, herdrSession]) => {
-        if (cancelled) return;
-        setStatus(repo);
-        setSession(herdrSession);
-      })
+    repoStatus(project.path)
+      .then((repo) => !cancelled && setStatus(repo))
       .catch(() => !cancelled && setFailed(true));
     return () => {
       cancelled = true;
@@ -136,7 +131,6 @@ function ProjectDetail({ project, isSelected }: { project: Project; isSelected: 
               />
               <List.Item.Detail.Metadata.TagList.Item text="⇧ ↵" color={Color.SecondaryText} />
             </List.Item.Detail.Metadata.TagList>
-            <List.Item.Detail.Metadata.Label title="Herdr session" text={session ?? "—"} />
             <List.Item.Detail.Metadata.Separator />
             <List.Item.Detail.Metadata.Label title="Last commit" text={status.lastCommit} />
           </List.Item.Detail.Metadata>

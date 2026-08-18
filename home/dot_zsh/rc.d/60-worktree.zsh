@@ -3,26 +3,12 @@ if command -v wt &> /dev/null; then
   eval "$(command wt config shell init zsh)"
 fi
 
-# Create/switch worktree, then launch a kitty dev environment in it.
-# Only the `wt switch` calls live here (they need shell integration); the
-# launch half is wtstart-launch, shared with the fish function.
-#   -n <name>  append " - <name>" after the "<project>.<branch>" title
-#   -s         auto-run `/start <branch>` in the agent pane on launch (claude only)
-#   -p <prov>  AI agent provider: claude (default), codex, opencode
+# Create/switch worktree, then open it as a tab in the zellij session.
+# Only the `wt switch` call lives here — it needs shell integration; `dev` owns
+# the tab, its name and the terminal window. The -n/-p/-s options went with the
+# agent panes: /start is a Claude command with no pane to type into now, and a
+# checkout has exactly one tab, so a name suffix has nothing to tell apart.
 wtstart() {
-  local -a pass=()
-  while [[ "$1" == -* ]]; do
-    case "$1" in
-      -n)
-        [[ -z "$2" || "$2" == -* ]] && { echo "wtstart: -n requires a name" >&2; return 1; }
-        pass+=(-n "$2"); shift 2 ;;
-      -p) pass+=(-p "$2"); shift 2 ;;
-      -s) pass+=(-s); shift ;;
-      --) shift; break ;;
-      *) echo "wtstart: unknown option $1" >&2; return 1 ;;
-    esac
-  done
-
   local branch="$1"
   local orig_dir="$PWD"
 
@@ -30,9 +16,9 @@ wtstart() {
     wt switch || return 1
     [[ "$PWD" == "$orig_dir" ]] && return 0
   else
-    # wt-switch-args (shared with fish and the vicinae worktree picker) fetches origin when the
-    # branch is unknown and prints --create only when it is genuinely new, so
-    # a remote-only branch checks out tracking origin/<branch>.
+    # wt-switch-args (shared with the vicinae worktree picker) fetches origin
+    # when the branch is unknown and prints --create only when it is genuinely
+    # new, so a remote-only branch checks out tracking origin/<branch>.
     local -a switch_args=($(wt-switch-args "$branch"))
     wt switch "${switch_args[@]}" "$branch" || {
       echo "error: failed to switch to worktree for '$branch'" >&2
@@ -40,7 +26,7 @@ wtstart() {
     }
   fi
 
-  wtstart-launch -d "$PWD" -b "$branch" "${pass[@]}"
+  dev "$PWD"
 
   builtin cd -- "$orig_dir"
 }

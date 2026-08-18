@@ -1,7 +1,7 @@
-import { Action, ActionPanel, Color, getPreferenceValues, Icon, List } from "@vicinae/api";
+import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { useCallback, useMemo, useState } from "react";
 import { listBranches, type Branch, type BranchKind } from "./git";
-import { launchWorktree, reopenWorktree } from "./launch";
+import { launchWorktree, openDevWorkspace } from "./launch";
 import type { Project } from "./projects";
 import { closeAfter, closeAfterProgress, useLoader } from "./ui";
 
@@ -19,9 +19,6 @@ const KIND: Record<BranchKind, { section: string; icon: Icon; color: Color; tag:
 const ORDER: BranchKind[] = ["worktree", "local", "remote"];
 
 export function BranchList({ project }: { project: Project }) {
-  const { provider } = getPreferenceValues<{ provider?: string }>();
-  const agent = provider || "claude";
-
   const load = useCallback(() => listBranches(project.path), [project.path]);
   const { rows: branches, isLoading } = useLoader<Branch>(load, "Could not list branches");
   const [query, setQuery] = useState("");
@@ -68,7 +65,7 @@ export function BranchList({ project }: { project: Project }) {
         actions={
           canCreate ? (
             <ActionPanel>
-              <CreateActions project={project} branch={typed} agent={agent} />
+              <CreateActions project={project} branch={typed} />
             </ActionPanel>
           ) : undefined
         }
@@ -88,7 +85,7 @@ export function BranchList({ project }: { project: Project }) {
                   { text: branch.lastCommit },
                   { tag: { value: KIND[kind].tag, color: KIND[kind].color } },
                 ]}
-                actions={<BranchActions project={project} branch={branch} agent={agent} />}
+                actions={<BranchActions project={project} branch={branch} />}
               />
             ))}
           </List.Section>
@@ -104,7 +101,7 @@ export function BranchList({ project }: { project: Project }) {
             accessories={[{ tag: { value: "new", color: Color.Magenta } }]}
             actions={
               <ActionPanel>
-                <CreateActions project={project} branch={typed} agent={agent} />
+                <CreateActions project={project} branch={typed} />
               </ActionPanel>
             }
           />
@@ -114,33 +111,24 @@ export function BranchList({ project }: { project: Project }) {
   );
 }
 
-function BranchActions({ project, branch, agent }: { project: Project; branch: Branch; agent: string }) {
+function BranchActions({ project, branch }: { project: Project; branch: Branch }) {
   // An existing worktree needs no `wt switch` at all — the checkout is already
   // on disk, so that path goes straight to the launch and stays instant, with
-  // no progress Toast to show. The only thing separating the two actions below
-  // is `sendStart`, so they are built rather than written out twice.
-  const openWith = (sendStart: boolean, hud: string) =>
-    branch.worktreePath
-      ? closeAfter(() => reopenWorktree(branch.worktreePath as string, branch.name, agent, sendStart), hud)
-      : closeAfterProgress(
-          (report) =>
-            launchWorktree({ repo: project.path, branch: branch.name, sendStart, provider: agent, onProgress: report }),
-          { start: `Opening ${branch.name}…`, hud },
-        );
+  // no progress Toast to show.
+  const open = branch.worktreePath
+    ? closeAfter(() => openDevWorkspace(branch.worktreePath as string), `Opening ${branch.name}`)
+    : closeAfterProgress(
+        (report) => launchWorktree({ repo: project.path, branch: branch.name, onProgress: report }),
+        { start: `Opening ${branch.name}…`, hud: `Opening ${branch.name}` },
+      );
 
   return (
     <ActionPanel>
-      <ActionPanel.Section>
-        <Action title="Open Worktree" icon={Icon.Terminal} onAction={openWith(false, `Opening ${branch.name}`)} />
-        {/* /start is never implicit — it has its own action and its own
-            shortcut, exactly as it had its own key in rofi-wts. */}
-        <Action
-          title="Open Worktree and Run /start"
-          icon={Icon.Rocket}
-          shortcut={{ modifiers: ["ctrl"], key: "return" }}
-          onAction={openWith(true, `Opening ${branch.name} with /start`)}
-        />
-      </ActionPanel.Section>
+      {/* One action, where there were two in a section of their own: the second
+          ran `/start` in the agent pane the worktree used to be opened with.
+          Tasks are started in T3 Code now, and this picker only opens a
+          checkout — so there is nothing left to group. */}
+      <Action title="Open Worktree" icon={Icon.Terminal} onAction={open} />
       <ActionPanel.Section title="Branch">
         <Action.CopyToClipboard title="Copy Branch Name" content={branch.name} shortcut={{ modifiers: ["ctrl"], key: "c" }} />
         {branch.worktreePath && <Action.ShowInFinder title="Open Worktree in File Manager" path={branch.worktreePath} />}
@@ -149,24 +137,15 @@ function BranchActions({ project, branch, agent }: { project: Project; branch: B
   );
 }
 
-function CreateActions({ project, branch, agent }: { project: Project; branch: string; agent: string }) {
+function CreateActions({ project, branch }: { project: Project; branch: string }) {
   return (
     <ActionPanel.Section>
       <Action
         title={`Create ${branch} and Open Worktree`}
         icon={Icon.NewFolder}
         onAction={closeAfterProgress(
-          (report) => launchWorktree({ repo: project.path, branch, sendStart: false, provider: agent, onProgress: report }),
+          (report) => launchWorktree({ repo: project.path, branch, onProgress: report }),
           { start: `Creating ${branch}…`, hud: `Opening ${branch}` },
-        )}
-      />
-      <Action
-        title={`Create ${branch}, Open Worktree and Run /start`}
-        icon={Icon.Rocket}
-        shortcut={{ modifiers: ["ctrl"], key: "return" }}
-        onAction={closeAfterProgress(
-          (report) => launchWorktree({ repo: project.path, branch, sendStart: true, provider: agent, onProgress: report }),
-          { start: `Creating ${branch}…`, hud: `Opening ${branch} with /start` },
         )}
       />
     </ActionPanel.Section>

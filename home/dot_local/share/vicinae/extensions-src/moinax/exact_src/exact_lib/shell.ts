@@ -61,8 +61,8 @@ export async function captureLines(cmd: string, args: string[] = [], opts: RunOp
 /**
  * Fire a launcher and forget it.
  *
- * `dev` and `wtstart-launch` both hand off to a detached `dev-herdr` and exit,
- * so there is nothing to wait for — but `capture` would wait anyway. execFile
+ * `dev` ends in a `term` that blocks until the terminal window has focus, so
+ * there is nothing useful to wait for — but `capture` would wait anyway. execFile
  * resolves on stdout EOF, not on exit, and a grandchild that inherited the pipe
  * holds it open for as long as the workspace lives. That is the whole reason
  * for this second path: stdio is dropped on the floor so no descriptor is

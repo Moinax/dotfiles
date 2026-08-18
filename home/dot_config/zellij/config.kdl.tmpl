@@ -1,0 +1,70 @@
+// Zellij — the persistent terminal. Managed by chezmoi.
+//
+// The agents live in T3 Code now, so this config is deliberately thin: one
+// session ("main", opened by `term`) and one tab per checkout (`dev`).
+// Everything the herdr setup built by hand — pane roles, session revive, a
+// sidebar, tool tabs — zellij either does natively or no longer has anything
+// to do.
+//
+// **zellij rewrites this file wholesale.** Its first-run wizard did exactly
+// that on the first `zellij attach` — every default expanded, every comment
+// here gone, the previous content moved to config.kdl.bak — and its
+// configuration plugin (Ctrl+o, then c) writes the same way. `show_startup_tips
+// false` below is what the wizard was after, so it does not fire again; the
+// plugin is still a live hazard, and the fix after one is `chezmoi apply
+// --force ~/.config/zellij/config.kdl`. Same shape as the herdr config keeping
+// `onboarding` managed, and for the same reason.
+show_startup_tips false
+
+// The theme is resolved at apply time, so `Mod+N` does not move it until the
+// next apply. Adding it to theme-copies.sh would need the Catppuccin palettes
+// written out by hand (zellij's builtins cannot be aliased), which is a lot of
+// hex for a status bar; do it if the mismatch turns out to grate.
+theme "catppuccin-{{ if eq .dark_mode "light" }}latte{{ else }}mocha{{ end }}"
+
+// Wayland clipboard. copy_on_select matches what kitty already does, so a
+// selection means the same thing inside a pane and outside one.
+copy_command "wl-copy"
+copy_on_select true
+scrollback_editor "nvim"
+
+// Closing the terminal window detaches rather than killing the session. That,
+// plus session_serialization (on by default), is the whole of what
+// `herdr-clients revive-panes` and its role sidecar existed to provide: zellij
+// serializes each pane's cwd and running command itself, and `zellij attach`
+// resurrects a session that outlived its server.
+on_force_close "detach"
+
+keybinds {
+    shared_except "locked" {
+        // Tabs. ctrl+shift+t and ctrl(+shift)+tab follow the usual terminal /
+        // browser conventions. kitty hands these chords to zellij because the
+        // multiplexer is the sole owner of tabs; its own tab bar is hidden.
+        // Close and rename use zellij's native tab mode (ctrl+t, then x/r), so
+        // they need no extra global chords.
+        //
+        // One surprise worth knowing when a session does end: `zellij attach
+        // -c` resurrects it from the serialized layout, and that layout is
+        // only rewritten when zellij marks the session dirty — closing a tab
+        // does not. So a tab closed shortly before the end comes back.
+        // Measured; `serialization_interval` does not reach it, since it sets
+        // the cadence and not what gets written. The only lever is
+        // `session_serialization false`, which drops resurrection entirely.
+        bind "Ctrl Shift t" { NewTab; }
+        bind "Ctrl Tab" { GoToNextTab; }
+        bind "Ctrl Shift Tab" { GoToPreviousTab; }
+
+        // Direct tab jump. AZERTY needs no second binding here, unlike the
+        // config this replaces: kitty already translates alt+& é " ' ( into
+        // alt+1..5 at the terminal layer.
+        bind "Alt 1" { GoToTab 1; }
+        bind "Alt 2" { GoToTab 2; }
+        bind "Alt 3" { GoToTab 3; }
+        bind "Alt 4" { GoToTab 4; }
+        bind "Alt 5" { GoToTab 5; }
+        bind "Alt 6" { GoToTab 6; }
+        bind "Alt 7" { GoToTab 7; }
+        bind "Alt 8" { GoToTab 8; }
+        bind "Alt 9" { GoToTab 9; }
+    }
+}

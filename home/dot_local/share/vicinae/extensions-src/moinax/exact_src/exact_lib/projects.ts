@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { capture, captureLines } from "./shell";
+import { captureLines } from "./shell";
 
 /**
  * The project tree, read through `dev-projects` — never re-derived here.
@@ -7,7 +7,7 @@ import { capture, captureLines } from "./shell";
  * `dev-projects` is the single source of truth CLAUDE.md points at: the root
  * directory, the two-levels-deep listing convention, the pinned out-of-root
  * entries (~/dotfiles), and the directory → herdr session mapping all live
- * there and are shared with dev-pick and dev-herdr. This module only shapes
+ * there and are shared with dev-pick and `dev`. This module only shapes
  * what it prints into something a List can render.
  */
 
@@ -62,15 +62,3 @@ export async function listProjects(): Promise<Project[]> {
   });
 }
 
-/**
- * The herdr session a directory belongs to.
- *
- * Deliberately a subprocess rather than "first path component under the root":
- * that rule has exceptions (pinned entries carry their own session, names get
- * legalised for herdr) and dev-projects owns it. Reimplementing it here is
- * exactly how two callers end up filing one directory under two sessions.
- * Only ever called for the selected row, so the process cost is paid once.
- */
-export async function sessionFor(path: string): Promise<string> {
-  return (await capture("dev-projects", ["session", path])).trim();
-}

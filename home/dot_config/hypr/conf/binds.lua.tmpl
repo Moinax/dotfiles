@@ -17,7 +17,7 @@ local home = assert(os.getenv("HOME"), "HOME not set")
 -- two branches is how the pair is compared.
 --
 -- ── 1. Application Shortcuts ──────────────────────────────────────
-hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("kitty"))                                                                 -- Open terminal
+hl.bind(mod .. " + RETURN",       hl.dsp.exec_cmd("term"))                                                                  -- Open terminal (zellij, focus if already open)
 hl.bind(mod .. " + ALT + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/t3?toggle=true'"))              -- Pick a project & open/create a T3 Code thread
 hl.bind(mod .. " + CTRL + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/dev?toggle=true'"))            -- Pick main project & open dev workspace (Shift+Enter → worktrees)
 hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("vicinae vicinae://toggle"))                                              -- Launcher (apps, files, maths, everything)
