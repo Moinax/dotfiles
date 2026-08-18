@@ -3,8 +3,8 @@
 
 The badge has to land inside the icon at any screen scale: sized off the
 pixmap's physical width, it was drawn entirely outside the canvas on a scaled
-screen — painted every time, visible never. And the window title has to keep
-the open conversation while rejecting the line a site flashes on and off.
+screen — painted every time, visible never. And the fallback unread count is
+the "(3)" a site prefixes its title with, which the label itself keeps verbatim.
 
 Run: python3 tests/test_chat_shell.py
 """
@@ -17,8 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "home" / "dot_local" / "lib"))
 
-import chat_shell
-from chat_shell import ChatApp, paint_badge, parse_title, window_title
+from chat_shell import paint_badge, unread_count
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -35,26 +34,14 @@ def red_pixels(image):
 
 
 def check_titles():
-    chat_shell.CONFIG = ChatApp(
-        app_id="messenger", title="Messenger", url="https://www.messenger.com/",
-        domains=("messenger.com",), notification_origins=(),
-        debug_variable="MESSENGER_DEBUG",
-    )
-    kept = {
-        "Julie Pauwels | Messenger": (0, "Julie Pauwels | Messenger"),
-        "(3) Julie Pauwels | Messenger": (3, "Julie Pauwels | Messenger"),
-        "Messenger": (0, "Messenger"),
+    counted = {
+        "(3) Julie Pauwels | Messenger": 3,
+        "Julie Pauwels | Messenger": 0,
+        "Julie vous a envoyé un message": 0,  # the flash, alternated in and out
+        "": 0,
     }
-    ignored = [
-        "Julie vous a envoyé un message",   # the flash, alternated in and out
-        "messenger.com/e2ee/t/711?locale=fr_FR",  # Qt's stand-in while loading
-        "",
-    ]
-    for given, (count, title) in kept.items():
-        assert parse_title(given) == (count, title), given
-        assert window_title(title) == title, given
-    for given in ignored:
-        assert window_title(parse_title(given)[1]) is None, given
+    for given, count in counted.items():
+        assert unread_count(given) == count, given
 
 
 def check_reload_deferrals():

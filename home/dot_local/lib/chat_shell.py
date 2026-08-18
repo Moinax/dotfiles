@@ -169,35 +169,15 @@ def is_internal(host):
     return is_within(host, CONFIG.domains)
 
 
-def parse_title(page_title):
-    """Split document.title into the "(3)" a chat site prefixes it with, and
-    the rest.
+def unread_count(page_title):
+    """The "(3)" a chat site puts in front of document.title, or 0.
 
-    One pass for both: the count is the fallback unread signal for a site that
-    never calls the Badging API, and the remainder is what the window is named
-    after. Neither reads a DOM node, which is what keeps the app out of the
-    scraping treadmill.
+    The fallback unread signal, for a site that never calls the Badging API. It
+    reads no DOM node, which is what keeps the app out of the scraping
+    treadmill.
     """
-    title = (page_title or "").strip()
-    m = re.match(r"^\((\d+)\)\s*", title)
-    return (int(m.group(1)), title[m.end():]) if m else (0, title)
-
-
-def window_title(title):
-    """The page's own title — the open conversation — or None to keep the last.
-
-    Kept only when it ends with the app's name, which is what separates a real
-    title ("Julie Pauwels | Messenger") from the two things a chat site also
-    puts there: the line it flashes on and off while a message waits ("Julie
-    vous a envoyé un message"), and the bare URL Qt reports while the page
-    loads. Neither belongs in a Waybar label, and rewriting them to the app name
-    would only move the flashing there.
-
-    The unread prefix is already gone by here: the tray badge carries the count
-    now, and leaving it in would make the title blink for a site with no Badging
-    API of its own.
-    """
-    return title if title.endswith(CONFIG.title) else None
+    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
+    return int(m.group(1)) if m else 0
 
 
 def paint_badge(pixmap, count):
@@ -958,9 +938,14 @@ def run(config: ChatApp) -> int:
             tray.set_unread(count)
 
     def on_title(page_title):
-        count, title = parse_title(page_title)
-        title = window_title(title)
-        log("TITLE", f"{page_title!r} -> {title!r} / {count} unread")
+        # Verbatim, "(3)" prefix and the line a site flashes while a message
+        # waits ("Julie vous a envoyé un message") included: a Waybar label
+        # reading "Messenger" forever is the one thing it never needed to be
+        # told. The cost is a label that flashes with the site, and that shows
+        # the bare URL Qt reports for the second a page spends loading.
+        title = (page_title or "").strip()
+        count = unread_count(title)
+        log("TITLE", f"{title!r} / {count} unread")
         if title:
             view.setWindowTitle(title)
         if not published:
