@@ -169,39 +169,56 @@ def is_internal(host):
     return is_within(host, CONFIG.domains)
 
 
-def unread_count(page_title):
-    """The "(3)" a chat site puts in front of document.title, or 0.
+def parse_title(page_title):
+    """Split document.title into the "(3)" a chat site prefixes it with, and
+    the rest.
 
-    The fallback unread signal, for a site that never calls the Badging API. It
-    reads no DOM node, which is what keeps the app out of the scraping
-    treadmill.
+    One pass for both, and both have a consumer: the count is the fallback
+    unread signal for a site that never calls the Badging API, and the
+    remainder is what goes in the label — where the count is rendered once,
+    from whichever source is live, rather than twice. Neither reads a DOM node,
+    which is what keeps the app out of the scraping treadmill.
     """
-    m = re.match(r"^\((\d+)\)", (page_title or "").strip())
-    return int(m.group(1)) if m else 0
+    title = (page_title or "").strip()
+    m = re.match(r"^\((\d+)\)\s*", title)
+    return (int(m.group(1)), title[m.end():]) if m else (0, title)
 
 
-def window_title(page_title, url):
-    """"Messenger - Jessica Laureys": the app's name, then what the page says.
+def window_title(title, url, count):
+    """"(3) Messenger - Jessica Laureys": unread, app, then what the page says.
 
-    Always the app's name first, because the label has to say which window it
-    names before it says anything else — and no chat site can be relied on for
-    that. Messenger titles an open conversation with the bare contact name, and
-    it is the site's to change; whatever it publishes goes after the dash,
-    verbatim, "(3)" prefix and the line it flashes while a message waits
-    included. A title that already carries the app's name keeps it and gains
-    nothing, which is Messenger's own inbox.
+    Takes the title parse_title has already stripped, so the count is parsed
+    once per event and rendered once — from the same source the tray badge is
+    painted from, not from the title. That source is what gives WhatsApp a
+    marker at all: it publishes no title whatsoever, so the label was the one
+    unread surface the window did not have.
+
+    The app's name is next and unconditional, because the label has to say
+    which window it names before it says anything else, and no chat site can be
+    relied on for that — Messenger titles an open conversation with the bare
+    contact name. Whatever it publishes follows, verbatim, including the line
+    it flashes while a message waits. A title already carrying the app's name
+    keeps it and gains nothing, which is Messenger's own inbox.
 
     The one thing dropped is the URL Qt stands in when a page publishes no
     title at all. That is web.whatsapp.com's permanent state rather than a
     passing one during load, so the label would otherwise read
-    "web.whatsapp.com" for the life of the window. Case is what tells the
-    stand-in from a real title: "Messenger" is not the "messenger.com" its own
-    URL carries.
+    "web.whatsapp.com" for the life of the window. The stand-in is matched
+    whole rather than by containment: a conversation named "711" is a substring
+    of the very URL it is open at, and containment would drop its name from the
+    label.
     """
-    title = (page_title or "").strip()
-    if not title or title in url:
-        return CONFIG.title
-    return title if CONFIG.title in title else f"{CONFIG.title} - {title}"
+    # What Qt substitutes: the URL without its scheme, without a leading www,
+    # and without the trailing slash — "web.whatsapp.com", or
+    # "messenger.com/e2ee/t/711?locale=fr_FR" deeper in.
+    stand_in = re.sub(r"^https?://(www\.)?", "", url).rstrip("/")
+    if not title or title == stand_in:
+        base = CONFIG.title
+    elif CONFIG.title in title:
+        base = title
+    else:
+        base = f"{CONFIG.title} - {title}"
+    return f"({count}) {base}" if count else base
 
 
 def paint_badge(pixmap, count):
@@ -957,16 +974,32 @@ def run(config: ChatApp) -> int:
     # the window takes focus, and flashed on and off in the meantime.
     published = False
 
+    # The label is a function of both, so each is kept for the other: a badge
+    # arrives with no title, and a title change with no badge. The title is
+    # kept as parse_title left it, stripped of the site's own count prefix.
+    unread = 0
+    site_title = ""
+
+    def relabel():
+        title = window_title(site_title, page.url().toDisplayString(), unread)
+        log("TITLE", f"{site_title!r} / {unread} unread -> {title!r}")
+        view.setWindowTitle(title)
+
     def show_unread(count):
+        nonlocal unread
+        unread = count
         if tray is not None:
             tray.set_unread(count)
+        relabel()
 
     def on_title(page_title):
-        title = window_title(page_title, page.url().toDisplayString())
-        count = unread_count(page_title)
-        log("TITLE", f"{page_title!r} -> {title!r} / {count} unread")
-        view.setWindowTitle(title)
-        if not published:
+        nonlocal site_title
+        count, site_title = parse_title(page_title)
+        if published:
+            relabel()
+        else:
+            # show_unread relabels, so the label is set once per event, not
+            # twice — the count it carries is this title's own prefix.
             show_unread(count)
 
     def on_badge(count):
