@@ -1,0 +1,17 @@
+# Dolphin's right-click entry on a directory. One entry rather than three:
+# a service menu cannot ask the directory what state it is in, so `toggle` does
+# — encrypt a plain folder, open a closed vault, close an open one.
+#
+# Must be executable, which is what the `executable_` prefix on the source name
+# is for: Plasma refuses to run a service menu that is not.
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+Actions=vault
+X-KDE-Priority=TopLevel
+X-KDE-MaxNumberOfUrls=1
+
+[Desktop Action vault]
+Name=Vault
+Icon=folder-locked
+Exec=env VAULT_GUI=1 {{ .chezmoi.homeDir }}/.local/bin/vault toggle %f

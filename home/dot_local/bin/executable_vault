@@ -1,0 +1,352 @@
+#!/usr/bin/env bash
+# vault — turn a directory into an encrypted one, open it, close it, take it back.
+#
+# gocryptfs owns the crypto; this owns the four states a directory can be in and
+# the moves between them. A vault is a pair: the directory you already use, and
+# a hidden sibling `.<name>.gocryptfs` holding the ciphertext. Closed, the
+# directory is an empty mountpoint; open, it is the plaintext view of the pair.
+# Keeping the ciphertext beside the directory rather than in one shared store is
+# what lets two vaults share a basename, and keeps a vault with the tree it
+# belongs to when that tree gets moved or backed up.
+#
+# The registry is what makes `open` with no argument — the launcher entry —
+# possible: nothing on disk says an empty directory is a closed vault, and
+# guessing from a stray `.foo.gocryptfs` would mean scanning the whole home.
+#
+# Every command works from a terminal or from a launcher; the only difference is
+# where the password comes from — gocryptfs's own prompt, or kdialog. `toggle` is
+# the one Dolphin's context menu calls: one menu entry cannot ask the directory
+# what state it is in, so the command works it out and does the only sensible
+# thing.
+set -euo pipefail
+shopt -s dotglob nullglob
+
+REGISTRY="${XDG_CONFIG_HOME:-$HOME/.config}/vault/vaults"
+# How long an open vault survives being left alone. A constant rather than a
+# setting: the launcher and the Dolphin menu start no login shell, so an
+# environment variable would only ever reach the terminal half. The override is
+# here for that half, and for the test.
+IDLE="${VAULT_IDLE:-30m}"
+
+# Set by the two desktop entries, and by nothing else. Guessing this from "no
+# terminal on stdin" was wrong in the one way that matters: every non-interactive
+# run — a test, a cron job, a subshell — looked like a launcher and blocked
+# forever on a dialog nobody was there to click.
+gui() { [ -n "${VAULT_GUI:-}" ]; }
+
+die() {
+    if gui; then kdialog --error "vault: $*"; else echo "vault: $*" >&2; fi
+    exit 1
+}
+
+# Where the password comes from, decided once. Left empty on a terminal, where
+# gocryptfs prompting itself is better than anything here: it hides the echo and
+# asks twice on -init. -extpass is passed in pieces because gocryptfs splits a
+# single one on spaces.
+pass_opts=()
+if [ -n "${VAULT_PASSFILE:-}" ]; then
+    pass_opts=(-passfile "$VAULT_PASSFILE")
+elif gui; then
+    pass_opts=(-extpass kdialog -extpass --password -extpass "Unlock vault")
+fi
+
+confirm() {
+    if gui; then kdialog --yesno "$1"; else read -rp "$1 [y/N] " a; [ "$a" = y ]; fi
+}
+
+# The padlock Dolphin shows on a closed vault. `.directory` is how KDE has always
+# stored a per-folder icon — it is what the Properties dialog writes — and it
+# needs Type=Directory or KIO ignores the file. It lives in the mountpoint, so
+# opening the vault hides it and closing it brings it back: the state shows
+# itself, with no daemon and no plugin.
+mark_closed() {
+    [ -e "$1/.directory" ] ||
+        printf '[Desktop Entry]\nType=Directory\nIcon=folder-locked\n' > "$1/.directory"
+}
+
+# Dolphin does not notice a directory being mounted over: inotify reports no
+# event for it, so an unlocked vault stays showing "Folder is empty" until F5.
+# KDirNotify is the session-wide "this URL changed, reload it" signal every KIO
+# app listens to — the same one kio-fuse and the trash use. FilesAdded refreshes
+# the view of the directory, FilesChanged its own icon in the parent's view.
+#
+# Only spaces are escaped: a proper URL encoder is a lot of shell for a signal
+# that is best-effort anyway, and a directory named with a "#" is rarer than one
+# named with a space.
+notify_kde() {
+    local url="file://${1// /%20}"
+    command -v gdbus > /dev/null || return 0
+    [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || return 0
+    gdbus emit --session --object-path /org/kde/KDirNotify \
+          --signal org.kde.KDirNotify.FilesAdded "$url" > /dev/null 2>&1 || true
+    gdbus emit --session --object-path /org/kde/KDirNotify \
+          --signal org.kde.KDirNotify.FilesChanged "['$url']" > /dev/null 2>&1 || true
+}
+
+abs() { realpath -m -- "$1"; }
+cipher_of() { printf '%s/.%s.gocryptfs\n' "$(dirname -- "$1")" "$(basename -- "$1")"; }
+
+vaults() { cat "$REGISTRY" 2>/dev/null || true; }
+register() {
+    mkdir -p "$(dirname -- "$REGISTRY")"
+    grep -qxF -- "$1" "$REGISTRY" 2>/dev/null || printf '%s\n' "$1" >> "$REGISTRY"
+}
+unregister() {
+    [ -f "$REGISTRY" ] || return 0
+    { grep -vxF -- "$1" "$REGISTRY" || true; } > "$REGISTRY.new"
+    mv -- "$REGISTRY.new" "$REGISTRY"
+}
+
+# The argument open/close take when the launcher gives them none.
+choose() {
+    local list args=() p
+    mapfile -t list < <(vaults)
+    [ ${#list[@]} -gt 0 ] || die "no vault yet — vault encrypt DIR"
+    if [ ${#list[@]} -eq 1 ]; then
+        printf '%s\n' "${list[0]}"
+    elif gui; then
+        for p in "${list[@]}"; do args+=("$p" "${p##*/}"); done
+        kdialog --menu "Vault" "${args[@]}"
+    else
+        die "name one: ${list[*]}"
+    fi
+}
+
+cmd_encrypt() {
+    local dir cipher tmp items
+    dir=$(abs "${1:?usage: vault encrypt DIR}")
+    [ -d "$dir" ] || die "no such directory: $dir"
+    cipher=$(cipher_of "$dir")
+    [ ! -e "$cipher" ] || die "already a vault: $cipher exists"
+    ! mountpoint -q "$dir" || die "$dir is already a mountpoint"
+
+    # gocryptfs asks twice when it prompts itself, but calls -extpass only once
+    # and cannot confirm what it gets back. A typo here is unrecoverable — the
+    # data would be encrypted under a password nobody knows — so the second ask
+    # is on us. The password lands in a file rather than a pipe because the
+    # mount below needs it a second time; XDG_RUNTIME_DIR is tmpfs, so it never
+    # reaches a disk.
+    local pw pw2 pwfile
+    if gui && [ -z "${VAULT_PASSFILE:-}" ]; then
+        pw=$(kdialog --password "New password for ${dir##*/}") || exit 0
+        pw2=$(kdialog --password "Repeat the password") || exit 0
+        [ -n "$pw" ] || die "empty password"
+        [ "$pw" = "$pw2" ] || die "the two passwords differ — nothing was changed"
+        pwfile=$(mktemp -p "${XDG_RUNTIME_DIR:-/tmp}")
+        chmod 600 -- "$pwfile"
+        trap 'rm -f -- "$pwfile"' EXIT
+        printf '%s\n' "$pw" > "$pwfile"
+        pass_opts=(-passfile "$pwfile")
+    fi
+
+    mkdir -p -- "$cipher"
+    gocryptfs -init "${pass_opts[@]}" "$cipher" || { rmdir -- "$cipher"; die "init failed"; }
+
+    # Filled through a scratch mountpoint, never through $dir: $dir has to stay
+    # the directory being emptied, and it is about to become the mountpoint.
+    tmp=$(mktemp -d)
+    gocryptfs -q "${pass_opts[@]}" "$cipher" "$tmp"
+    items=("$dir"/*)
+    # A failed move aborts here with part of the tree already inside. That is
+    # recoverable and losing nothing: `vault decrypt` brings the moved half back.
+    if [ ${#items[@]} -gt 0 ]; then mv -- "${items[@]}" "$tmp"/; fi
+    fusermount -u "$tmp"
+    rmdir -- "$tmp"
+
+    register "$dir"
+    mark_closed "$dir"
+    notify_kde "$dir"
+    # Without this the folder just goes empty under the cursor, which is exactly
+    # how an encrypted directory looks like a deleted one.
+    if gui; then
+        notify-send -i folder-locked "Vault" "$dir is encrypted and closed."
+    else
+        echo "vault: $dir is closed — open it with: vault open $dir"
+    fi
+}
+
+# `show` is passed by the launcher entry and by nothing else. Called from the
+# file manager, the folder is already on screen behind the dialog — opening it
+# would put a second window in front of the one that asked. Dolphin has no D-Bus
+# call to send its current tab somewhere, so the choice is a stray window or
+# none, and none is right: unlocking leaves the folder exactly where it was,
+# ready to be entered in the tab that is already there.
+cmd_open() {
+    local dir cipher items f show=${2:-}
+    dir=${1:-}
+    [ -n "$dir" ] || dir=$(choose)
+    dir=$(abs "$dir")
+    cipher=$(cipher_of "$dir")
+    # Naming the sibling it looked for, because the way this fails in practice
+    # is a directory moved in a file manager: the ciphertext does not follow,
+    # and "not a vault" alone leaves no clue that it is sitting where the
+    # directory used to be.
+    [ -d "$cipher" ] || die "not a vault: $dir has no $cipher beside it"
+
+    if ! mountpoint -q "$dir"; then
+        mkdir -p -- "$dir"
+        # Mounting over files would hide them for as long as the vault is open,
+        # and they would look lost. Not this script's call to move them. The
+        # padlock marker is ours and is meant to be hidden by the mount, so it
+        # does not count.
+        items=()
+        for f in "$dir"/*; do
+            [ "${f##*/}" = .directory ] || items+=("$f")
+        done
+        [ ${#items[@]} -eq 0 ] || die "$dir is not empty — refusing to hide its contents"
+        # -nonempty because the padlock marker sits in the mountpoint.
+        # gocryptfs's own emptiness check is not the guard here — the loop above
+        # is, and it is stricter about everything that is not the marker.
+        #
+        # A typo asks again instead of dying: an error box you have to dismiss
+        # before retrying is three clicks to fix one keystroke. Only exit 12 —
+        # gocryptfs's "password incorrect" — loops. Everything else, a cancelled
+        # kdialog included, is a real failure and must not re-prompt forever.
+        local tries=0 rc=0 max=3
+        [ -z "${VAULT_PASSFILE:-}" ] || max=1
+        while :; do
+            gocryptfs -q -nonempty -idle "$IDLE" "${pass_opts[@]}" "$cipher" "$dir" && break
+            rc=$?
+            # 9 is "the password program failed or returned nothing", which is
+            # what Esc on the dialog looks like. Cancelling is not a failure and
+            # has no business raising an error box of its own.
+            [ "$rc" -ne 9 ] || exit 0
+            [ "$rc" -eq 12 ] || die "could not unlock $dir"
+            tries=$((tries + 1))
+            [ "$tries" -lt "$max" ] || die "wrong password"
+        done
+    fi
+    # Opening one is proof it is a vault, which is what makes a moved pair —
+    # directory and ciphertext carried together — known again after one open.
+    register "$dir"
+    notify_kde "$dir"
+
+    # gocryptfs unmounts itself once -idle expires and tells nobody, so the file
+    # manager would sit on a vault that is no longer there — the stale view that
+    # used to need F5, arriving on its own an hour later. One sleeping process
+    # per open vault is what it costs to close that gap; it exits with the mount,
+    # so a manual close ends it too.
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        ( while mountpoint -q "$dir"; do sleep 60; done; notify_kde "$dir" ) &
+    fi
+    if gui; then
+        notify-send -i folder-open "Vault" "$dir is open."
+        if [ -n "$show" ]; then xdg-open "$dir" >/dev/null 2>&1 & fi
+    fi
+}
+
+cmd_close() {
+    local dir=${1:-}
+    [ -n "$dir" ] || dir=$(choose)
+    dir=$(abs "$dir")
+    mountpoint -q "$dir" || die "not open: $dir"
+    fusermount -u "$dir"
+    # Also where a vault made before the marker existed picks one up.
+    mark_closed "$dir"
+    notify_kde "$dir"
+    if gui; then notify-send -i folder-locked "Vault" "$dir is closed."; fi
+}
+
+cmd_decrypt() {
+    local dir cipher tmp items
+    dir=$(abs "${1:?usage: vault decrypt DIR}")
+    cipher=$(cipher_of "$dir")
+    [ -d "$cipher" ] || die "not a vault: $dir"
+    ! mountpoint -q "$dir" || die "close it first: vault close $dir"
+    # Nothing is lost by decrypting, but plaintext appearing where the user
+    # expected a vault is its own kind of accident — and this one is reachable
+    # from a context menu, one slot away from the entry that opens it.
+    confirm "Decrypt ${dir}? Its contents move back out in the clear." || exit 0
+
+    mkdir -p -- "$dir"
+    rm -f -- "$dir/.directory"
+    tmp=$(mktemp -d)
+    gocryptfs -q "${pass_opts[@]}" "$cipher" "$tmp"
+    items=("$tmp"/*)
+    if [ ${#items[@]} -gt 0 ]; then mv -- "${items[@]}" "$dir"/; fi
+    fusermount -u "$tmp"
+    rmdir -- "$tmp"
+
+    # Only ever reached once every move above succeeded — set -e is the guard.
+    rm -rf -- "$cipher"
+    unregister "$dir"
+    notify_kde "$dir"
+    echo "vault: $dir is plain again"
+}
+
+# What one context-menu entry has to cover, since it cannot know beforehand
+# which of the three states the directory it was invoked on is in.
+cmd_toggle() {
+    local dir
+    dir=$(abs "${1:?usage: vault toggle DIR}")
+    if mountpoint -q "$dir"; then
+        cmd_close "$dir"
+    elif [ -d "$(cipher_of "$dir")" ]; then
+        cmd_open "$dir"
+    else
+        [ -d "$dir" ] || die "no such directory: $dir"
+        confirm "Encrypt ${dir}? Everything in it moves into a vault." || exit 0
+        cmd_encrypt "$dir"
+    fi
+}
+
+# The master key, for a paper or password-manager backup. Worth having as its
+# own command because it is the one thing that recovers a vault when everything
+# else is gone: with these 64 characters, `gocryptfs -masterkey=stdin CIPHERDIR
+# MOUNTPOINT` mounts it without the password and without gocryptfs.conf.
+#
+# Reading from /dev/tty rather than stdin so a redirect cannot silently feed it
+# something, and so it still prompts when called from a pipeline.
+cmd_key() {
+    local dir cipher
+    dir=${1:-}
+    [ -n "$dir" ] || dir=$(choose)
+    dir=$(abs "$dir")
+    cipher=$(cipher_of "$dir")
+    [ -d "$cipher" ] || die "not a vault: $dir has no $cipher beside it"
+    command -v gocryptfs-xray > /dev/null || die "gocryptfs-xray is not installed"
+
+    gocryptfs-xray -dumpmasterkey "$cipher/gocryptfs.conf" \
+        < "${VAULT_PASSFILE:-/dev/tty}"
+}
+
+cmd_list() {
+    local dir state
+    while read -r dir; do
+        if mountpoint -q "$dir" 2>/dev/null; then state=open
+        elif [ -d "$(cipher_of "$dir")" ]; then state=closed
+        else state=missing; fi
+        printf '%-8s %s\n' "$state" "$dir"
+    done < <(vaults)
+}
+
+case "${1:-list}" in
+    encrypt) cmd_encrypt "${2:-}" ;;
+    open)    cmd_open "${2:-}" show ;;
+    close)   cmd_close "${2:-}" ;;
+    toggle)  cmd_toggle "${2:-}" ;;
+    decrypt) cmd_decrypt "${2:-}" ;;
+    key)     cmd_key "${2:-}" ;;
+    list)    cmd_list ;;
+    *)
+        cat >&2 <<'USAGE'
+usage: vault <command> [DIR]
+
+  encrypt DIR   move DIR's contents into a new vault, leaving it closed
+  open [DIR]    mount the vault back over DIR (asks for the password)
+  close [DIR]   unmount it, leaving DIR empty
+  toggle DIR    encrypt, open or close it, whichever DIR is asking for
+  decrypt DIR   move everything back out and drop the vault for good
+  key [DIR]     print the master key, the one backup that recovers a vault
+                even without its password or its gocryptfs.conf
+  list          every vault and whether it is open
+
+An open vault locks itself after 30 minutes with nothing reading it; set
+VAULT_IDLE (a Go duration, "45m", "2h", "0" to disable) to change that.
+
+Everything works from a terminal or a launcher. Dolphin's right-click "Vault"
+entry calls toggle; the "Vault" launcher entry calls open. Both set VAULT_GUI=1,
+which is what moves the prompts and the errors into kdialog.
+USAGE
+        exit 1 ;;
+esac

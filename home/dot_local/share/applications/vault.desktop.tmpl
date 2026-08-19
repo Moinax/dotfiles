@@ -1,0 +1,18 @@
+[Desktop Entry]
+Version=1.0
+Name=Vault
+GenericName=Encrypted Folder
+Comment=Unlock an encrypted directory and open it in the file manager
+# Absolute, like the other entries here: a launcher is not started from a login
+# shell, so ~/.local/bin is only on PATH when the Hyprland session put it there.
+Exec=env VAULT_GUI=1 {{ .chezmoi.homeDir }}/.local/bin/vault open
+Icon=folder-locked
+Terminal=false
+Type=Application
+Categories=Utility;Security;FileTools;
+Actions=close
+
+[Desktop Action close]
+Name=Lock
+Icon=folder-encrypted
+Exec=env VAULT_GUI=1 {{ .chezmoi.homeDir }}/.local/bin/vault close

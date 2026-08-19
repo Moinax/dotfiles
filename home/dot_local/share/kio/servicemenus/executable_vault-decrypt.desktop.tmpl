@@ -1,0 +1,14 @@
+# Separate from vault.desktop for one reason: X-KDE-Priority is a property of the
+# file, not of the action. The toggle is the everyday one and earns a top-level
+# slot; decrypting is rare and irreversible without the password, so it belongs
+# down in the Actions submenu where a misclick cannot reach it.
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+Actions=decrypt
+X-KDE-MaxNumberOfUrls=1
+
+[Desktop Action decrypt]
+Name=Vault: decrypt for good
+Icon=folder-unlocked
+Exec=env VAULT_GUI=1 {{ .chezmoi.homeDir }}/.local/bin/vault decrypt %f

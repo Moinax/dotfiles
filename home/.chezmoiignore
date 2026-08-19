@@ -57,6 +57,15 @@ LICENSE
 .config/pipewire/**
 {{- end }}
 
+# The `vault` command and its launcher entry ride with gocryptfs, which the
+# security group installs.
+{{- if not .install_security }}
+.local/bin/vault
+.local/share/applications/vault.desktop
+.local/share/kio/servicemenus/vault.desktop
+.local/share/kio/servicemenus/vault-decrypt.desktop
+{{- end }}
+
 # vibewatch drop-in + enable symlink only when vibewatch is installed
 {{- if not .install_vibewatch }}
 .config/systemd/user/vibewatch.service.d

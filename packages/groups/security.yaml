@@ -1,6 +1,6 @@
-# Security - Antivirus scanning and related security tools
+# Security - Antivirus scanning, password management and encrypted directories
 name: Security
-description: Password manager and ClamAV antivirus
+description: Password manager, ClamAV antivirus and encrypted directories
 icon: 🛡️
 environment: both
 
@@ -24,6 +24,7 @@ descriptions:
   clamtk: Graphical front-end for ClamAV (AUR)
   bitwarden: Bitwarden password manager desktop app
   rbw: Unofficial Bitwarden CLI — required by the vicinae Bitwarden extension
+  gocryptfs: Per-directory encryption behind the `vault` command
 
 packages:
   arch:
@@ -37,3 +38,7 @@ packages:
     # CLI vault client, and what the vicinae Bitwarden extension shells out to.
     # Its own agent holds the master key, independently of the desktop app.
     - rbw
+
+    # What `vault` drives. LUKS already covers the stolen machine; this covers
+    # the unlocked session and the directories that get synced off it.
+    - gocryptfs
