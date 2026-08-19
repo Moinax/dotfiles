@@ -19,7 +19,7 @@ set -e
 case "${1-}" in
     output|window|region)
         # grab leg: hyprshot calls us back ($0) with the saved file once written
-        exec hyprshot -m "$1" -s -- "$0"
+        exec hyprshot -m "$1" -s -o ~/Pictures/Screenshots -- "$0"
         ;;
 esac
 
