@@ -168,16 +168,14 @@ that reddens a gate is a fix to revisit, not to leave in.
 
 ## Phase 4 — Report
 
-One line per finding, grouped fixed / skipped:
+Rendered markdown in the user's language — never a monospace fence, which wraps
+unreadably in a terminal: one bullet per finding under a `## Fixed — N` /
+`## Skipped — N` heading (themed sub-groups past ~5 bullets), each bullet the
+**`file:line`** in bold, the defect in one sentence, then the angle(s) that
+caught it in italics.
 
-```
-FIXED     src/mail/poller.py:88 — cursor advanced before the flush; a crash mid-batch drops the messages
-FIXED     src/i18n/locales/nl/inbox.json — `filters.unread` missing (the i18n gate would fail CI)
-SKIPPED   src/tenancy/middleware.py:31 — real, but the fix is a core change well outside this diff
-```
-
-Then: which gates you re-ran and their result, and one line saying six agents
-ran in parallel and all six reported. **If the `Agent` tool was unavailable and
+Then: which gates you re-ran and their result **as a small table**, and one
+line saying six agents ran in parallel and all six reported. **If the `Agent` tool was unavailable and
 you worked the six angles inline instead, say that in the first line of the
 report** — a single-pass review and a six-agent fan-out are not the same
 evidence, and the reader must not have to guess which one ran.
