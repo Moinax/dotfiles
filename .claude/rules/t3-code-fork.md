@@ -3,6 +3,7 @@ description: Why T3 Code is built from our fork and deliberately untracked by do
 paths:
   - home/dot_local/bin/executable_t3fork
   - tools/provision-droplet.sh
+  - tests/test_t3fork_sync.sh
   - home/dot_local/bin/executable_t3-code-launch.sh
   - tools/manage-external-apps.py
 ---
@@ -66,6 +67,24 @@ block every update for anyone who does not push each time. `git cherry` asks the
 question that matters, by patch-id: a locally rewritten commit counts as present, a
 genuinely foreign one comes back `+`.
 
+**Patch-id alone still cannot say WHICH side wins**, and that is a second question
+the first one hides. Two situations give the identical shape — origin holds patches
+we lack, we hold patches it lacks: another machine rebased and force-pushed, or
+*this* machine rebased and declined the push, leaving on origin the pre-rebase form
+of every commit the replay re-resolved. Answering "origin wins" to both reverted the
+newer rebase and each conflict resolution in it, then replayed the older form onto
+upstream — the reset only moves a ref, so the loss went to the reflog and the next
+build shipped the superseded patch. It also read the upstream commits the rebase had
+taken in as "our stale iterations" and offered to drop them.
+
+**The rebase base is the discriminator**, because it is the thing a rebase changes:
+`merge-base` against `upstream/main` is the upstream commit each side sits on, and
+whichever sits on the newer one is the later rebase. That is why `update` fetches
+`upstream main` *before* calling `sync_with_origin` rather than after — the
+comparison is meaningless against a stale `upstream/main`. Equal bases fall through
+to the old rule, where origin genuinely does carry work of its own.
+`tests/test_t3fork_sync.sh` holds both directions.
+
 The fetch uses an explicit refspec so `refs/remotes/origin/<branch>` really is
 updated. When it fails, one `ls-remote --heads --exit-code` sorts the three reasons
 by exit status (0 there, 2 reachable-but-absent, else unreachable) and **only status
@@ -74,12 +93,23 @@ against a stale tracking ref and has `offer_push` announce a published branch as
 never pushed.
 
 **Publishing is offered, never done on its own** (`offer_push`). The force-push is
-safe *here specifically*: `sync_with_origin` fetched seconds earlier and refused to
-continue if origin held anything this checkout lacked, so what it overwrites is
-patch-equivalent to what we hold. The lease pins the observed sha
+safe *here specifically*: `sync_with_origin` fetched seconds earlier and either took
+origin in — leaving what we overwrite patch-equivalent to what we hold — or
+established that this checkout is the later rebase and **named on screen** the
+commits origin carries that it supersedes. That second arm is a weaker guarantee
+than the first and is stated as one: a subject in that list you do not recognise is
+another machine's work, and the run says to stop. The lease pins the observed sha
 (`--force-with-lease=<branch>:<sha>`) rather than the bare form, which leases against
 the local tracking ref — a ref any later fetch in the same process would move
 underneath it.
+
+**The droplet rebuild is offered right after a successful push**, not printed as a
+next step. `docs/adr/0003` makes the host a consumer of `origin/<branch>`, so the
+push is the moment it becomes reachable-and-stale, and a command to remember at the
+end of a maintenance run is a command remembered once — a declined push left the
+host a day behind with the desktop looking healthy throughout. `dots update`'s fork
+report carries the other half: it now counts commits absent from `origin` off the
+tracking ref, no fetch, because this machine is the only thing that pushes there.
 
 **Never auto-push.** `t3fork update` is the command the fork report *names*, so
 auto-pushing would turn a line of a routine maintenance report into rewriting a

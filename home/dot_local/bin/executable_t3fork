@@ -69,6 +69,34 @@ spawn_detached() {
   setsid -f env -u ELECTRON_RUN_AS_NODE "$@" >/dev/null 2>&1 </dev/null
 }
 
+# Ask, where there is somebody to ask. No terminal is the same answer as
+# declining — same outcome, same next step — but not the same *reason*, and the
+# three call sites had drifted on saying so: two distinguished them, the third
+# reported a decision nobody made. Returns 0 for yes and echoes the reason for a
+# no, so a caller can print its own next step after it.
+ask_yes() {
+  local reply=""
+  if [[ ! -t 0 ]]; then
+    echo "t3fork: not a terminal; answering no to \"$1\""
+    return 1
+  fi
+  read -r -p "$1 [y/N] " reply || reply=""
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+# `dots` is resolved, never assumed on PATH: an agent shell inside T3 Code
+# replays a PATH snapshot older than ~/.local/bin, and that is the context this
+# tool is most often run from. Written once because `install` needs it too, and
+# the copy that did not have it answered "dots not found" in exactly the case
+# the fallback exists for.
+resolve_dots() {
+  local d
+  for d in "$(command -v dots || true)" "$HOME/.local/bin/dots"; do
+    if [[ -x "$d" ]]; then printf '%s\n' "$d"; return 0; fi
+  done
+  return 1
+}
+
 # Restart the installed app. Normally runs *inside* T3 Code — an agent in a
 # thread, whose whole process tree hangs off the app being replaced — so the
 # relaunch is detached before the signal goes out, never after.
@@ -161,6 +189,7 @@ say_how_to_finish() {
 
 origin_seen=""   # the origin fetch below succeeded
 origin_sha=""    # what origin/$branch held at that moment ("" = no such branch)
+superseded=""    # commits on origin this checkout's later rebase supersedes
 
 # Take in whatever another machine pushed, before rebasing anything onto it.
 #
@@ -182,8 +211,9 @@ origin_sha=""    # what origin/$branch held at that moment ("" = no such branch)
 # that a locally rewritten commit still counts as present on both.
 #
 # A missing origin, or a fetch that fails offline, is a warning and not a stop:
-# the `git fetch upstream` on the next line has to work anyway for this command
-# to do anything at all, so it is that one's job to end an offline run.
+# the `git fetch upstream main` that `update` runs *before* calling this has to
+# work anyway for this command to do anything at all, so it is that one's job to
+# end an offline run — it now runs first, so it already has.
 sync_with_origin() {
   git remote get-url origin >/dev/null 2>&1 || {
     echo "t3fork: no origin remote — skipping the check for other machines' work" >&2
@@ -246,6 +276,72 @@ sync_with_origin() {
   # offer_push deal with the difference.
   [ "$foreign" -gt 0 ] || return 0
 
+  # Which side was rebased onto the newer upstream, which is the question the
+  # counts above cannot answer. Two situations produce the identical shape —
+  # origin holds patches we lack and we hold patches it lacks — and they want
+  # opposite answers: another machine rebased and pushed (origin wins), or THIS
+  # machine rebased and declined the push, leaving on origin the pre-rebase form
+  # of every commit the replay re-resolved (this checkout wins). Answering
+  # "origin always wins" to both reverted the newer rebase and each conflict
+  # resolution in it, then replayed the older form onto upstream. Silently: the
+  # reset only moves a ref, so the loss goes to the reflog and the build after it
+  # ships the old patch. It also read the upstream commits the rebase had taken
+  # in as "our stale iterations" and offered to drop those too.
+  #
+  # The base is what tells them apart, because it is what a rebase changes:
+  # merge-base against upstream/main is the upstream commit each side sits on.
+  # That needs upstream/main to be current, which is why `update` fetches it
+  # before calling this rather than after.
+  local our_base their_base newer=""
+  # Global, like origin_sha above and for the same reason: offer_push is the one
+  # that needs it, and it runs after this function has returned.
+  if our_base=$(git merge-base "$branch" upstream/main 2>/dev/null) \
+     && their_base=$(git merge-base "origin/$branch" upstream/main 2>/dev/null); then
+    if [ "$our_base" = "$their_base" ]; then
+      newer=same
+    elif git merge-base --is-ancestor "$their_base" "$our_base"; then
+      newer=ours
+    elif git merge-base --is-ancestor "$our_base" "$their_base"; then
+      newer=theirs
+    else
+      newer=incomparable
+    fi
+  fi
+
+  # Two bases that are each other's ancestor in neither direction. Impossible on
+  # a linear upstream — the fork's is, measured — and reachable the moment it
+  # takes a PR as a merge commit and the two sides land on different parents.
+  # Worth its own arm rather than a fall-through: falling through means resetting
+  # to origin, which is the one outcome that silently destroys a rebase, and
+  # doing that on a question this cannot answer is how the 2026-08-20 incident
+  # would come back by a side door.
+  if [ "$newer" = incomparable ]; then
+    echo "t3fork: origin/$branch and this checkout sit on unrelated upstream bases." >&2
+    echo "t3fork: refusing to choose. Compare them, then rebase by hand:" >&2
+    echo "  git -C $repo log --oneline --left-right --cherry-pick origin/$branch...$branch" >&2
+    exit 1
+  fi
+
+  # Equal bases, or no upstream/main to measure against, fall through to the rule
+  # below — same base and different patches really is work of origin's own.
+  if [ "$newer" = ours ]; then
+    # Superseded, not lost: origin's extra patches are the forms these commits
+    # had one rebase ago. Named anyway, because the one thing this cannot tell
+    # from a supersession is another machine pushing genuinely new work while
+    # this one rebased without taking it in — and the subject list settles that
+    # in the second it takes to read.
+    echo "t3fork: origin/$branch sits on an older upstream — keeping this checkout's rebase."
+    echo "        $foreign commit(s) there are superseded by it:"
+    superseded="$(git --no-pager log --oneline --cherry-pick --left-only "origin/$branch...$branch")"
+    printf '%s\n' "$superseded"
+    # Held, not just printed. `update` rebases after this and prints its own
+    # commit list before the push prompt, so by the time the question that
+    # matters is asked — force-push over those commits? — this list has scrolled
+    # away. Telling the reader to "stop" here was worse than useless: the rebase
+    # had not happened yet when they read it, and had by the time they could act.
+    return 0
+  fi
+
   # Divergence alone is not a conflict, and this is the shape it usually takes:
   # another machine ran this same command, rebasing the same patches onto a
   # newer upstream and force-pushing, so origin carries our work rewritten
@@ -289,12 +385,20 @@ sync_with_origin() {
 #
 # A rebase rewrites a branch that is already on GitHub, so the only way to put
 # origin back in step is a force-push. That is safe *here specifically* and
-# nowhere else in this script: sync_with_origin fetched seconds ago and returns
-# only on its postcondition — this checkout carries, by patch-id, everything
-# origin does — so what the push overwrites is patch-equivalent to what we hold,
-# whether it took origin in or found nothing to take. The lease closes the only
-# window left — someone pushing between that fetch and this push makes the
-# command fail rather than silently win.
+# nowhere else in this script — but the guarantee has two arms now, and only the
+# first is airtight:
+#
+#   - sync_with_origin took origin in, or found nothing to take. What the push
+#     overwrites is then patch-equivalent to what we hold.
+#   - or it established that this checkout is the later rebase, in which case
+#     origin carries $foreign commits we do not. Those are the pre-rebase forms
+#     of commits we hold re-resolved — unless another machine pushed genuinely
+#     new work, which no test can tell from a supersession. So $superseded is
+#     printed again immediately below, at the moment the question is actually
+#     asked, rather than left to scroll away above the rebase output.
+#
+# The lease closes the only window left — someone pushing between that fetch and
+# this push makes the command fail rather than silently win.
 #
 # Not automatic, and the reason is not technical. `t3fork update` is the command
 # `dots update`'s fork report names, so a routine maintenance line would turn
@@ -332,19 +436,14 @@ offer_push() {
   echo
   echo "t3fork: $state"
 
-  # No terminal leaves the reply empty, which is the same answer as declining —
-  # same outcome, same next step, only the reason differs. That is what lets one
-  # branch below serve both.
-  local reply=""
-  if [[ -t 0 ]]; then
-    read -r -p "Push it to origin now? [y/N] " reply || reply=""
+  if [[ -n "$superseded" ]]; then
+    echo "t3fork: this push DROPS these commits from origin — they are the forms"
+    echo "        this checkout re-resolved one rebase ago:"
+    printf '%s\n' "$superseded" | sed 's/^/  /'
+    echo "t3fork: a subject you do not recognise is another machine's work. Say no."
   fi
-  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-    if [[ -t 0 ]]; then
-      echo "t3fork: left alone. To publish it later:"
-    else
-      echo "t3fork: not a terminal; leaving origin alone. To publish it:"
-    fi
+  if ! ask_yes "Push it to origin now?"; then
+    echo "t3fork: leaving origin alone. To publish it:"
     printf '  %s\n' "${push[*]}"
     return 0
   fi
@@ -358,13 +457,36 @@ offer_push() {
     return 0
   }
 
-  # The droplet builds origin/$branch (docs/adr/0003), so this push is the only
-  # moment the host becomes reachable-and-stale — and nothing over there notices.
-  # Said here rather than in the fork report because the report measures drift
-  # against *upstream*, which is a different question and answers "0" for a fork
-  # that is perfectly in step with upstream and three commits ahead of the host.
-  echo "t3fork: the droplet builds origin/$branch — bring it along with:"
-  echo "  dots droplet fork"
+  # The droplet builds origin/$branch (docs/adr/0003), so this push is the moment
+  # it becomes reachable-and-stale, and nothing over there notices. Offered on the
+  # spot rather than printed as a next step: a command to remember at the end of a
+  # maintenance run gets remembered once. This is the friction that actually cost
+  # something — a declined push left the host a day behind, and the desktop looked
+  # fine the whole time.
+  #
+  # Same default of no as the push above. It is three minutes of remote build,
+  # which is why it asks rather than just doing it.
+  #
+  # It also runs before `t3fork install` has proved the rebased tree builds. That
+  # is a cost and not a hazard: phase_fork writes its sentinel and touches the
+  # unit only after a successful build, so a broken commit leaves the host on the
+  # previous one. What it buys is the loop closing here, where the information is.
+  echo
+  echo "t3fork: the droplet builds origin/$branch and is now one build behind."
+  local dots
+  if ! ask_yes "Rebuild it now?"; then
+    echo "t3fork: leaving it alone. To bring it along later:"
+    echo "  dots droplet fork"
+    return 0
+  fi
+  # A missing `dots`, or a droplet that is off, costs the remote build and
+  # nothing else: the push above already succeeded and the desktop half of this
+  # command has not run yet.
+  if ! dots=$(resolve_dots); then
+    echo "t3fork: dots not found — the droplet is still on the previous build" >&2
+    return 0
+  fi
+  "$dots" droplet fork || echo "t3fork: the droplet build failed — re-run: dots droplet fork" >&2
 }
 
 case "${1:-}" in
@@ -376,8 +498,13 @@ case "${1:-}" in
     refuse_if_rebasing "a rebase is already in progress here — finish it first:"
 
     git switch "$branch"
-    sync_with_origin
+    # Before sync_with_origin, which compares the two sides' rebase bases against
+    # upstream/main and cannot do that against a stale one. Not free: the paths
+    # where sync_with_origin exits — a dirty tree it cannot reset over — now pay
+    # this fetch first and throw it away. Worth it, since the alternative is a
+    # comparison against a stale ref, which is how the wrong side wins.
     git fetch upstream main
+    sync_with_origin
     # A rebase keeps the fork as "upstream plus N patches", which is what makes
     # the next one cheap. Never merge: a merge buries our commits in history and
     # every later conflict has to be re-solved.
@@ -508,12 +635,13 @@ case "${1:-}" in
     # terminal, and a `read` there would either block forever or read the
     # build's own output. So no tty means no restart unless -y said so.
     if [[ "$restart" == ask ]]; then
-      if [[ -t 0 ]]; then
-        read -r -p "Restart T3 Code onto it now? [y/N] " reply
-        [[ "$reply" =~ ^[Yy]$ ]] && restart=yes || restart=no
+      if ask_yes "Restart T3 Code onto it now?"; then
+        restart=yes
       else
-        echo "t3fork: not a terminal; leaving the running app alone (pass -y to restart)"
         restart=no
+        # ask_yes has already said *why* it answered no; this is the part that is
+        # specific to this call site.
+        [[ -t 0 ]] || echo "t3fork: pass -y to restart unattended"
       fi
     fi
     # `if`, not `[[ … ]] && restart_app`: that list is the last command of the

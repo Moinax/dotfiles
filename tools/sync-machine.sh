@@ -860,8 +860,11 @@ update_tools() {
 
 # ── Forks ───────────────────────────────────────────────────────────────────
 
-# Emits `repo<TAB>branch<TAB>behind<TAB>command` for every fork upstream has
-# moved past, `behind` being `-` when the fork's own branch is missing here.
+# Emits `repo<TAB>branch<TAB>behind<TAB>unpushed<TAB>command` for every fork with
+# something to say. `behind` is a count, or `rebase`, or `-` when the fork's own
+# branch is missing here; `unpushed` is `yes`/`no`, or `-` where it was never
+# measured — which is not the same as `no`, and rendering it as one is how a
+# fork mid-rebase with unpublished work reads as fully published.
 #
 # The `upstream` remote *is* the registry. A checkout that has one is a fork of
 # something, so nothing has to be declared here for the next one to be picked up
@@ -921,11 +924,11 @@ fork_drift() {
         # here" for every fork on the machine.
         if [ -e "$(git -C "$repo" rev-parse --path-format=absolute --git-path rebase-merge 2>/dev/null)" ] \
         || [ -e "$(git -C "$repo" rev-parse --path-format=absolute --git-path rebase-apply 2>/dev/null)" ]; then
-            printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "rebase" "$cmd"
+            printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$tip" "rebase" - "$cmd"
             continue
         fi
         if ! git -C "$repo" rev-parse --verify --quiet "$tip" >/dev/null 2>&1; then
-            printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "-" "$cmd"
+            printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$tip" "-" - "$cmd"
             continue
         fi
 
@@ -951,11 +954,44 @@ fork_drift() {
         [ -n "$ref" ] || continue
 
         behind=$(git -C "$repo" rev-list --count "$tip..$ref" 2>/dev/null) || continue
-        [ "$behind" -gt 0 ] || continue
+
+        # Is this branch published as it stands? The one question nothing else
+        # asks: `t3fork` offers the push and never takes it, so declining leaves
+        # the fork unpublished with no trace at all — and since docs/adr/0003 the
+        # droplet builds origin, so it keeps serving the previous build while the
+        # desktop looks fine. That went unnoticed for a day.
+        #
+        # A yes/no, deliberately, and not a count. Counting was tried and every
+        # bound is an argument: `--cherry-pick` over the whole symmetric
+        # difference answers 310 for a fork rebased past 300 upstream commits, of
+        # which exactly 3 were patches whose content differed — a number that is
+        # literally true and tells the reader nothing. `--is-ancestor` asks the
+        # question the reader actually has, in one call, and answers `no` for a
+        # branch merely *behind* origin, which no count does.
+        #
+        # Read off the tracking ref, no fetch: unlike the drift above, this is
+        # measured as of the last time anything fetched origin, which the
+        # rendered line says out loud. `$tip` of `HEAD` means a detached
+        # checkout, where `origin/HEAD` resolves to origin's default branch and
+        # the comparison is against a ref nobody here maintains — the same bogus
+        # answer the `$tip` default already guards the drift count from.
+        local unpushed=-
+        if [ "$tip" != HEAD ] \
+           && git -C "$repo" rev-parse --verify --quiet "origin/$tip" >/dev/null 2>&1; then
+            if git -C "$repo" merge-base --is-ancestor "$tip" "origin/$tip" 2>/dev/null; then
+                unpushed=no
+            else
+                unpushed=yes
+            fi
+        fi
+
+        # Either question answering yes is worth a row: a fork level with
+        # upstream can still be sitting on work nobody else can see.
+        [ "$behind" -gt 0 ] || [ "$unpushed" = yes ] || continue
 
         # Only here is there an upstream ref to name, which is why this is the
         # one row kind that can fall back to a plain rebase.
-        printf '%s\t%s\t%s\t%s\n' "$repo" "$tip" "$behind" \
+        printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$tip" "$behind" "$unpushed" \
             "${cmd:-git -C $repo rebase $ref}"
     # `-type d` keeps linked worktrees out: they share the main checkout's
     # remotes, so each would report the same drift again under its own name.
@@ -1024,10 +1060,27 @@ report_fork_drift() {
     [ -n "$drift" ] || return 0
 
     print_header "Forks"
-    # The rows carry the repo path, not its name: two of the three kinds need a
+    # The rows carry the repo path, not its name: two of the four kinds need a
     # `git -C` command built for them here, and the name is one expansion away.
-    local repo branch behind cmd
-    while IFS=$'\t' read -r repo branch behind cmd; do
+    # The four are `rebase`, `-` (no such branch), a non-zero count, and — since
+    # the unpushed question joined this walk — a `0` count on a row that exists
+    # only because the branch is unpublished.
+    local repo branch behind unpushed cmd
+    while IFS=$'\t' read -r repo branch behind unpushed cmd; do
+        # Unpushed first: it is the one the reader can act on with no thinking,
+        # and the one that has a second machine waiting on it.
+        #
+        # No mention of the droplet, however tempting: this walk reports every
+        # fork on the machine and only t3code feeds the host, so the line would
+        # be false on all the others. That knowledge stays in `t3fork`, which
+        # offers the rebuild, and in docs/adr/0003.
+        #
+        # "as of the last fetch" is not a hedge: the count is read off the
+        # tracking ref without fetching origin, so a branch another machine
+        # published minutes ago still reads as unpublished here.
+        if [ "$unpushed" = yes ]; then
+            print_warning "${repo##*/} ($branch): not on origin as of the last fetch"
+        fi
         case "$behind" in
             rebase)
                 print_warning "${repo##*/} ($branch): a rebase is in progress — drift not measured"
@@ -1040,13 +1093,32 @@ report_fork_drift() {
                 print_info "  Its patches live there — check 'git remote -v', this is"
                 print_info "  what a clone of the wrong fork looks like."
                 ;;
-            *)  print_warning "${repo##*/} ($branch): upstream is $behind commit(s) ahead" ;;
+            # `[ -gt 0 ]` rather than a `0) ;;` arm: a bare no-op arm is what the
+            # next reader deletes as dead code, and deleting it brings back
+            # "upstream is 0 commit(s) ahead" on every unpushed-only row.
+            *)  [ "$behind" -gt 0 ] \
+                    && print_warning "${repo##*/} ($branch): upstream is $behind commit(s) ahead"
+                ;;
         esac
         # Named after the way out, not instead of it: finishing a rebase by hand
         # leaves whatever the fork's command also does — a rebuilt AppImage, for
         # t3code — undone, and once the rebase completes the drift is zero and
         # this fork drops out of the report entirely without ever saying so.
-        [ -n "$cmd" ] && print_info "  $cmd"
+        # The fork's own command, but only when it is the fork's own: the
+        # fallback below is `git … rebase <upstream>`, which is the way out of
+        # being behind and a no-op for being unpublished. Printed under an
+        # unpushed-only row it sends the reader to run something that changes
+        # nothing, and the warning returns on the next sync.
+        if [ "$behind" = 0 ] && [ "${cmd#git }" != "$cmd" ]; then
+            # An unpushed-only row whose command is the generic `git … rebase`
+            # fallback: that is the way out of being behind and a no-op for being
+            # unpublished. The reader runs it, nothing changes, and the warning
+            # comes back next sync. A fork with its own `dotfiles.forkUpdate` —
+            # t3code's re-offers the push — falls to the branch below instead.
+            print_info "  git -C $repo push --force-with-lease origin $branch"
+        elif [ -n "$cmd" ]; then
+            print_info "  $cmd"
+        fi
     done <<<"$drift"
     return 0
 }

@@ -29,9 +29,13 @@ where these bite** — `setup` runs them in an order that already avoids all fou
   silently skips.
 - **`fork` must run after `sshkey`.** The clone authenticates with the key that
   phase generates, and reaches GitHub through the `ssh-keyscan` entry it adds to
-  `known_hosts` — `dots droplet fork` against a host that never completed `setup`
-  hangs forever on a host-key prompt, with the `-t` tty attached and nobody there
-  to answer it.
+  `known_hosts`. It used to *hang* on a host that never completed `setup` — a
+  host-key prompt with the `-t` tty attached and nobody there — which stopped
+  being merely a footgun once `t3fork` began offering `dots droplet fork`
+  automatically after a push. The clone now carries `GIT_SSH_COMMAND` with
+  `accept-new`, so that state fails on authentication instead, which is a
+  message rather than a wedge. The ordering still stands: without the key there
+  is nothing to authenticate with.
 - **`just` comes from just.systems, not apt.** Ubuntu 24.04 ships 1.21 while
   socle's justfiles use the `[group]`/`[doc]` attributes added in 1.27 — apt's
   build fails parsing the recipe list before running anything.

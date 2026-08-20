@@ -1007,7 +1007,15 @@ phase_fork() {
         # registered on GitHub. It still returns non-zero: cmd_remote is what
         # decides that is survivable, and `dots droplet fork` run for exactly
         # this reason must not answer 0 having built nothing.
-        if ! git clone --depth 1 --branch "$FORK_BRANCH" "$FORK_URL" "$FORK_DIR"; then
+        # accept-new, because this can now be reached without a human: `t3fork`
+        # offers the droplet rebuild right after a push and runs `dots droplet
+        # fork` on a yes. phase_sshkey scans github.com into known_hosts, but a
+        # host that never completed `setup` has no such entry — and `git clone`
+        # over ssh then blocks on a host-key prompt with the `-t` tty attached
+        # and nobody there, forever. Failing to authenticate is fine; hanging is
+        # not, and only the hang is what this removes.
+        if ! GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' \
+             git clone --depth 1 --branch "$FORK_BRANCH" "$FORK_URL" "$FORK_DIR"; then
             err "Cannot clone the fork — register this host's key on GitHub, then:"
             err "  dots droplet fork"
             return 1

@@ -119,6 +119,33 @@ warning after a green "Machine in sync". Every failure path is a silent
 `continue`: offline, a vanished upstream, a repo mid-rebase — none is worth a
 warning on a sync that already succeeded, and the next run asks again.
 
+**It answers two questions, not one**, and the second is the only place that asks
+it: how far behind *upstream* the fork is, and how many commits `origin` has never
+seen. `t3fork` offers the push and never takes it, so declining leaves a fork
+unpublished with no trace at all — and since `docs/adr/0003` the droplet builds
+`origin`, so it keeps serving the previous build while the desktop looks fine. That
+went unnoticed for a day. The report says none of that, deliberately: it walks every
+fork on the machine and only t3code feeds the host, so a droplet line would be false
+on all the others — `t3fork` owns that half, by offering the rebuild after a push. The unpushed count is read off the local tracking ref with
+no fetch, unlike the drift above: upstream moves without us and has to be asked,
+origin does not — this machine is what pushes to it. `--cherry-pick`, because a
+rebased branch differs from origin by construction and only patch-id says whether
+that difference is unpublished work. A row is emitted when *either* count is
+non-zero: a fork level with upstream can still be sitting on work nobody else has.
+
+**It is a yes/no, not a count**, and that was tried the other way first: a
+`--cherry-pick` count over the whole symmetric difference answers 310 for a fork
+rebased past 300 upstream commits, of which 3 were patches whose content actually
+differed. Literally true, and useless. `merge-base --is-ancestor` asks the
+question the reader has, in one call, and answers `no` for a branch merely
+*behind* origin — which no count does, and which is the multi-machine false
+positive. The rows are
+`repo\tbranch\tbehind\tunpushed\tcommand`; `unpushed` is `yes`/`no`, or `-`
+where it was never measured, because rendering "unknown" as "no" is how a fork
+mid-rebase with unpublished work reads as fully published. `tests/test_fork_drift.sh`
+pins all of it, including that a detached `HEAD` is never compared against
+`origin/HEAD`.
+
 The root comes from `dev-projects root`, the single source of truth for the
 project tree — not a knob of its own, which is what made a machine with
 `DEV_PROJECTS_ROOT` set invisible to this check. `-type d` on the walk is

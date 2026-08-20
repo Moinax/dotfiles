@@ -26,8 +26,11 @@ drop-in rather than a link, and why losing the update launcher is the feature â€
   not the price but the alternative: upstream does not do the job.
 - **The host builds what `origin/moinax` holds**, which is the last commit `t3fork
   update` was told to publish â€” it offers the push and never takes it. A declined offer
-  leaves the desktop ahead of the host with nothing saying so, which is why the phase
-  prints the sha it built rather than claiming parity.
+  leaves the desktop ahead of the host, which is why the phase prints the sha it built
+  rather than claiming parity. **Two things now say so**, added after a declined push
+  left the host a day behind and nothing reported it: `t3fork` offers the rebuild on
+  the spot once a push succeeds, and `dots update`'s fork report flags a branch that is
+  not on origin.
 - **The desktop and the host can still run different versions**, but now they diverge by
   a push rather than by a release. Pairing is still the compatibility surface; it is our
   own contract on both ends of it.
