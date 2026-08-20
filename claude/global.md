@@ -21,6 +21,15 @@ HTML comments like this one are stripped before the content reaches Claude's
 context, so this block costs no tokens.
 -->
 
+## Language
+
+- **Reply in the language of the message you are answering.** The user writes
+  French and English and switches mid-thread, so this follows the message, not
+  the thread — and never the language of the code in front of you.
+- **Only the prose addressed to them switches.** Code, identifiers, commit
+  messages, and every file written to disk stay in English, including in a
+  conversation held entirely in French.
+
 ## Sudo
 
 - **Print every sudo command before running it**, in a fenced `bash` block, exactly as it will run. The ksshaskpass dialog that asks for the password shows sudo's prompt and never the command, so printing it is the only way to see what is about to run as root. Sessions run with `--permission-mode bypassPermissions`, which means no permission prompt will ever show it either — this rule is the whole mechanism, not a courtesy on top of one.
