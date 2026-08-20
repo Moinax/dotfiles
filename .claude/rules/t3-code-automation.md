@@ -36,7 +36,13 @@ to keep. That is the whole risk of this feature, and it is concentrated in
   from `~/.t3/userdata/environment-id`.
 
 `~/.t3/userdata/server-runtime.json` is discovery only — it carries `origin` and
-holds no token.
+holds no token. Liveness is the process it names — pid *and* `comm`, never the
+file's existence: it is removed on a clean exit only, so a killed app leaves a
+complete one naming a dead port, and a reboot hands that pid back out from the
+bottom of the range to something else entirely. A cold app is not an error on
+any verb: the reads go to sqlite, and both `origin` and `focus` go through
+`ensure_app`, which starts it detached and polls the caller's own predicate — a
+live server for one, a socket that accepts the URL for the other.
 
 ## What breaks silently when upstream moves
 

@@ -1,7 +1,14 @@
 import { Action, ActionPanel, Color, Icon, List, showToast, Toast, useNavigation } from "@vicinae/api";
 import { useMemo } from "react";
 import { listProjects, type Project } from "./projects";
-import { addT3Project, isThreadLive, listT3Projects, listT3Threads } from "./t3";
+import {
+  addT3Project,
+  isThreadLive,
+  listT3Projects,
+  listT3Threads,
+  type T3Project,
+  type T3Thread,
+} from "./t3";
 import { ThreadList } from "./thread-list";
 import { describeError, useLoader } from "./ui";
 
@@ -35,10 +42,27 @@ const NO_THREADS: Counts = { threads: 0, live: 0, waiting: 0 };
  * column of one query.
  */
 async function loadRows(): Promise<Row[]> {
-  const [projects, t3Projects, threads] = await Promise.all([
+  const [projects, [t3Projects, threads]] = await Promise.all([
     listProjects(),
-    listT3Projects(),
-    listT3Threads(),
+    // What T3 Code knows is an annotation on this list, never a condition of
+    // it. Listed flat in the same `Promise.all`, it was one: any failure
+    // reading the projection — the app down, a renamed column, the helper not
+    // on PATH — rejected the whole load, and the picker said "No projects
+    // found" over a disk full of repositories. The one row that then mattered,
+    // "Add to T3 Code…", was the one that had disappeared with it.
+    //
+    // One catch over both reads rather than one each: they are the same helper
+    // against the same file, so they fail together, and a catch apiece said the
+    // same thing twice. The toast is not awaited — the list is ready, and
+    // nothing about it depends on the notification having been drawn.
+    Promise.all([listT3Projects(), listT3Threads()]).catch((error) => {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: "T3 Code state unavailable",
+        message: describeError(error),
+      });
+      return [[], []] as [T3Project[], T3Thread[]];
+    }),
   ]);
 
   const byPath = new Map(t3Projects.map((project) => [project.workspace_root, project]));

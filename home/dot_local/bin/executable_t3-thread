@@ -51,8 +51,59 @@ die() { printf 't3-thread: %s\n' "$1" >&2; exit 1; }
 sql() { sqlite3 -json "file:$db?mode=ro" "$1"; }
 scalar() { sqlite3 "file:$db?mode=ro" "$1"; }
 
+# Is the server actually answering — the process, never the file.
+#
+# `server-runtime.json` is written at startup and removed only on a clean exit,
+# so an app that was killed (a reboot, an OOM) leaves a complete one behind
+# naming a port nothing is listening on. Read as "is it running?", that file
+# turns a cold start into a connection refused three calls later.
+#
+# The pid alone is not the process: a reboot is precisely how this file goes
+# stale, and pids after a boot are handed out from the bottom again, so the one
+# it names is very likely alive and something else entirely. `comm` is what
+# makes it the same process — and reading /proc costs no fork, unlike `kill -0`
+# plus a guess.
+server_up() {
+    local pid
+    [[ -f "$runtime" ]] || return 1
+    pid="$(jq -r '.pid // empty' "$runtime" 2>/dev/null)"
+    [[ -n "$pid" && -r "/proc/$pid/comm" ]] || return 1
+    [[ "$(< "/proc/$pid/comm")" == "t3code" ]]
+}
+
+# Start T3 Code, and wait for the one thing the caller actually needs.
+#
+# `ready` is a predicate rather than a fixed check because "the app is up" is
+# two different questions here — a live server to dispatch to, a socket that
+# accepts the URL — and both verbs had grown their own copy of this loop, which
+# had already drifted: one retried once, the other never.
+#
+# Detached, and with the descriptors closed. Detached because the launcher
+# raises the window, and a raise run in the foreground polls for a state that
+# cannot occur until its caller returns (`.claude/rules/t3-code-automation.md`);
+# closed because `capture()` in the extension resolves on EOF rather than on
+# exit, so a grandchild holding stdout open hangs the caller until its timeout.
+# The wait is ours either way — the launcher waits for a window, and a window is
+# not what either verb is after.
+ensure_app() {
+    local ready="$1"
+    "$ready" && return 0
+    setsid -f t3-code-launch.sh >/dev/null 2>&1
+    # 15s, which has to leave the `die` below room to land inside the caller's
+    # own timeout (30s for `new`, 45s for `focus`) or it is lost to a SIGTERM.
+    for _ in $(seq 60); do "$ready" && return 0; sleep 0.25; done
+    return 1
+}
+
+# Discovery, and the one place the app gets started for a write.
+#
+# "T3 Code is not running" is not an answer the picker can use: opening work in
+# a cold app is exactly what it is for, and every other verb here already copes
+# — the reads go to sqlite, `focus` starts the app itself. Only thread creation
+# needs the server, so it starts it too rather than making the app's state a
+# precondition of using the launcher.
 origin() {
-    [[ -f "$runtime" ]] || die "T3 Code is not running (no $runtime)"
+    ensure_app server_up || die "T3 Code did not start (no live server in $runtime)"
     jq -re '.origin' "$runtime" 2>/dev/null || die "no origin in $runtime"
 }
 
@@ -146,6 +197,10 @@ model_selection() {
     printf '%s' "$selection"
 }
 
+# Sourced by tests/test_t3_thread.sh, which wants the functions above and none
+# of the verbs below. Every other caller runs the file.
+[[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
+
 case "${1:-}" in
     projects)
         sql "SELECT project_id, title, workspace_root FROM projection_projects
@@ -213,15 +268,16 @@ case "${1:-}" in
         url="t3code://threads/$(< "$env_file")/$2"
         socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/t3code-deeplink.sock"
 
-        # No socket means the app is down. Starting it through the launcher and
-        # then using the socket costs one Electron process; handing the URL to
-        # `xdg-open` instead costs two, because the launcher that has to raise
-        # the window afterwards finds none mapped yet and starts its own. The
-        # socket exists by the time the window does — the app binds it during
-        # startup, well before the renderer paints.
-        [[ -S "$socket" ]] || t3-code-launch.sh
-        printf '%s\n' "$url" | socat - "UNIX-CONNECT:$socket" 2>/dev/null \
-            || die "the deep-link socket refused the URL"
+        # Delivery is its own readiness test, which is why it is the predicate
+        # rather than `[[ -S "$socket" ]]`: a killed app leaves the socket file
+        # behind, so "it is there" and "it is answering" are different questions
+        # and only the second one decides anything.
+        #
+        # Starting the app this way costs one Electron process; handing the URL
+        # to `xdg-open` instead costs two, because the launcher that has to
+        # raise the window afterwards finds none mapped yet and starts its own.
+        deliver() { printf '%s\n' "$url" | socat - "UNIX-CONNECT:$socket" 2>/dev/null; }
+        ensure_app deliver || die "the deep-link socket refused the URL"
 
         # The app asks for focus itself and Hyprland refuses it — measured: the
         # link landed and the thread opened while the browser stayed in front.
