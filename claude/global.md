@@ -36,3 +36,13 @@ context, so this block costs no tokens.
 - **Never `git add`, `git commit` or `git push`** unless the user or a user-invoked skill asks for it. Finish the work, leave it **unstaged** in the working tree, and say it is ready — hunk (the user's reviewer) watches unstaged changes, so staging a file removes it from review. This applies to `git add` on its own: staging is not a harmless intermediate step, and not a nicer way to present a rename.
 - **Each authorization covers only the change in front of you.** "Commit this" is not standing consent for the rest of the session, for follow-up edits, or for a fix made seconds later; ask again. "Commit" never implies push, and "push" of one commit never implies pushing later ones.
 - **Never create a branch or a worktree** unless the user or a user-invoked skill asked for it. Work on the current branch, even when the change feels branch-worthy — say so and let the user decide.
+
+## File paths in answers
+
+- **Always write file paths inside backticks** — `src/app.ts:42`, `packages/groups/`.
+  I work in T3 Code, which only turns a path into a link inside an inline-code span
+  or a markdown link destination (`apps/web/src/components/ChatMarkdown.tsx`), so a
+  path written in bare prose is dead text however it is spelled. Once backticked,
+  relative, absolute and `~/…` all resolve to the same file and the chip renders
+  workspace-relative either way — relative is a readability preference, not what
+  makes the link work. A `:42` or `:42:7` suffix rides along and opens on that line.
