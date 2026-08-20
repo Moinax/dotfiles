@@ -1,10 +1,5 @@
 {{- $textEditor := "org.kde.kate.desktop" -}}
-{{- if lookPath "code" -}}
-{{-   $textEditor = "code.desktop" -}}
-{{- end -}}
-{{- if lookPath "cursor" -}}
-{{-   $textEditor = "cursor.desktop" -}}
-{{- end -}}
+{{- $markdownEditor := "org.kde.ghostwriter.desktop" -}}
 {{- $imageViewer := "org.kde.gwenview.desktop" -}}
 {{- $pdfViewer := "org.kde.okular.desktop" -}}
 {{- /* This file uses chezmoi's `create_` attribute (see the source filename:
@@ -63,7 +58,8 @@ text/x-python={{ $textEditor }}
 text/x-shellscript={{ $textEditor }}
 text/xml={{ $textEditor }}
 text/csv={{ $textEditor }}
-text/markdown={{ $textEditor }}
+text/markdown={{ $markdownEditor }}
+text/x-markdown={{ $markdownEditor }}
 application/json={{ $textEditor }}
 application/x-yaml={{ $textEditor }}
 application/toml={{ $textEditor }}
