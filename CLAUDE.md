@@ -1,8 +1,5 @@
 # CLAUDE.md
 
-Write this file in English, always — including every edit made to it during a
-conversation held in another language.
-
 <!--
 Keep this file short. It loads in full on every request, so the bar for a line
 here is "every session needs this, whatever it is working on". Anything tied to
@@ -52,7 +49,8 @@ went stale before, listing commands that never existed.
 - **Restarting waybar needs no permission** — `systemctl --user restart waybar.service` is idempotent, and the bar re-execs its modules. Never leave a change merely applied: restart, then look at the result
 - **Never `systemctl restart systemd-logind` on a live graphical session** — it revokes the display from the running session and respawns the greeter, and only a reboot clears it. `reload` applies config changes with no session impact; details in `.claude/rules/lock-and-sleep.md`
 - **Never report encrypted DNS as working off `resolvectl status`** — it shows the configuration whether or not TLS negotiated. `ss -tn | grep :853` shows the real connection; the rest is in `.claude/rules/dns-encrypted.md`
-- **`dots update` only sees committed `packages/` edits**: the scan is gated on a `packages/*` path in the git diff `SYNCED_COMMIT..HEAD`, never the working tree — so an uncommitted YAML edit is ignored silently, and the anchor still advances. Commit first, or use `dots packages manage`
+- **Never `git add`, `git commit` or `git push` here** unless the user or a user-invoked skill asks for it. Finish the work, leave it **unstaged**, and say it is ready — hunk (the user's reviewer) watches unstaged changes, so staging a file removes it from review. That applies to `git add` on its own: staging is not a harmless intermediate step, and not a nicer way to present a rename. Each authorization covers only the change in front of you — "commit this" is not standing consent for a follow-up edit or a fix made seconds later, "commit" never implies push, and pushing one commit never implies pushing the next
+- **`dots update` only sees committed `packages/` edits**: the scan is gated on a `packages/*` path in the git diff `SYNCED_COMMIT..HEAD`, never the working tree — so an uncommitted YAML edit is ignored silently, and the anchor still advances. Commit first — *asking* first, per the rule above, which this does not license — or use `dots packages manage`
 - **Anything that runs per pane, per session, or on a timer**: multiply one invocation by the real fanout (~15 agent panes) before calling it cheap — `npx -y ccstatusline@latest` in the statusline cost ~1.4 cores. Never launch a long-lived pane command through `npx`/`npm exec` or a language wrapper around a native binary, and prefer `~/.local/share/fnm/aliases/default/bin/` over per-shell paths
 
 ## Agent skills

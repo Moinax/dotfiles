@@ -40,12 +40,6 @@ context, so this block costs no tokens.
 
 - **Restarting `vibewatch` needs no permission** — `systemctl --user restart vibewatch.service` is idempotent: the daemon rebuilds its whole session list by rescanning processes and transcripts on boot, so a restart mid-fleet loses nothing. Never leave a change to it merely compiled — `cargo install --path .`, restart, then look at the result. (Its source is its own repo, which is why this is here rather than in the dotfiles.)
 
-## Git
-
-- **Never `git add`, `git commit` or `git push`** unless the user or a user-invoked skill asks for it. Finish the work, leave it **unstaged** in the working tree, and say it is ready — hunk (the user's reviewer) watches unstaged changes, so staging a file removes it from review. This applies to `git add` on its own: staging is not a harmless intermediate step, and not a nicer way to present a rename.
-- **Each authorization covers only the change in front of you.** "Commit this" is not standing consent for the rest of the session, for follow-up edits, or for a fix made seconds later; ask again. "Commit" never implies push, and "push" of one commit never implies pushing later ones.
-- **Never create a branch or a worktree** unless the user or a user-invoked skill asked for it. Work on the current branch, even when the change feels branch-worthy — say so and let the user decide.
-
 ## File paths in answers
 
 - **Always write file paths inside backticks** — `src/app.ts:42`, `packages/groups/`.
