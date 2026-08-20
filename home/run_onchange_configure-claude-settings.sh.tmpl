@@ -53,12 +53,21 @@ if ! command -v claude &>/dev/null; then
 fi
 
 known=$(claude plugin marketplace list --json 2>/dev/null | jq -r '.[].name')
+# Filled by the loop below with the marketplaces it DELIBERATELY skipped, and
+# read by the plugin loop after it. Deliberately, and never "absent from the
+# list I read": `claude plugin marketplace list` failing, or its JSON shape
+# moving under the jq below, empties $known — and a filter built on that would
+# then skip every plugin on the machine while printing a message that says
+# nothing is wrong. Attempting the install and failing out loud is the honest
+# answer to a state this script cannot explain.
+absent=""
 while IFS=$'\t' read -r name kind source; do
     if [ -z "$name" ] || grep -qxF "$name" <<<"$known"; then continue; fi
     # A directory marketplace whose repo is not checked out here is not an
     # error — that machine just does not have it, and `add` would only fail.
     if [ "$kind" = "directory" ] && [ ! -d "$source" ]; then
         echo "claude-settings: marketplace '$name' skipped ($source not on this machine)"
+        absent+="$name"$'\n'
         continue
     fi
     claude plugin marketplace add "$source" >/dev/null \
@@ -70,6 +79,14 @@ done < <(jq -r '.extraKnownMarketplaces // {} | to_entries[]
 installed=$(claude plugin list --json 2>/dev/null | jq -r '.[].id')
 while read -r id; do
     if [ -z "$id" ] || grep -qxF "$id" <<<"$installed"; then continue; fi
+    # A plugin whose marketplace was skipped just above cannot install, and
+    # reporting it as "failed" on every run reads as something broken rather
+    # than as this machine simply not having that checkout. The droplet is where
+    # this bites: mbrella is a directory marketplace under ~/Projects.
+    if [ -n "$absent" ] && grep -qxF "${id##*@}" <<<"$absent"; then
+        echo "claude-settings: plugin '$id' skipped (marketplace not on this machine)"
+        continue
+    fi
     # -y: a marketplace-declared install command prompts, and this runs headless
     # under `dots update` where stdin is not a TTY.
     claude plugin install "$id" -y >/dev/null \

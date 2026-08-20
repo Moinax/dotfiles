@@ -58,6 +58,51 @@ header()  { printf '\n%b══ %s%b\n' "$BLUE" "$1" "$NC"; }
 # under the "Remote half" banner, which would make that banner a lie.
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# The PATH every host-side command needs, held once, because it is needed in two
+# shapes: exported into this process by the phases that run ON the host, and
+# interpolated into the remote command strings cmd_pair and cmd_claude send.
+# `ssh host 'bash script'` is neither a login nor an interactive shell, so
+# ~/.local/bin is absent from PATH — which made phase_just install a `just` it
+# then could not see on the next run and try to install it again over the file it
+# had just written, and which makes the plugin reconciler report "claude not
+# found", skip every plugin and exit 0, a failure that reads as a clean run.
+#
+# One definition rather than one per call site because the value it names is
+# precisely the one that will move: fnm's `aliases/default/bin` is the stable
+# path today, a /run/user/*/fnm_multishells/* one never was. An edit that reaches
+# three of the four copies leaves the fourth failing exactly as described above.
+# (tools/droplet-wizard.sh holds its own as RPATH; it does not source this file.)
+HOST_PATH='export PATH="$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:$PATH"'
+
+# eval so the string above can serve both shapes. It is a literal in this file —
+# nothing outside it ever reaches this.
+host_path() { eval "$HOST_PATH"; }
+
+# Every ssh, scp and rsync of the local half. `accept-new` is not decoration:
+# cmd_firewall closes the public IP, so the steady state is reaching the host at
+# a tailnet address no earlier command put in known_hosts. cmd_claude carried
+# BatchMode alone and died there with "Host key verification failed" on a desktop
+# that had never hand-ssh'd the tailnet address, while cmd_fork against the very
+# same host worked.
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
+
+# scp this script to the host and run one of its host-side subcommands. Two
+# callers, `setup` and `fork`, and they are one decision each: the /tmp path, the
+# ssh options, the -t.
+#
+# -t so apt, pnpm and the bundler get a tty; without one they buffer everything
+# to the end and a ten-minute phase looks like a hang. It also claims stdin,
+# which is why this stays scp-then-ssh rather than `bash -s`.
+#
+# BASH_SOURCE rather than $0, matching droplet-wizard.sh and backup-projects.sh:
+# they name the same file when this script is executed, and only BASH_SOURCE
+# still does if anything ever sources it.
+push_and_run() {
+    local target="$1" sub="$2"
+    scp -q "${SSH_OPTS[@]}" "${BASH_SOURCE[0]}" "$target:/tmp/provision-droplet.sh"
+    ssh -t "${SSH_OPTS[@]}" "$target" "bash /tmp/provision-droplet.sh $sub"
+}
+
 usage() {
     cat <<'EOF'
 Usage: dots droplet <command>       (or tools/provision-droplet.sh <command>)
@@ -66,6 +111,9 @@ Commands:
   create      Create the droplet (cloud-init: login user + your desktop key)
   setup       Provision or repair it — idempotent, this is the recovery path
   pair        Mint a pairing code for one more device (single-use, ~5 min)
+  claude      Push this working tree's Claude config: CLAUDE.md, skills,
+              subagents, marketplaces and plugins
+  fork        Rebuild T3 Code from origin/moinax and restart the service
   firewall    Close the public IP; only once Tailscale is up
   status      What exists, what is reachable, what is missing
   target      Print user@address for the host (public IP, else tailnet)
@@ -74,8 +122,9 @@ Commands:
   destroy     Delete the droplet and its firewall
   wizard      The half that needs you: browser logins, key registration
 
-`remote` and `report` also exist; both run ON the host and are called by setup
-and status. Running them from the desktop does nothing useful.
+`remote`, `report` and `fork-remote` also exist; all three run ON the host and
+are called by setup, status and fork. Running them from the desktop does
+nothing useful.
 EOF
 }
 
@@ -196,12 +245,7 @@ cmd_setup() {
     target=$(require_target)
 
     header "Provisioning $target"
-    scp -q -o StrictHostKeyChecking=accept-new "$0" "$target:/tmp/provision-droplet.sh"
-    # -t so apt and the installers get a tty; without one, some of them buffer
-    # everything to the end and a 10-minute phase looks like a hang. It also
-    # claims stdin, which is why this stays scp-then-ssh rather than `bash -s`.
-    ssh -t -o StrictHostKeyChecking=accept-new "$target" \
-        "bash /tmp/provision-droplet.sh remote"
+    push_and_run "$target" remote
 }
 
 # Deny-all inbound. Runs last, and only once Tailscale is up: applied before
@@ -262,8 +306,106 @@ cmd_pair() {
     target=$(require_target)
     header "Pairing a device with $DROPLET_NAME"
     info "Each code is single-use — run this again for the next device."
-    ssh -t -o StrictHostKeyChecking=accept-new "$target" \
-        'export PATH="$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:$PATH"; t3 pair --tailscale'
+    ssh -t "${SSH_OPTS[@]}" "$target" "$HOST_PATH; t3 pair --tailscale"
+}
+
+# ── Claude Code configuration ────────────────────────────────────────────────
+#
+# The agents run ON the host, so the global CLAUDE.md, the skills, the subagents
+# and the plugins have to be there: a session opened from the paired desktop
+# reads the host's ~/.claude and nothing of the desktop's. Until this existed
+# the host had no ~/.claude/skills at all and no plugin installed, and the
+# composer on the desktop answered with an empty list — correctly.
+#
+# Pushed from the working tree rather than reconciled on the host, for the same
+# reason droplet-wizard.sh sends tools/backup-projects.sh that way: the skill
+# being shipped may not be pushed yet.
+#
+# The settings and the reconciliation are chezmoi's job, and chezmoi is a
+# desktop tool the host deliberately does not have — so the run_onchange script
+# is RENDERED here and the result is what runs there. Rendering it rather than
+# restating its jq is the whole point: the marketplace and plugin loops keep
+# exactly one copy, in home/, and this command cannot drift from them.
+cmd_claude() {
+    local target repo rendered
+    repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+    target=$(require_target)
+    header "Claude Code configuration on $DROPLET_NAME"
+
+    # --mkpath creates the parents rsync otherwise refuses to — both ends are
+    # well past the 3.2.3 that added it — which is one ssh round-trip fewer than
+    # a preparatory `mkdir -p`.
+    #
+    # --delete because the repo is the source of truth for both directories, and
+    # a skill deleted here has to disappear there: a stale SKILL.md is still
+    # listed and still invocable, which is worse than never having shipped it.
+    rsync -a --mkpath --delete -e "ssh ${SSH_OPTS[*]}" \
+        "$repo/home/dot_claude/skills/" "$target:.claude/skills/"
+    rsync -a --mkpath --delete -e "ssh ${SSH_OPTS[*]}" \
+        "$repo/home/dot_claude/agents/" "$target:.claude/agents/"
+    ok "Skills and subagents mirrored"
+
+    # A copy, where the desktop has a symlink: that symlink points into this
+    # repo's working tree, which is not on the host and is not going to be.
+    scp -q "${SSH_OPTS[@]}" "$repo/claude/global.md" "$target:.claude/CLAUDE.md"
+    ok "CLAUDE.md copied"
+
+    header "Marketplaces and plugins"
+    # Rendered here and shipped as a file, never piped into `bash -s`: the script
+    # would then BE the remote shell's stdin, which every child it spawns
+    # inherits, and one `claude` that reads stdin swallows the rest of it — bash
+    # hits EOF early and exits 0 having skipped the plugin loop entirely. cmd_setup
+    # ships this script by scp for the same reason. `</dev/null` closes the other
+    # half: nothing in there should read a terminal, and under `dots update`
+    # there is none to read.
+    rendered=$(mktemp)
+    trap 'rm -f "$rendered"' RETURN
+    chezmoi execute-template < "$repo/home/run_onchange_configure-claude-settings.sh.tmpl" > "$rendered"
+    scp -q "${SSH_OPTS[@]}" "$rendered" "$target:/tmp/claude-settings.sh"
+
+    # statusLine and hooks name ccstatusline and vibewatch, two desktop binaries
+    # the host does not have. The statusline merely fails to draw; a hook whose
+    # command is missing fails on every single tool call, of every session, for
+    # seven events. Stripped here rather than filtered out of the canonical
+    # settings, which are the one copy the desktop shares and where both exist.
+    #
+    # `[ -f ]` first, and it is not defensive padding: the reconciler exits early
+    # and writes nothing when jq or claude is missing, and jq against an absent
+    # file would then take cmd_claude down under `set -e` three ok lines after it
+    # already looked finished.
+    #
+    # Quoted heredoc with the PATH passed as an argument, the shape cmd_snapshot
+    # uses and for the reason it gives: interpolated into a double-quoted command
+    # string this needs a dozen hand-escaped \$ and \", and a single missed one
+    # expands on the desktop instead of the host, silently.
+    ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$target" "bash -s '$HOST_PATH'" <<'REMOTE'
+set -e
+eval "$1"
+bash /tmp/claude-settings.sh </dev/null
+rm -f /tmp/claude-settings.sh
+s="$HOME/.claude/settings.json"
+[ -f "$s" ] || exit 0
+jq 'del(.statusLine, .hooks)' "$s" > "$s.new" && mv "$s.new" "$s"
+REMOTE
+    ok "Settings converged, desktop-only keys stripped"
+
+    info "Skills are resolved by the SERVER — run 'dots droplet fork' if the"
+    info "host is still on upstream t3, which discovers none of them."
+}
+
+# The desktop-side entry point for phase_fork. Same script, run on the host —
+# `setup` already runs that phase, so this is the one-phase form for the case
+# that actually recurs: the fork moved and nothing else did.
+cmd_fork() {
+    local target
+    target=$(require_target)
+    header "Rebuilding T3 Code from the fork on $DROPLET_NAME"
+    # Single quotes: the desktop command's name is spelled with backticks
+    # everywhere else in this repo, and inside a double-quoted string that is a
+    # command substitution that runs it.
+    info 'This builds what origin/moinax holds. `t3fork update` offers the push'
+    info 'and never takes it, so publish first if the desktop is ahead.'
+    push_and_run "$target" fork-remote
 }
 
 # ── Credential snapshot ──────────────────────────────────────────────────────
@@ -762,6 +904,26 @@ phase_agents() {
 # behind those recipients only when pointed at it. On the desktop that export
 # lives in the shell profile — a systemd unit reads no profile, so it has to be
 # stated here or every o27 session starts with a dead MCP server.
+# Write one t3code.service drop-in, and say whether it changed.
+#
+# Returns 0 when it wrote, 1 when the file already held exactly this — the
+# callers differ on what to do next (phase_env restarts whenever it wrote,
+# phase_fork folds the answer into a `changed` flag it shares with the build),
+# so the decision is theirs and only the write is shared. The two copies of this
+# had already drifted on that very point.
+#
+# Compared by content rather than by mtime or a marker: a drop-in edited by hand
+# and a drop-in this script wrote are the same file to systemd, and the only
+# honest question is whether it says what it should.
+write_dropin() {
+    local file="$1" want="$2"
+    [ -f "$file" ] && [ "$(cat "$file")" = "$want" ] && return 1
+    mkdir -p "$(dirname "$file")"
+    printf '%s\n' "$want" > "$file"
+    systemctl --user daemon-reload
+    return 0
+}
+
 phase_env() {
     header "T3 Code unit environment"
     local dir="$HOME/.config/systemd/user/t3code.service.d" file
@@ -771,13 +933,10 @@ phase_env() {
 Environment=SOPS_AGE_SSH_PRIVATE_KEY_FILE=$HOME/.ssh/o27_socle_sops
 Environment=PATH=$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-    if [ -f "$file" ] && [ "$(cat "$file")" = "$want" ]; then
+    if ! write_dropin "$file" "$want"; then
         ok "Unit environment already set"
         return 0
     fi
-    mkdir -p "$dir"
-    printf '%s\n' "$want" > "$file"
-    systemctl --user daemon-reload
     if systemctl --user is-active t3code >/dev/null 2>&1; then
         systemctl --user restart t3code
         ok "Unit environment written, T3 Code restarted onto it"
@@ -800,6 +959,170 @@ phase_t3_service() {
     systemctl --user is-active t3code >/dev/null 2>&1 \
         && ok "Service active" \
         || warn "Service installed but not active — check ~/.t3/userdata/logs/boot-service.log"
+}
+
+# ── The fork, on the host ────────────────────────────────────────────────────
+#
+# docs/adr/0003 supersedes 0001: this host runs OUR build, not upstream's.
+#
+# Six of the fork's fifteen commits are server-side skill discovery, and upstream
+# 0.0.33 has none of it — grep its bundle and `skills` appears three times, all
+# of them the contract's field, with no code behind it. It answers every skill
+# lookup with an empty list. Skills are resolved by whichever machine runs the
+# agent, which for a paired session is this one, so installing skills here
+# without this phase changes nothing at all: that is the state cmd_claude alone
+# would leave, and it looks identical to a broken client.
+#
+# `t3 service install` does not run the binary that invoked it. It
+# `npm install t3@<version>`s a pinned runtime under ~/.t3/runtime/versions and
+# points the unit at a launcher that spawns THAT. So there is nothing to link or
+# override in the install itself, and the hook is a systemd drop-in on ExecStart
+# — the mechanism phase_env already uses, surviving a unit rewrite for the same
+# reason.
+#
+# Losing the launcher on the way is the feature, not the price: the launcher is
+# the self-update supervisor, and self-updating a fork host means npm-installing
+# upstream over our build. That is exactly what t3-code-fork.md documents for
+# `dots apps`, arriving by a second road. The server reads no launcher context,
+# concludes it is unmanaged (cloud/serviceLauncherClient.ts) and serves normally.
+FORK_DIR="$HOME/Projects/labs/t3code"
+FORK_URL="git@github.com:Moinax/t3code.git"
+FORK_BRANCH="moinax"
+# Named once because two places read it — the phase writes it, cmd_report prints
+# from it — and a moved sentinel that only the writer follows makes the report
+# say `fork` with an empty sha about a perfectly healthy host.
+FORK_SENTINEL="$FORK_DIR/apps/server/dist/.built-from"
+
+phase_fork() {
+    header "T3 Code fork"
+
+    if [ ! -d "$FORK_DIR/.git" ]; then
+        mkdir -p "$(dirname "$FORK_DIR")"
+        # --depth 1: this checkout exists to build from and never to read an
+        # older commit from, and the fetch below stays shallow. Full history is
+        # half a gigabyte over the droplet's WAN link on every rebuild.
+        #
+        # Failing here is normal on a first run — the clone authenticates with
+        # the key phase_sshkey just generated, which the wizard has not yet
+        # registered on GitHub. It still returns non-zero: cmd_remote is what
+        # decides that is survivable, and `dots droplet fork` run for exactly
+        # this reason must not answer 0 having built nothing.
+        if ! git clone --depth 1 --branch "$FORK_BRANCH" "$FORK_URL" "$FORK_DIR"; then
+            err "Cannot clone the fork — register this host's key on GitHub, then:"
+            err "  dots droplet fork"
+            return 1
+        fi
+    fi
+
+    # `git -C` rather than `cd`: cmd_remote runs phase_probe_o27 after this one,
+    # and a cwd left inside the build tree is the kind of thing nothing notices
+    # until a later phase resolves a relative path against it.
+
+    # `t3fork update` rebases and force-pushes, so origin/$FORK_BRANCH is
+    # rewritten rather than advanced — a pull conflicts every time and a merge
+    # invents a history no other machine has. Reset is the honest operation here:
+    # this checkout exists to build from, never to commit from.
+    #
+    # It still refuses on a dirty tree. Nothing is supposed to edit here, which
+    # is precisely why an edit that exists anyway is worth stopping for instead
+    # of discarding. Untracked files are left alone: no -d, no -x.
+    #
+    # pnpm-lock.yaml excepted, because `vp i` below rewrites it with registry
+    # metadata on every install — so the guard fired on the second run, every
+    # time, over a file this phase had dirtied itself. `t3fork` pays the same
+    # toll on the desktop and answers it with `rebase --autostash`; here the
+    # reset restores it and the next `vp i` dirties it again. Same file, same
+    # cause, and worth naming twice.
+    if ! git -C "$FORK_DIR" diff --quiet -- . ':(exclude)pnpm-lock.yaml' \
+       || ! git -C "$FORK_DIR" diff --cached --quiet; then
+        err "$FORK_DIR has uncommitted changes — refusing to reset over them"
+        return 1
+    fi
+    # What lands here is the last PUBLISHED commit. `t3fork update` offers the
+    # push and never takes it on its own, so a declined offer leaves the desktop
+    # ahead of what this builds — which is why the sha is printed rather than
+    # assumed to match.
+    git -C "$FORK_DIR" fetch --quiet origin "$FORK_BRANCH" || {
+        err "Cannot reach the fork remote — is this host's key still on GitHub?"
+        return 1
+    }
+    git -C "$FORK_DIR" reset --quiet --hard FETCH_HEAD
+    ok "$(git -C "$FORK_DIR" log --oneline -1)"
+
+    have vp || npm install -g vite-plus >/dev/null 2>&1
+    have vp || { err "vite-plus is missing and could not be installed"; return 1; }
+
+    # Skip the build when the tree has not moved and the output is intact. This
+    # script is the documented repair path and gets re-run for reasons that have
+    # nothing to do with the fork; three minutes spent reproducing byte-identical
+    # output is how a recovery path stops being re-run.
+    local head changed=0
+    head=$(git -C "$FORK_DIR" rev-parse HEAD)
+    if [ -f "$FORK_SENTINEL" ] && [ "$(cat "$FORK_SENTINEL")" = "$head" ] \
+       && [ -f "$FORK_DIR/apps/server/dist/bin.mjs" ]; then
+        ok "Already built from ${head:0:9}"
+    else
+        # Each wrapped in its own error: bare under `set -e` a failed install
+        # kills the run with pnpm's output as the last thing on screen and no
+        # line of this script's own saying which step died.
+        (cd "$FORK_DIR" && vp i) || { err "vp i failed in $FORK_DIR"; return 1; }
+        # `build`, not `build:bundle`. build:bundle is the two `vp pack` calls
+        # and stops there; the web client reaches dist/client through the `build`
+        # task's dependsOn @t3tools/web#build. Built the short way the server
+        # comes up fine and serves no UI at all to a browser or a phone — and
+        # says so only in a line of build log nobody reads.
+        (cd "$FORK_DIR" && vp run --filter t3 build) \
+            || { err "vp run --filter t3 build failed"; return 1; }
+        [ -f "$FORK_DIR/apps/server/dist/bin.mjs" ] \
+            || { err "Build produced no bin.mjs"; return 1; }
+        printf '%s\n' "$head" > "$FORK_SENTINEL"
+        changed=1
+        ok "Built from ${head:0:9}"
+    fi
+
+    # 20-, so systemd reads it after phase_env's 10-path.conf. The empty
+    # `ExecStart=` is what clears the unit's own line before this one replaces
+    # it; without it systemd rejects the unit for a duplicate ExecStart.
+    #
+    # `serve` and the fnm alias path are verbatim what the launcher would have
+    # spawned (serviceLauncher.ts: spawn(process.execPath, [entry, "serve"])).
+    local dir file want
+    dir="$HOME/.config/systemd/user/t3code.service.d"
+    file="$dir/20-fork.conf"
+    want="[Service]
+ExecStart=
+ExecStart=$HOME/.local/share/fnm/aliases/default/bin/node $FORK_DIR/apps/server/dist/bin.mjs serve"
+
+    if write_dropin "$file" "$want"; then
+        changed=1
+        ok "Unit pointed at the fork"
+    else
+        ok "Unit already points at the fork"
+    fi
+
+    if ! systemctl --user is-enabled t3code >/dev/null 2>&1; then
+        warn "The t3code service is not installed yet — the drop-in applies once it is"
+        return 0
+    fi
+
+    # Restart only when something moved: it drops every live agent session, and
+    # this phase runs inside `setup`, which is re-run for unrelated repairs.
+    #
+    # A unit that is down is not "nothing moved" though. After a reboot, or a
+    # crash loop that landed it in `failed`, the build and the drop-in are both
+    # current — so the first version of this returned 0 having printed the word
+    # `failed` inside an INFO line, and `dots droplet fork` exited clean on a
+    # host with no server running. That is the state this command is most often
+    # run for.
+    if [ "$changed" = 0 ]; then
+        if systemctl --user is-active t3code >/dev/null 2>&1; then
+            info "Nothing moved — service left alone (active)"
+            return 0
+        fi
+        warn "Nothing moved, but the service is $(systemctl --user is-active t3code 2>/dev/null || true) — starting it"
+    fi
+    systemctl --user restart t3code
+    ok "T3 Code running on the fork ($(systemctl --user is-active t3code))"
 }
 
 phase_playwright() {
@@ -921,7 +1244,7 @@ phase_probe_o27() {
 }
 
 cmd_report() {
-    export PATH="$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:$PATH"
+    host_path
     # On the very first run this shell was opened before Nix existed, so its
     # PATH predates /etc/environment being rewritten — without this the report
     # says nix is MISSING on the one run where that is most alarming and least
@@ -941,14 +1264,24 @@ cmd_report() {
     printf 'linger    %s\n' "$(loginctl show-user "$USER" --property=Linger 2>/dev/null || echo '?')"
     printf 'chromium  %s\n' "$(find "$HOME/.cache/ms-playwright" -maxdepth 1 -name 'chromium-*' 2>/dev/null | head -1 || echo 'MISSING')"
     printf 't3 unit   %s\n' "$(systemctl --user is-active t3code 2>/dev/null || echo 'not installed')"
+    # Which build the unit actually runs. `t3 --version` above answers for the
+    # npm-installed CLI, which is upstream and is NOT what the service executes
+    # once phase_fork's drop-in is in place — the one line of this report that
+    # would otherwise be quietly false.
+    printf 't3 server %s\n' "$(
+        case "$(systemctl --user show t3code -p ExecStart --value 2>/dev/null)" in
+            # An empty sha here is not cosmetic: it means the drop-in points at a
+            # bin.mjs that no longer exists, so the unit cannot start — and
+            # `fork ` with a trailing space reads as a healthy fork build.
+            *"$FORK_DIR"*) sha=$(cut -c1-9 "$FORK_SENTINEL" 2>/dev/null || true)
+                           echo "fork ${sha:-UNBUILT (run: dots droplet fork)}" ;;
+            '') echo 'not installed' ;;
+            *) echo 'upstream (run: dots droplet fork)' ;;
+        esac)"
 }
 
 cmd_remote() {
-    # Set once, for every phase. `ssh host 'bash script'` is neither a login nor
-    # an interactive shell, so ~/.local/bin is absent from PATH — which made
-    # phase_just install a `just` it then could not see on the next run, and try
-    # to install it again over the file it had just written.
-    export PATH="$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:$PATH"
+    host_path  # once, for every phase below
     header "Provisioning $(hostname) as $USER"
     phase_base
     phase_just
@@ -964,7 +1297,19 @@ cmd_remote() {
     phase_env
     phase_playwright
     phase_tailscale
+    # After phase_sshkey, which is what creates the key the clone authenticates
+    # with. On a first run that key is still unregistered on GitHub, so the clone
+    # fails and the phase says which command to re-run once the wizard has
+    # registered it — it never fails the provisioning run over it.
     phase_sshkey
+    # `|| warn`, because this is the only phase that can fail on a first run by
+    # design — the clone authenticates with the key phase_sshkey just made and
+    # the wizard has not registered it yet. Bare under `set -e` that aborts
+    # cmd_remote here, so phase_probe_o27, the report, the wizard checklist and
+    # the final `cat id_ed25519.pub` never print: the recovery path would die one
+    # phase from the end, hiding the very key you need to fix it. The phase keeps
+    # returning non-zero so `dots droplet fork` still fails honestly.
+    phase_fork || warn "Fork build did not complete — re-run: dots droplet fork"
     phase_probe_o27
 
     header "Done"
@@ -974,6 +1319,10 @@ cmd_remote() {
     info "What is left needs you — run tools/droplet-wizard.sh from the desktop:"
     info "  tailscale up · register this key on GitHub + Forgejo · sops key ·"
     info "  claude/codex login · restore secrets · t3 service install · firewall"
+    echo ""
+    info "Then, from the desktop, the two this box cannot do for itself:"
+    info "  dots droplet claude   the skills and plugins the agents here read"
+    info "  dots droplet fork     if the key was not registered when setup ran"
     echo ""
     info "This host's public key (register it on both forges):"
     cat "$HOME/.ssh/id_ed25519.pub"
@@ -987,10 +1336,13 @@ case "${1:-}" in
     status)   cmd_status ;;
     target)   host_target ;;
     pair)     cmd_pair ;;
+    claude)   cmd_claude ;;
+    fork)     cmd_fork ;;
     snapshot) shift; cmd_snapshot "$@" ;;
     restore)  shift; cmd_restore "$@" ;;
     remote)   cmd_remote ;;
     report)   cmd_report ;;
+    fork-remote) host_path; phase_fork ;;
     help|--help|-h|"") usage ;;
     *) err "Unknown command: $1"; exit 1 ;;
 esac

@@ -1,5 +1,10 @@
 # The remote host runs T3 Code upstream, not our fork
 
+**Superseded by `docs/adr/0003`.** The signal below fired: six of the fork's
+commits turned out to be server-side skill discovery, which upstream does not
+have at all. Kept because the reasoning is still the reasoning — 0003 pays the
+cost this one priced correctly, it does not argue the price was wrong.
+
 The desktop runs a patched T3 Code built by `t3fork` from `~/Projects/labs/t3code`, so
 the obvious move for a remote host would be to run the same build there. We run
 **upstream `npx t3@latest`** on the host instead, managed by `t3 service install`.

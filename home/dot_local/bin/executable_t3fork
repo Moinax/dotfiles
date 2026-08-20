@@ -357,6 +357,14 @@ offer_push() {
     echo "t3fork: push refused — origin moved since we looked. Re-run: t3fork update" >&2
     return 0
   }
+
+  # The droplet builds origin/$branch (docs/adr/0003), so this push is the only
+  # moment the host becomes reachable-and-stale — and nothing over there notices.
+  # Said here rather than in the fork report because the report measures drift
+  # against *upstream*, which is a different question and answers "0" for a fork
+  # that is perfectly in step with upstream and three commits ahead of the host.
+  echo "t3fork: the droplet builds origin/$branch — bring it along with:"
+  echo "  dots droplet fork"
 }
 
 case "${1:-}" in

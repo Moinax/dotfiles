@@ -2,6 +2,7 @@
 description: Why T3 Code is built from our fork and deliberately untracked by dots apps, and why the single launcher entry with its exact --name is load-bearing.
 paths:
   - home/dot_local/bin/executable_t3fork
+  - tools/provision-droplet.sh
   - home/dot_local/bin/executable_t3-code-launch.sh
   - tools/manage-external-apps.py
 ---
@@ -16,6 +17,13 @@ It used to be tracked as a `pingdotgg/t3code` pre-release, so `dots update`
 offered that row and accepting it downloaded the upstream nightly *over* the fork
 build, silently dropping every patch. The source record was removed — **never
 re-add it with `dots apps install-github`**.
+
+**The droplet is the second road onto the same rake.** `phase_fork` in
+`tools/provision-droplet.sh` builds this fork there too, and its systemd drop-in
+deliberately bypasses `service-launcher.mjs` — the self-update supervisor, which
+would `npm install` upstream over our build exactly as `dots apps` did. Restoring
+the launcher "so t3 can manage itself" is the same mistake in a second file; see
+`docs/adr/0003`.
 
 Upstream movement is reported instead by the fork check at the end of
 `dots update` (`fork_drift`, see `sync-machine.md`), which needs no declaration to
