@@ -47,10 +47,13 @@ zellij attach -c -b "$session" >/dev/null 2>&1 || true
 # as the existence check; query-tab-names can. zellij 0.44.3 ignores new-tab's
 # --cwd when it creates its implicit default shell, so provide the shell as an
 # explicit initial command; --cwd is then applied to the pane as documented.
-# (`go-to-tab-name --create` takes no cwd either.)
+# (`go-to-tab-name --create` takes no cwd either.) A pane started from an
+# explicit command is a *command* pane, which zellij keeps alive on exit with
+# its "press <Enter> to re-run, <Esc> to close" screen — so Ctrl+D would leave
+# a dead tab behind. `--close-on-exit` gives back the plain-shell behaviour.
 if ! zellij -s "$session" action query-tab-names 2>/dev/null | grep -qxF "$name"; then
     shell="${SHELL:-/usr/bin/zsh}"
-    tab_id="$(zellij -s "$session" action new-tab --cwd "$dir" --name "$name" -- "$shell")"
+    tab_id="$(zellij -s "$session" action new-tab --cwd "$dir" --name "$name" --close-on-exit -- "$shell")"
 
     # An explicit initial command makes zellij use its path (eg. /usr/bin/zsh)
     # as the pane title, unlike the implicit shell whose neutral title is
