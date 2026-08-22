@@ -15,8 +15,44 @@ Each tracked app follows one release channel, stored as `PRERELEASE=0|1` in its
 still loads. Stable resolves through `/releases/latest` (GitHub excludes drafts and
 pre-releases there); the pre-release channel has no equivalent endpoint, so it reads the
 first page of `/releases` and takes the newest non-draft entry — which is the last stable
-tag when no newer pre-release exists. The session release cache is therefore keyed by
-`(repo, prerelease)`, not by repo alone.
+tag when no newer pre-release exists.
+
+`TAG_PREFIX` in the same file (`--tag-prefix`, empty = no filter) narrows every lookup to
+releases whose tag starts with it, and forces that same listing path since
+`/releases/latest` cannot be filtered. **It is not a nicety — a repo that cuts one release
+per platform is untrackable without it.** getagentseal/codeburn publishes Linux under
+`desktop-v*`, macOS under `mac-v*` and Windows under `windows-v*`, so `/releases/latest`
+is whichever platform shipped last: the install fails as "no Linux build in this release",
+and an app pinned by hand would compare its `desktop-v…` tag against a `windows-v…` one
+and read as outdated forever. On the stable channel the listing scan also has to re-apply
+the pre-release test that `/releases/latest` was doing implicitly, or a tag prefix would
+quietly start following betas.
+
+The session release cache is therefore keyed by `(repo, prerelease, tag_prefix)`, not by
+repo alone.
+
+**A tag prefix must come off before the tag is read as a version**, which is what
+`strip_tag_prefix()` is for and why `version_is_outdated`, `versions_match` and
+`derive_asset_pattern` all take one. It is not cosmetic — the prefix otherwise lands
+inside the version string and hijacks the `partition("-")` in `version_key()`:
+`desktop-v1.0.0` parses as release `desktop` (empty numeric part) plus suffix `v1.0.0`.
+Two things break at once. It sorts below every bare version, so a Distrobox app — whose
+installed version comes from the container's package database and is therefore never
+prefixed — reads as current against every future release and silently stops updating. And
+`desktop-v1.0.0-beta1` sorts *above* `desktop-v1.0.0`, inverting the single ordering
+`version_key()` exists to guarantee. Both sides of every comparison go through the strip,
+including the side that never carries a prefix, so that neither can be forgotten.
+
+The same applies to `derive_asset_pattern`: an asset is named after the version, never
+after the platform tag it is published under, so without the strip `desktop-v0.9.20` finds
+nothing in `CodeBurn-0.9.20.AppImage` and the pattern gets pinned to that exact filename —
+matching no later release and failing every update in `pick_release_asset`.
+
+**Only the CLI can create a tag-prefixed app.** The interactive wizard carries a saved
+`TAG_PREFIX` over on `set-source` rather than prompting for it — it describes how the repo
+publishes, which the wizard cannot usefully change — but "Install from GitHub release" has
+no field for one. A new per-platform repo has to go through
+`dots apps install-github … --tag-prefix …`.
 
 Switching channels is a plain `set-source --prerelease` / `--stable`: every option but
 `--name` is inherited from the saved source. Going back to stable leaves a newer

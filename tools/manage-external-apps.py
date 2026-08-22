@@ -58,21 +58,26 @@ Commands:
 
   install-github <owner/repo | github URL> [--name NAME] [--asset GLOB] [--type appimage|package]
                  [--container NAME] [--app DESKTOP_ID] [--args "FLAGS"] [--prerelease]
-                 [--non-interactive]
+                 [--tag-prefix PREFIX] [--non-interactive]
       Download the latest GitHub release asset and install it (AppImage → launcher
       import, deb/rpm/pkg.tar → Distrobox install). The source is remembered so the
       app can be kept current with 'check-updates' / 'update'.
       --prerelease follows the newest release including nightlies/betas instead of
       the latest stable one.
+      --tag-prefix restricts every lookup to releases whose tag starts with PREFIX,
+      for repos that cut one release per platform under separate tags — without it
+      such a repo resolves to whichever platform shipped last, which carries no
+      Linux build at all (e.g. --tag-prefix desktop- for getagentseal/codeburn).
 
   set-source --name APP [--repo <owner/repo | github URL>] [--asset GLOB] [--version TAG]
-             [--prerelease | --stable]
+             [--prerelease | --stable] [--tag-prefix PREFIX]
       Attach a GitHub release source to an already-installed app. Without --version
       the app reports as updatable until the first 'update' runs.
       Every option but --name is inherited from the saved source when omitted, so
       switching an already-tracked app between channels is just:
         set-source --name APP --prerelease     # follow nightlies/betas
         set-source --name APP --stable         # back to stable releases
+      Pass --tag-prefix "" to clear a saved tag filter.
 
   check-updates [--porcelain]
       Compare each app's installed version against its latest GitHub release.
@@ -488,7 +493,8 @@ def load_distrobox_metadata(app_name):
     return read_env(f)
 
 
-def save_source_metadata(app_name, app_type, repo, pattern, version, prerelease=False):
+def save_source_metadata(app_name, app_type, repo, pattern, version, prerelease=False,
+                         tag_prefix=""):
     ensure_dirs()
     write_env(source_file_for_name(app_name), {
         "APP_NAME": app_name,
@@ -497,6 +503,7 @@ def save_source_metadata(app_name, app_type, repo, pattern, version, prerelease=
         "ASSET_PATTERN": pattern,
         "VERSION": version,
         "PRERELEASE": "1" if prerelease else "0",
+        "TAG_PREFIX": tag_prefix,
     })
 
 
@@ -504,6 +511,11 @@ def source_prerelease(src):
     """Channel flag from a source .env. Absent (pre-existing state files, and
     the shell version's format) reads as stable."""
     return src.get("PRERELEASE", "0") == "1"
+
+
+def source_tag_prefix(src):
+    """Tag filter from a source .env; absent reads as 'no filter'."""
+    return src.get("TAG_PREFIX", "")
 
 
 def load_source_metadata(app_name):
@@ -963,10 +975,31 @@ def normalize_version(value):
     return re.sub(r"-\d+$", "", v)
 
 
-def versions_match(tag, installed):
+def strip_tag_prefix(value, tag_prefix):
+    """Drop an app's TAG_PREFIX before its tag is read as a version.
+
+    Load-bearing, not cosmetic: the prefix otherwise lands inside the version
+    string and hijacks the partition() in version_key() that splits the release
+    from its prerelease suffix. "desktop-v1.0.0" parses as release "desktop" —
+    numeric part empty — plus suffix "v1.0.0", which breaks two things at once.
+    It sorts below every bare version, so a Distrobox app (whose installed
+    version comes from the container's package database, never prefixed) reads
+    as current against every future release and stops updating. And
+    "desktop-v1.0.0-beta1" sorts *above* "desktop-v1.0.0", inverting the one
+    ordering version_key() exists to guarantee.
+
+    The installed side is passed through it too and is normally unaffected — a
+    no-op removeprefix — which is the point: both sides go through one call so
+    neither can be forgotten.
+    """
+    return value.removeprefix(tag_prefix) if tag_prefix and value else value
+
+
+def versions_match(tag, installed, tag_prefix=""):
     if not tag or not installed:
         return False
-    return normalize_version(tag) == normalize_version(installed)
+    return (normalize_version(strip_tag_prefix(tag, tag_prefix))
+            == normalize_version(strip_tag_prefix(installed, tag_prefix)))
 
 
 def _natural_chunks(text):
@@ -990,7 +1023,7 @@ def version_key(value):
             (0, _natural_chunks(suffix)) if suffix else (1, ()))
 
 
-def version_is_outdated(installed, latest):
+def version_is_outdated(installed, latest, tag_prefix=""):
     """True only when `latest` is genuinely newer than `installed`.
 
     Ordered rather than compared for inequality, so an installed version that
@@ -1003,7 +1036,8 @@ def version_is_outdated(installed, latest):
         return False
     if not installed:
         return True
-    return version_key(latest) > version_key(installed)
+    return (version_key(strip_tag_prefix(latest, tag_prefix))
+            > version_key(strip_tag_prefix(installed, tag_prefix)))
 
 
 def installed_version_for_source(src, allow_start=False):
@@ -1204,6 +1238,7 @@ def execute_remove_distrobox(metadata_file):
 #   SOURCE_REPO    GitHub owner/repo
 #   ASSET_PATTERN  glob matched against release asset filenames
 #   VERSION        installed release tag ('' = unknown → reported as updatable)
+#   TAG_PREFIX     only consider releases whose tag starts with this ('' = any)
 
 
 def github_normalize_repo(repo_input):
@@ -1310,7 +1345,7 @@ def _gh_get_json(url):
         return None
 
 
-def gh_release_json(repo, prerelease=False):
+def gh_release_json(repo, prerelease=False, tag_prefix=""):
     """Newest release JSON dict for a repo on the requested channel, fetched
     once per session; None on failure.
 
@@ -1319,8 +1354,14 @@ def gh_release_json(repo, prerelease=False):
     first page of /releases (newest first) and takes the newest non-draft entry
     — that is the nightly/beta tag when one is ahead of the last stable, and the
     stable tag otherwise.
+
+    tag_prefix narrows the search to releases whose tag starts with it, and
+    forces that same listing path since /releases/latest cannot be filtered —
+    for repos that cut one release per platform under separate tags. See
+    .claude/rules/manage-external-apps.md for why, and for what else such an app
+    has to get right.
     """
-    key = (repo, bool(prerelease))
+    key = (repo, bool(prerelease), tag_prefix)
     with _release_cache_lock:
         if key in _release_cache:
             return _release_cache[key]
@@ -1329,13 +1370,23 @@ def gh_release_json(repo, prerelease=False):
     if rate_limit_reset() is not None:
         return None
 
-    if prerelease:
+    if prerelease or tag_prefix:
         # 30 is GitHub's default page size and plenty: a repo publishing more
         # than 30 releases between two checks is not a channel worth tracking.
+        # A per-platform repo spends that budget faster (codeburn cuts 3-4 tags
+        # per version), which is still ~8 versions deep — far past a check
+        # interval.
         listing = _gh_get_json(f"https://api.github.com/repos/{repo}/releases?per_page=30")
         if not isinstance(listing, list):
             return None
-        data = next((r for r in listing if isinstance(r, dict) and not r.get("draft")), None)
+        # Drafts are excluded on both channels; pre-releases only on the stable
+        # one, where /releases/latest would have skipped them too. Without that
+        # second test a tag_prefix on the stable channel would quietly start
+        # following betas.
+        data = next((r for r in listing
+                     if isinstance(r, dict) and not r.get("draft")
+                     and (r.get("tag_name") or "").startswith(tag_prefix)
+                     and (prerelease or not r.get("prerelease"))), None)
         if data is None:
             return None
     else:
@@ -1350,8 +1401,10 @@ def gh_release_json(repo, prerelease=False):
 
 def prefetch_release_json(targets):
     """Warm the release cache concurrently. Accepts repo strings or
-    (repo, prerelease) pairs — a repo tracked on both channels is two fetches."""
-    pairs = sorted({(t, False) if isinstance(t, str) else (t[0], bool(t[1])) for t in targets})
+    (repo, prerelease[, tag_prefix]) tuples — a repo tracked on two channels,
+    or under two tag prefixes, is two fetches."""
+    pairs = sorted({(t, False, "") if isinstance(t, str) else (t[0], bool(t[1]), t[2])
+                    for t in targets})
     if not pairs:
         return
     # Resolve the token before fanning out, so the workers don't queue behind
@@ -1363,15 +1416,17 @@ def prefetch_release_json(targets):
         list(pool.map(lambda p: gh_release_json(*p), pairs))
 
 
-def github_latest_tag(repo, prerelease=False):
-    return (gh_release_json(repo, prerelease) or {}).get("tag_name") or ""
+def github_latest_tag(repo, prerelease=False, tag_prefix=""):
+    return (gh_release_json(repo, prerelease, tag_prefix) or {}).get("tag_name") or ""
 
 
-def github_fetch_latest_release(repo, prerelease=False):
+def github_fetch_latest_release(repo, prerelease=False, tag_prefix=""):
     """Newest release tag + asset URLs on a channel; raises AppError with details."""
     what = "newest pre-release" if prerelease else "latest release"
+    if tag_prefix:
+        what += f" tagged {tag_prefix}*"
     with Spinner(f"Fetching {what} of {repo}..."):
-        data = gh_release_json(repo, prerelease)
+        data = gh_release_json(repo, prerelease, tag_prefix)
     tag = (data or {}).get("tag_name") or ""
     assets = [a.get("browser_download_url", "") for a in (data or {}).get("assets", [])]
     assets = [u for u in assets if u]
@@ -1432,9 +1487,16 @@ def filter_release_assets(asset_urls, pattern, type_filter):
     return primary or fallback
 
 
-def derive_asset_pattern(name, tag):
-    """Concrete asset filename → reusable glob (version replaced with '*')."""
-    bare = tag.removeprefix("v")
+def derive_asset_pattern(name, tag, tag_prefix=""):
+    """Concrete asset filename → reusable glob (version replaced with '*').
+
+    The tag_prefix comes off first: an asset is named after the version, never
+    after the platform tag it happens to be published under, so "desktop-v0.9.20"
+    finds nothing in "CodeBurn-0.9.20.AppImage" and the fall-through would pin
+    the pattern to that exact filename — matching no later release, and failing
+    every future update in pick_release_asset instead of at derive time.
+    """
+    bare = strip_tag_prefix(tag, tag_prefix).removeprefix("v")
     if bare and bare in name:
         return name.replace(bare, "*")
     if tag and tag in name:
@@ -1609,7 +1671,8 @@ def cmd_update_distrobox(argv):
 
 def cmd_install_github(argv):
     parsed = parse_flags(argv,
-                         value_flags=("--name", "--asset", "--type", "--container", "--app", "--args"),
+                         value_flags=("--name", "--asset", "--type", "--container", "--app",
+                                      "--args", "--tag-prefix"),
                          bool_flags=("--non-interactive", "--prerelease"), max_positional=1)
     if parsed is None:
         print(USAGE)
@@ -1629,9 +1692,10 @@ def cmd_install_github(argv):
     app_name = flags.get("--name", "")
     container = flags.get("--container", "")
     asset_pattern = flags.get("--asset", "")
+    tag_prefix = flags.get("--tag-prefix", "")
 
     repo = github_normalize_repo(positionals[0])
-    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease, tag_prefix)
     print_info(f"Latest {channel_label(prerelease)} of {repo}: {tag}")
 
     # --container implies a distro package install
@@ -1643,7 +1707,7 @@ def cmd_install_github(argv):
 
     # Remember a version-agnostic pattern so updates match future releases
     if not asset_pattern:
-        asset_pattern = derive_asset_pattern(asset_name, tag)
+        asset_pattern = derive_asset_pattern(asset_name, tag, tag_prefix)
 
     asset_path = download_release_asset(asset_url)
     try:
@@ -1673,16 +1737,19 @@ def cmd_install_github(argv):
     finally:
         shutil.rmtree(asset_path.parent, ignore_errors=True)
 
-    save_source_metadata(app_name, app_type, repo, asset_pattern, tag, prerelease)
+    save_source_metadata(app_name, app_type, repo, asset_pattern, tag, prerelease, tag_prefix)
     print_success(f"Pinned update source for {app_name}")
     print(f"  Repo: {repo}")
     print(f"  Channel: {channel_label(prerelease)}")
+    if tag_prefix:
+        print(f"  Tag prefix: {tag_prefix}")
     print(f"  Version: {tag}")
     print(f"  Asset pattern: {asset_pattern}")
     return 0
 
 
-def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=False):
+def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=False,
+                       tag_prefix=""):
     ensure_dirs()
     slug = slugify(app_name)
 
@@ -1696,7 +1763,7 @@ def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=
         raise AppError("")
 
     repo = github_normalize_repo(repo_input)
-    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease, tag_prefix)
 
     # Make sure the pattern (or the type default) matches something downloadable.
     # This is what catches a channel switch whose saved pattern only matched the
@@ -1704,12 +1771,14 @@ def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=
     type_filter = "appimage" if app_type == "appimage" else "package"
     asset_url = pick_release_asset(asset_urls, asset_pattern, type_filter, False)
     if not asset_pattern:
-        asset_pattern = derive_asset_pattern(asset_url.rsplit("/", 1)[-1], tag)
+        asset_pattern = derive_asset_pattern(asset_url.rsplit("/", 1)[-1], tag, tag_prefix)
 
-    save_source_metadata(app_name, app_type, repo, asset_pattern, version, prerelease)
+    save_source_metadata(app_name, app_type, repo, asset_pattern, version, prerelease, tag_prefix)
     print_success(f"Saved update source for {app_name}")
     print(f"  Repo: {repo}")
     print(f"  Channel: {channel_label(prerelease)} (latest: {tag})")
+    if tag_prefix:
+        print(f"  Tag prefix: {tag_prefix}")
     print(f"  Asset pattern: {asset_pattern}")
     if version:
         print(f"  Installed version: {version}")
@@ -1720,12 +1789,13 @@ def execute_set_source(app_name, repo_input, asset_pattern, version, prerelease=
 
 
 def cmd_set_source(argv):
-    parsed = parse_flags(argv, value_flags=("--name", "--repo", "--asset", "--version"),
+    parsed = parse_flags(argv,
+                         value_flags=("--name", "--repo", "--asset", "--version", "--tag-prefix"),
                          bool_flags=("--prerelease", "--stable"))
     if parsed is None:
         print(USAGE)
         return 0
-    flags, _, _ = parsed
+    flags, _, seen = parsed
     if not flags.get("--name"):
         print_error("set-source requires --name")
         print(USAGE)
@@ -1754,10 +1824,14 @@ def cmd_set_source(argv):
     else:
         prerelease = source_prerelease(saved)
 
+    # Tested on `seen`, not on truthiness, so `--tag-prefix ""` clears a saved
+    # filter instead of silently re-inheriting it.
+    tag_prefix = flags["--tag-prefix"] if "--tag-prefix" in seen else source_tag_prefix(saved)
+
     execute_set_source(app_name, repo,
                        flags.get("--asset", "") or saved.get("ASSET_PATTERN", ""),
                        flags.get("--version", "") or saved.get("VERSION", ""),
-                       prerelease)
+                       prerelease, tag_prefix)
     return 0
 
 
@@ -1767,7 +1841,8 @@ def collect_update_report(files, quiet):
     sources = [read_env(f) for f in files]
     installed_versions = []
     with Spinner(f"Checking {len(files)} app(s) for updates...") if not quiet else _null_ctx():
-        prefetch_release_json((s.get("SOURCE_REPO", ""), source_prerelease(s))
+        prefetch_release_json((s.get("SOURCE_REPO", ""), source_prerelease(s),
+                               source_tag_prefix(s))
                               for s in sources if s.get("SOURCE_REPO"))
         # Read-only: a stopped container is left stopped and its recorded
         # version used, rather than booting it just to answer a check. Entering
@@ -1779,10 +1854,11 @@ def collect_update_report(files, quiet):
     up_to_date, outdated, failed = [], [], []
     for src, installed in zip(sources, installed_versions):
         name = src.get("APP_NAME", "")
-        latest = github_latest_tag(src.get("SOURCE_REPO", ""), source_prerelease(src))
+        latest = github_latest_tag(src.get("SOURCE_REPO", ""), source_prerelease(src),
+                                   source_tag_prefix(src))
         if not latest:
             failed.append((name, src.get("SOURCE_REPO", "")))
-        elif not version_is_outdated(installed, latest):
+        elif not version_is_outdated(installed, latest, source_tag_prefix(src)):
             # What is on disk, not `latest`: the two differ whenever the app
             # has run ahead of its tracked release, which is the case this
             # ordering exists for.
@@ -1843,21 +1919,21 @@ def execute_update_from_source(lookup_name):
     src = load_source_metadata(lookup_name)
     name, app_type = src["APP_NAME"], src["APP_TYPE"]
     repo, pattern, installed = src["SOURCE_REPO"], src["ASSET_PATTERN"], src.get("VERSION", "")
-    prerelease = source_prerelease(src)
+    prerelease, tag_prefix = source_prerelease(src), source_tag_prefix(src)
 
-    tag, asset_urls = github_fetch_latest_release(repo, prerelease)
+    tag, asset_urls = github_fetch_latest_release(repo, prerelease, tag_prefix)
 
     # This command is about to enter the container regardless, so starting it
     # to read the real version costs nothing extra — and saves re-downloading
     # a release the app already installed by itself.
     live = installed_version_for_source(src, allow_start=True)
-    if not version_is_outdated(live, tag):
+    if not version_is_outdated(live, tag, tag_prefix):
         print_info(f"{name} is already up to date ({live or 'unknown'})")
         # VERSION records the tag we consider installed, so compare tag to tag
         # — and only re-stamp it when the container really is on that release,
         # never when it has run ahead of it.
-        if tag != installed and versions_match(tag, live):
-            save_source_metadata(name, app_type, repo, pattern, tag, prerelease)
+        if tag != installed and versions_match(tag, live, tag_prefix):
+            save_source_metadata(name, app_type, repo, pattern, tag, prerelease, tag_prefix)
             print_info(f"Recorded version re-synced ({installed or 'unknown'} → {tag})")
         return
     print_info(f"Updating {name}: {live or 'unknown'} → {tag}")
@@ -1876,7 +1952,7 @@ def execute_update_from_source(lookup_name):
     finally:
         shutil.rmtree(asset_path.parent, ignore_errors=True)
 
-    save_source_metadata(name, app_type, repo, pattern, tag, prerelease)
+    save_source_metadata(name, app_type, repo, pattern, tag, prerelease, tag_prefix)
     print_success(f"{name} updated to {tag}")
 
 
@@ -1970,6 +2046,23 @@ def cmd_latest_release(argv):
     return 0
 
 
+def source_summary(src):
+    """The ` | source=… | version=…` tail `list` prints for a tracked app.
+
+    Shared by the AppImage and the Distrobox loop so the two cannot describe the
+    same saved source in different vocabulary — the reason `installed_version_
+    for_source` is used here rather than VERSION is that `check-updates` reads it
+    the same way, and a divergence would have `list` and the update check
+    disagree about what is installed.
+    """
+    channel = " | channel=pre-release" if source_prerelease(src) else ""
+    prefix = source_tag_prefix(src)
+    if prefix:
+        channel += f" | tags={prefix}*"
+    return (f" | source={src.get('SOURCE_REPO', '')}{channel}"
+            f" | version={installed_version_for_source(src) or 'unknown'}")
+
+
 def cmd_list(_argv=None):
     ensure_dirs()
     found = False
@@ -1980,10 +2073,7 @@ def cmd_list(_argv=None):
         src_field = ""
         src_file = SOURCES_STATE_DIR / f"{slug}.env"
         if src_file.is_file():
-            src = read_env(src_file)
-            channel = " | channel=pre-release" if source_prerelease(src) else ""
-            src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
-                         f" | version={installed_version_for_source(src) or 'unknown'}")
+            src_field = source_summary(read_env(src_file))
         print(f"{slug} | type=appimage | path={path}{src_field}")
 
     listed_ids = []
@@ -1995,11 +2085,7 @@ def cmd_list(_argv=None):
         src_field = ""
         src_file = source_file_for_name(meta.get("APP_NAME", ""))
         if src_file.is_file():
-            src = read_env(src_file)
-            channel = " | channel=pre-release" if source_prerelease(src) else ""
-            # Same notion of "installed" as check-updates, so the two can't disagree.
-            src_field = (f" | source={src.get('SOURCE_REPO', '')}{channel}"
-                         f" | version={installed_version_for_source(src) or 'unknown'}")
+            src_field = source_summary(read_env(src_file))
         print(f"{meta.get('APP_NAME', '')} | type=distrobox | container={meta.get('CONTAINER', '')}"
               f" | app={meta.get('APP_ID', '')} | pkg={meta.get('PACKAGE_TYPE', '')}{args_field}{src_field}")
 
@@ -2108,7 +2194,12 @@ def interactive_set_source(app_name):
     version = prompt_with_default("Currently installed version tag (optional, e.g. v4.6.2)",
                                   saved.get("VERSION", ""), "Leave empty if unknown", False)
     prerelease = interactive_pick_channel()
-    execute_set_source(app_name, repo_input, saved.get("ASSET_PATTERN", ""), version, prerelease)
+    # Tag prefix is carried over silently rather than prompted for: it is a
+    # property of how the repo publishes, which the wizard cannot change and
+    # dropping would send the app back to a /releases/latest that has no build
+    # for us. Retarget it with `set-source --tag-prefix`.
+    execute_set_source(app_name, repo_input, saved.get("ASSET_PATTERN", ""), version, prerelease,
+                       source_tag_prefix(saved))
 
 
 def interactive_check_updates():
@@ -2236,7 +2327,8 @@ def interactive_manage_apps():
         prerelease = interactive_pick_channel(
             f"Release channel for {src.get('APP_NAME', '')} (currently: {current})")
         execute_set_source(src.get("APP_NAME", ""), src.get("SOURCE_REPO", ""),
-                           src.get("ASSET_PATTERN", ""), src.get("VERSION", ""), prerelease)
+                           src.get("ASSET_PATTERN", ""), src.get("VERSION", ""), prerelease,
+                           source_tag_prefix(src))
 
     elif action == "Set GitHub update source":
         if app_type == "appimage":
