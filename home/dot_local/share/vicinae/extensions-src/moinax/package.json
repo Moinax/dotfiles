@@ -61,6 +61,13 @@
       "mode": "view"
     },
     {
+      "name": "chat",
+      "title": "Chat",
+      "subtitle": "Moinax",
+      "description": "Pick an installed chat app to open; Mod+C opens all of them.",
+      "mode": "view"
+    },
+    {
       "name": "wallpaper",
       "title": "Wallpaper",
       "subtitle": "Moinax",
