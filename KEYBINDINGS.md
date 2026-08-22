@@ -110,12 +110,14 @@
 
 ## 9. Scratchpad
 
+> **Desktop only**: the three binds that *reveal* the scratchpad pin it to DP-3. Hyprland has no such thing as a home monitor for a special workspace — every dispatcher that shows one puts it on whichever monitor is focused, and a `monitor:` rule on `special:special` parses without holding it — so the binds focus DP-3 first. The two silent binds reveal nothing and are unaffected, on every host.
+
 | Action | Keys | Notes |
 |---|---|---|
-| Toggle scratchpad | `Mod+S` | Special workspace |
-| Move to scratchpad | `Mod+Alt+S` | |
-| Move to scratchpad (silent) | `Mod+Ctrl+S` | |
-| Move **all** windows to scratchpad | `Mod+Shift+S` | |
+| Toggle scratchpad | `Mod+S` | Special workspace. Always appears on DP-3, wherever you press it; the dismiss press hands focus straight back to the monitor you were on |
+| Move to scratchpad | `Mod+Alt+S` | Moves the window without following, then reveals the scratchpad on DP-3 |
+| Move to scratchpad (silent) | `Mod+Ctrl+S` | Window goes, nothing is revealed |
+| Move **all** windows to scratchpad | `Mod+Shift+S` | Empties the workspace, then reveals the scratchpad on DP-3 |
 | Move **all** windows to scratchpad (silent) | `Mod+Ctrl+Shift+S` | |
 
 ## 10. Reload Configs

@@ -180,10 +180,57 @@ for ws, key in pairs(azerty_top_row) do
 end
 
 -- ── 10. Scratchpad (default unnamed special workspace) ──────────
-hl.bind(mod .. " + S",         hl.dsp.workspace.toggle_special(""))                                                    -- Toggle scratchpad
-hl.bind(mod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special" }))                                          -- Move to scratchpad
+-- The scratchpad has no home monitor of its own: every dispatcher that reveals
+-- it shows it on whichever monitor is focused, dragging it off the one it was
+-- on. A `monitor:` workspace rule on `special:special` does not hold it either
+-- — it parses, and the workspace still moves. Focusing the monitor first is the
+-- only thing that pins it, so the three revealing binds route through
+-- ScratchpadToMain. The two `--silent` binds must reveal nothing and stay on
+-- the plain dispatchers.
+--
+-- nil where there is nothing to pin to: a single-monitor host wants the plain
+-- toggle, and every step below degrades to it on its own.
+local scratchpad_monitor = {{ if eq .chezmoi.hostname "moinax-desktop" }}"DP-3"{{ else }}nil{{ end }}
+
+-- Global on purpose: the shell chain in the Mod+Shift+S bind re-enters it
+-- through `hyprctl eval` rather than restating the logic in shell.
+function ScratchpadToMain()
+    if scratchpad_monitor then hl.dispatch(hl.dsp.focus({ monitor = scratchpad_monitor })) end
+    -- Unconditional would *hide* a scratchpad already up there.
+    if not hl.get_active_special_workspace(scratchpad_monitor) then
+        hl.dispatch(hl.dsp.workspace.toggle_special(""))
+    end
+end
+
+-- Toggles both ways. The hide half still has to step onto the monitor — the
+-- dispatcher only ever acts on the focused one — and hand focus straight back,
+-- or dismissing the scratchpad from another screen would leave you typing into
+-- this one.
+hl.bind(mod .. " + S", function()                                                                                      -- Toggle scratchpad (pinned to DP-3)
+    if hl.get_active_special_workspace(scratchpad_monitor) then
+        local back = hl.get_active_monitor()
+        if scratchpad_monitor then hl.dispatch(hl.dsp.focus({ monitor = scratchpad_monitor })) end
+        hl.dispatch(hl.dsp.workspace.toggle_special(""))
+        if back then hl.dispatch(hl.dsp.focus({ monitor = back.name })) end
+    else
+        ScratchpadToMain()
+    end
+end)
+-- Move silently first, then reveal: a following move would show the scratchpad
+-- on the monitor the window came from.
+hl.bind(mod .. " + ALT + S", function()                                                                                -- Move to scratchpad
+    hl.dispatch(hl.dsp.window.move({ workspace = "special", follow = false }))
+    ScratchpadToMain()
+end)
 hl.bind(mod .. " + CTRL + S",  hl.dsp.window.move({ workspace = "special", follow = false }))                          -- Move to scratchpad (silent)
-hl.bind(mod .. " + SHIFT + S",        hl.dsp.exec_cmd(move_all .. "special"))                                          -- Move every window of the workspace to the scratchpad
+-- Chained in the shell rather than fired from Lua after `hl.exec_cmd`: that
+-- call is async and hypr-move-all.sh reads the focused monitor to find its
+-- source workspace, so a Lua-side reveal wins the race and the script empties
+-- the wrong monitor (measured, not theorised). `hyprctl eval` exits non-zero on
+-- a Lua error into a detached child nobody reads, hence the notify.
+local reveal_scratchpad = " && { hyprctl eval 'ScratchpadToMain()' >/dev/null" ..
+    " || notify-send -u critical 'Scratchpad' 'reveal failed — see ScratchpadToMain in binds.lua'; }"
+hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent" .. reveal_scratchpad))                   -- Move every window of the workspace to the scratchpad
 hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent"))                                 -- Same, silent
 
 -- ── 11. Reload Configs ───────────────────────────────────────────
