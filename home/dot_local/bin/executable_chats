@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# chats — the chat apps as one thing (Discord, Slack, Messenger, WhatsApp).
+#
+#   chats          open all four
+#   chats group    toggle grouping: Discord+Slack in one tabbed group,
+#                  WhatsApp+Messenger in the other — or split them back out
+#
+# All four are single-instance, so opening them again raises the windows that
+# are already there rather than spawning duplicates. Apps that are not installed
+# just fail silently: the four are gated separately (Slack and Discord by the
+# messaging group, Messenger and WhatsApp per app), so any subset can be missing.
+set -euo pipefail
+
+# Hyprland's group dispatchers all work off the focused window and a direction,
+# which cannot express "these two, wherever they are on screen". The Lua API can:
+# `hl.dsp.group.toggle` makes a group out of one window and `group:add` puts the
+# second in it, both by address. `hyprctl eval` is the way in — the same door
+# toggle-workspace-scrolling.sh uses, and unlike `hyprctl dispatch` it does not
+# demand a dispatcher handed back.
+group_toggle() {
+    hyprctl eval '(function()
+        local CHATS = { { "discord", "slack" }, { "whatsapp", "messenger" } }
+        local by = {}
+        for _, w in ipairs(hl.get_windows()) do by[w.class] = w end
+
+        local function toggle(w)
+            hl.dispatch(hl.dsp.group.toggle({ window = "address:" .. w.address }))
+        end
+
+        -- Decided per pair, never off a single "is anything grouped" flag: one
+        -- chat window the user grouped by hand with something else would other-
+        -- wise flip what the *other* pair does.
+        for _, pair in ipairs(CHATS) do
+            local a, b = by[pair[1]], by[pair[2]]
+            if a and b then
+                if a.group and a.group == b.group then
+                    toggle(a)   -- toggling one member dissolves the whole group
+                else
+                    -- Either of them may be sitting in some unrelated group;
+                    -- leaving it first is what makes the pair the group.
+                    if a.group then toggle(a) end
+                    if b.group then toggle(b) end
+                    toggle(a)
+                    if a.group then a.group:add(b) end
+                end
+            end
+        end
+    end)()' 2>/dev/null | grep -qx ok \
+        || { echo "chats: hyprctl eval failed" >&2; exit 1; }
+}
+
+case "${1-}" in
+    "")      ;;
+    group)   group_toggle; exit 0 ;;
+    *)       echo "usage: $0 [group]" >&2; exit 2 ;;
+esac
+
+for id in discord slack messenger whatsapp; do
+    # Same detach as browser-launch.sh: gtk-launch takes the desktop id, so each
+    # app gets the flags its .desktop declares, and setsid -f returns at once.
+    setsid -f gtk-launch "$id" >/dev/null 2>&1 || true
+done

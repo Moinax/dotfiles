@@ -127,6 +127,14 @@ Wallpapers/**
 .local/share/applications/google-chrome.desktop
 {{- end }}
 
+# The all-at-once chat launcher belongs to the messaging group as a whole: it
+# opens whichever of the four apps is installed, so it is gated on the group
+# rather than on any one of them.
+{{- if not (index . "install_messaging") }}
+.local/bin/chats
+.local/share/applications/chats.desktop
+{{- end }}
+
 # The two chat shells are gated per app, not per group: each is a custom_install
 # entry the selector lets you keep or drop, on the same rule as vibewatch. Icons
 # included — they are hicolor entries for these launchers and mean nothing on

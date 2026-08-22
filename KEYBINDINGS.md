@@ -69,6 +69,7 @@
 | Action | Keys | Notes |
 |---|---|---|
 | Toggle group | `Mod+G` | togglegroup |
+| Toggle the chat grouping | `Mod+Alt+G` | `chats group` — Discord+Slack in one tabbed group, WhatsApp+Messenger in the other, or all four back out. Grouping pulls a pair together even from another workspace |
 | Cycle group forward | `Alt+Tab` | changegroupactive |
 | Cycle group backward | `Alt+Shift+Tab` | |
 | Swap in group | `Alt+Ctrl+Tab` | movegroupwindow |

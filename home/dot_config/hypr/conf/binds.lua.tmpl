@@ -99,6 +99,9 @@ hl.bind(mod .. " + SHIFT + down",  hl.dsp.window.resize({ x =   0, y =  30, rela
 -- ── 6. Column / Group Operations ─────────────────────────────────
 hl.bind(mod .. " + J",          hl.dsp.layout("togglesplit"))                              -- Toggle split (dwindle)
 hl.bind(mod .. " + G",          hl.dsp.group.toggle())                                     -- Toggle group
+{{- if .install_messaging }}
+hl.bind(mod .. " + ALT + G",    hl.dsp.exec_cmd(home .. "/.local/bin/chats group"))        -- Toggle the chat grouping (Discord+Slack, WhatsApp+Messenger)
+{{- end }}
 hl.bind("ALT + TAB",            hl.dsp.group.next())                                       -- Cycle group forward
 hl.bind("ALT + SHIFT + TAB",    hl.dsp.group.prev())                                       -- Cycle group backward
 hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))              -- Move window in group

@@ -10,9 +10,11 @@ environment: desktop
 # runtime is declared under custom_install below, not as a package of this group
 # — see the note there.
 dotfiles:
+  - dot_local/bin/executable_chats
   - dot_local/bin/executable_messenger
   - dot_local/bin/executable_whatsapp
   - dot_local/lib/chat_shell.py
+  - dot_local/share/applications/chats.desktop
   - dot_local/share/applications/messenger.desktop
   - dot_local/share/applications/whatsapp.desktop
   - dot_local/share/icons/hicolor/512x512/apps/messenger.png

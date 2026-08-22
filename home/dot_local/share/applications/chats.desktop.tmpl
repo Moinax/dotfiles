@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Chats
+GenericName=Instant Messaging
+Comment=Open Discord, Slack, Messenger and WhatsApp at once
+# Absolute, like the other entries here: a launcher is not started from a login
+# shell, so ~/.local/bin is only on PATH when the Hyprland session put it there.
+Exec={{ .chezmoi.homeDir }}/.local/bin/chats
+StartupNotify=false
+Terminal=false
+Icon=im-user-online
+Type=Application
+Categories=Network;InstantMessaging;
