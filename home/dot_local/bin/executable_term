@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # term — put the terminal in front, starting it if it is down.
 #
-# One kitty window, one zellij session, tabs inside it: `Mod+RETURN` focuses it
+# One kitty window, one zellij session, tabs inside it: calling this focuses it
 # rather than opening a second one, the same contract `t3-code-launch.sh` gives
 # T3 Code. That is what makes zellij worth attaching to at all — a session you
 # open a fresh copy of every time is just a shell with extra chrome.

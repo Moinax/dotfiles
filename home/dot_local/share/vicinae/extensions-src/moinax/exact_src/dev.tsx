@@ -1,9 +1,9 @@
 import { ProjectList } from "./lib/project-list";
 
 /**
- * Mod+Ctrl+Return — the vicinae replacement for rofi-dev, and the only entry
- * point into the project picker. It sat on Mod+Alt+Return until the T3 Code
- * picker took that binding; the two are counterparts, one per runner.
+ * Mod+Alt+Return — the vicinae replacement for rofi-dev, and the only entry
+ * point into the project picker. The T3 Code picker on Mod+Ctrl+Return is its
+ * counterpart; the two are the same three keystrokes, one per runner.
  *
  * There was briefly a second command (Dev Worktree) that rendered this exact
  * list with the two actions swapped, so that Enter landed on the worktrees

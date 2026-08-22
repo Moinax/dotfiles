@@ -1,7 +1,7 @@
 import { T3ProjectList } from "./lib/t3-project-list";
 
 /**
- * Mod+Alt+Return — the T3 Code counterpart to Mod+Ctrl+Return's project picker.
+ * Mod+Ctrl+Return — the T3 Code counterpart to Mod+Alt+Return's project picker.
  *
  * Same three keystrokes for the same intent, against the other runner: pick a
  * project, land in its work. Enter on a project opens its threads (registering
