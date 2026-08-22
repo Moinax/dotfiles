@@ -18,10 +18,19 @@ set -euo pipefail
 # toggle-workspace-scrolling.sh uses, and unlike `hyprctl dispatch` it does not
 # demand a dispatcher handed back.
 group_toggle() {
-    hyprctl eval '(function()
+    local out
+    # shellcheck disable=SC2016  # the single quotes are the point: the Lua
+    # below must reach hyprctl unexpanded by the shell
+    out=$(hyprctl eval '(function()
         local CHATS = { { "discord", "slack" }, { "whatsapp", "messenger" } }
         local by = {}
-        for _, w in ipairs(hl.get_windows()) do by[w.class] = w end
+        -- First window of a class wins: Discord and Slack both spawn extra
+        -- toplevels (call popouts, huddles) that share the class, and last-wins
+        -- would tab the popout with the wrong app while the real window stays
+        -- loose.
+        for _, w in ipairs(hl.get_windows()) do
+            if by[w.class] == nil then by[w.class] = w end
+        end
 
         local function toggle(w)
             hl.dispatch(hl.dsp.group.toggle({ window = "address:" .. w.address }))
@@ -37,16 +46,23 @@ group_toggle() {
                     toggle(a)   -- toggling one member dissolves the whole group
                 else
                     -- Either of them may be sitting in some unrelated group;
-                    -- leaving it first is what makes the pair the group.
-                    if a.group then toggle(a) end
-                    if b.group then toggle(b) end
+                    -- leaving it first is what makes the pair the group. It has
+                    -- to be `group:remove` and not `toggle`: toggling a grouped
+                    -- window dissolves the *whole* group, so a Slack tabbed with
+                    -- a browser and a terminal by hand would scatter those two.
+                    if a.group then a.group:remove(a) end
+                    if b.group then b.group:remove(b) end
                     toggle(a)
                     if a.group then a.group:add(b) end
                 end
             end
         end
-    end)()' 2>/dev/null | grep -qx ok \
-        || { echo "chats: hyprctl eval failed" >&2; exit 1; }
+    end)()')
+    # `hyprctl eval` prints its Lua errors on *stdout*, not stderr, so piping
+    # into `grep -qx ok` threw away the only message that names the line and the
+    # nil value. Capturing also drops the pipeline, and with it the pipefail
+    # SIGPIPE flake `grep -q` can produce on a producer that has not closed yet.
+    [ "$out" = ok ] || { printf 'chats: %s\n' "$out" >&2; exit 1; }
 }
 
 case "${1-}" in
