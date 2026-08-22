@@ -155,3 +155,14 @@
 # applications is not an `exact_` directory, so deleting the source leaves the
 # file on every machine that already applied it.
 .local/share/applications/chats.desktop
+
+# The `claude` shim, retired. It was a herdr-era graceful-resume wrapper, and
+# once herdr went it was also actively harmful: T3 Code classifies the Claude
+# install by sniffing the resolved path of the `claude` on PATH, and a real file
+# at ~/.local/bin/shims/claude matches none of its native patterns — so it
+# offered `npm install -g @anthropic-ai/claude-code` over the native install and
+# produced the duplicate `claude update` then complained about. Same pruning
+# rule as rofi above: ~/.local/bin is not an `exact_` directory, so deleting the
+# source leaves the shim (and the PATH entry's whole reason to exist) behind.
+.local/bin/shims
+.local/bin/shims/**

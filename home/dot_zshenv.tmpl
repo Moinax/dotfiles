@@ -47,10 +47,6 @@ esac
 # Lazy docker, zoxide, ...
 export PATH="$HOME/.local/bin:$PATH"
 
-# Shims ahead of the real binaries (e.g. the `claude` graceful-resume wrapper).
-# Must come after ~/.local/bin so it wins the `claude` lookup.
-[[ -d "$HOME/.local/bin/shims" ]] && export PATH="$HOME/.local/bin/shims:$PATH"
-
 # Silence zoxide's "configuration issue" doctor. It fires a false positive in
 # Claude Code's Bash tool: the shell snapshot replays zoxide's `cd` wrapper but
 # not the `chpwd_functions+=(__zoxide_hook)` line from `zoxide init`, so the
