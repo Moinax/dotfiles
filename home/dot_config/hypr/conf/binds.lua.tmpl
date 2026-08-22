@@ -100,7 +100,10 @@ hl.bind(mod .. " + SHIFT + down",  hl.dsp.window.resize({ x =   0, y =  30, rela
 -- ── 6. Column / Group Operations ─────────────────────────────────
 hl.bind(mod .. " + J",          hl.dsp.layout("togglesplit"))                              -- Toggle split (dwindle)
 hl.bind(mod .. " + G",          hl.dsp.group.toggle())                                     -- Toggle group
-{{- if .install_messaging }}
+{{- /* `index` and not the bare `.install_messaging`: chezmoi errors on a missing
+       key, and machines set up before the Messaging split have none until
+       reconcile_group_flags runs. Same reasoning as the gate in .chezmoiignore. */}}
+{{- if (index . "install_messaging") }}
 hl.bind(mod .. " + ALT + G",    hl.dsp.exec_cmd(home .. "/.local/bin/chats group"))        -- Toggle the chat grouping (Discord+Slack, WhatsApp+Messenger)
 {{- end }}
 hl.bind("ALT + TAB",            hl.dsp.group.next())                                       -- Cycle group forward
