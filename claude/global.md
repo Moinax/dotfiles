@@ -44,8 +44,15 @@ context, so this block costs no tokens.
 
 - **Always write file paths inside backticks** — `src/app.ts:42`, `packages/groups/`.
   I work in T3 Code, which only turns a path into a link inside an inline-code span
-  or a markdown link destination (`apps/web/src/components/ChatMarkdown.tsx`), so a
-  path written in bare prose is dead text however it is spelled. Once backticked,
-  relative, absolute and `~/…` all resolve to the same file and the chip renders
-  workspace-relative either way — relative is a readability preference, not what
-  makes the link work. A `:42` or `:42:7` suffix rides along and opens on that line.
+  or a markdown link destination, so a path written in bare prose is dead text
+  however it is spelled. Relative, absolute and `~/…` all resolve to the same file
+  once backticked. A `:42` or `:42:7` suffix rides along and opens on that line.
+
+## Scratch files
+
+- **Write throwaway artifacts under `.scratch/` at the workspace root, never `/tmp`.**
+  Mockups, prototypes, one-off scripts, generated reports. T3 Code's integrated
+  browser only serves files below the workspace root, so an HTML file in `/tmp` gets
+  a clickable chip that cannot open it — the click silently falls back to the editor
+  and the preview never renders. `.scratch/` sits in my global gitignore
+  (`~/.config/git/ignore`), so it stays out of `git status` and out of hunk.
