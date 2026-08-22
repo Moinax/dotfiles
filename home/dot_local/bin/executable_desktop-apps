@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# desktop-apps — freedesktop entries by category, and launching one.
+#
+#   desktop-apps list CATEGORY   → <desktop id>\t<name>\t<icon>
+#   desktop-apps launch ID       → launch that desktop id, detached
+#
+# No hardcoded app list anywhere: `list WebBrowser` is what the Browser picker
+# shows and `list InstantMessaging` the Chats one, so an app appears in either
+# the moment its desktop entry declares the category — which is what lets an
+# AppImage install (Helium) or a web-app shell (whatsapp, messenger) show up
+# next to the packaged ones.
+set -euo pipefail
+
+# The roots to crawl, colon-separated. A variable rather than two literals so
+# tests/test_desktop_apps.sh can point the scan at a fixture directory — and so
+# that widening it (XDG_DATA_DIRS, a flatpak exports dir) is one edit here
+# rather than one per caller.
+: "${DESKTOP_APP_DIRS:=/usr/share/applications:$HOME/.local/share/applications}"
+
+case "${1:-}" in
+    list)
+        category="${2:?desktop-apps: list requires a category}"
+        ;;
+    launch)
+        # gtk-launch takes the desktop id (.desktop optional), so each app gets
+        # the flags its entry declares; setsid -f fully detaches, so the script
+        # — and Hyprland's exec — return immediately.
+        setsid -f gtk-launch "${2:?desktop-apps: launch requires a desktop id}" \
+            >/dev/null 2>&1
+        exit 0
+        ;;
+    *)
+        echo "usage: $0 list CATEGORY | $0 launch ID" >&2
+        exit 2
+        ;;
+esac
+
+declare -A seen
+while IFS= read -r f; do
+    id="${f##*/}"; id="${id%.desktop}"
+    # One pass per file for the first Name=/Icon= and the hidden flag. Fields
+    # are joined with 0x1f (non-whitespace) so read preserves empty leading and
+    # middle fields instead of collapsing them.
+    IFS=$'\x1f' read -r hidden name icon < <(awk -v s=$'\x1f' '
+        /^NoDisplay=true/ || /^Hidden=true/ { hidden = 1 }
+        /^Name=/ && !name { name = substr($0, 6) }
+        /^Icon=/ && !icon { icon = substr($0, 6) }
+        END { printf "%s%s%s%s%s\n", hidden, s, name, s, icon }
+    ' "$f")
+    [ -n "$hidden" ] && continue
+    [ -z "$name" ] && name="$id"
+    key="${name,,}"
+    [ -n "${seen[$key]:-}" ] && continue   # dedupe on display name
+    seen[$key]=1
+    printf '%s\t%s\t%s\n' "$id" "${name^}" "$icon"   # capitalize (helium → Helium)
+done < <(
+    # The category is a whole field, not a substring: unanchored, `list Web`
+    # would return every WebBrowser entry and a typo would look like a result.
+    IFS=: read -ra roots <<<"$DESKTOP_APP_DIRS"
+    grep -rlE "^Categories=(.*;)?${category}(;.*)?$" "${roots[@]}" 2>/dev/null | sort
+)
+
+# An empty scan exits 0 with no output on purpose: the pickers each render their
+# own "nothing found" empty view, and aborting here would replace it with a red
+# failure toast for a case that is not a failure.

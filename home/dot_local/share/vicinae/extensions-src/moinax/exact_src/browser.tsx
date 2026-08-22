@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
-import { browsers, launchBrowser, type Browser } from "./lib/system";
+import { browsers, launchDesktopApp, type Browser } from "./lib/system";
 import { closeAfter, useLoader } from "./lib/ui";
 
 /**
@@ -32,7 +32,7 @@ export default function Command() {
               <Action
                 title="Open Browser"
                 icon={Icon.Globe01}
-                onAction={closeAfter(() => launchBrowser(browser.id), browser.name)}
+                onAction={closeAfter(() => launchDesktopApp(browser.id), browser.name)}
               />
               <Action.CopyToClipboard
                 title="Copy Desktop Id"

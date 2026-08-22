@@ -154,6 +154,28 @@ export async function setKeyboardLayout(name: string): Promise<void> {
   await capture(`${HOME}/.config/hypr/scripts/toggle-keyboard-layout.sh`, ["set", name], { timeout: 30_000 });
 }
 
+export type DesktopApp = { id: string; name: string; icon: string };
+
+/**
+ * Installed apps declaring a freedesktop category, from desktop-apps.
+ *
+ * The crawl (NoDisplay filtering, dedupe on display name) is in the script so
+ * that the pickers and the plain `Mod+B` default-browser path cannot disagree
+ * about what is installed — and so that a new picker is a category string here
+ * rather than a second copy of the scan.
+ */
+export async function desktopApps(category: string): Promise<DesktopApp[]> {
+  const lines = await captureLines(`${HOME}/.local/bin/desktop-apps`, ["list", category]);
+  return lines.flatMap((line) => {
+    const [id, name, icon] = line.split("\t");
+    return id ? [{ id, name: name || id, icon: icon || "" }] : [];
+  });
+}
+
+export async function launchDesktopApp(id: string): Promise<void> {
+  await capture(`${HOME}/.local/bin/desktop-apps`, ["launch", id], { timeout: 15_000 });
+}
+
 export type Browser = { id: string; name: string; icon: string; isDefault: boolean };
 
 /**
@@ -172,6 +194,3 @@ export async function browsers(): Promise<Browser[]> {
   });
 }
 
-export async function launchBrowser(id: string): Promise<void> {
-  await capture(`${HOME}/.local/bin/browser-launch.sh`, ["launch", id], { timeout: 15_000 });
-}
