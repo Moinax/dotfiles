@@ -40,6 +40,7 @@
 |---|---|---|
 | Close window | `Mod+Q` | |
 | Toggle floating | `Mod+T` | |
+| Toggle pseudotile | `Mod+Alt+T` | Keeps the window at its own size, centred in the tile it still occupies |
 | Fullscreen | `Mod+Alt+F` | |
 | Maximize | `Mod+F` | |
 | Pin window | `Mod+P` | Sticky across workspaces |
@@ -75,7 +76,7 @@
 | Swap in group | `Alt+Ctrl+Tab` | movegroupwindow |
 | Toggle split | `Mod+J` | togglesplit (dwindle layout) |
 
-> **Scrolling layout**: when a workspace is flipped to `scrolling` (via `Mod+Alt+T`), the standard arrow binds above (focus / movewindow / group-swap / resize) all work — Hyprland routes them through the active layout. Column-stacking ops (consume/expel/promote) and viewport pan are not bound.
+> **Scrolling layout**: when a workspace is flipped to `scrolling` (via `Mod+Shift+T`), the standard arrow binds above (focus / movewindow / group-swap / resize) all work — Hyprland routes them through the active layout. Column-stacking ops (consume/expel/promote) and viewport pan are not bound.
 
 ## 7. Workspace Navigation
 
@@ -180,4 +181,4 @@ Hyprland uses `dwindle` as the default layout on every host.
 
 | Action | Keys | Notes |
 |---|---|---|
-| Toggle workspace scrolling ↔ dwindle | `Mod+Alt+T` | Flips the active workspace into the `scrolling` (tape) layout or back to `dwindle`. State persisted to `~/.cache/hypr-ws-layout`. |
+| Toggle workspace scrolling ↔ dwindle | `Mod+Shift+T` | Flips the active workspace into the `scrolling` (tape) layout or back to `dwindle`. State persisted to `~/.cache/hypr-ws-layout`. |

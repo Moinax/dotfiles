@@ -60,6 +60,7 @@ hl.bind(mod .. " + CTRL + D",     hl.dsp.exec_cmd(home .. "/.local/bin/dictation
 -- ── 2. Window Management ──────────────────────────────────────────
 hl.bind(mod .. " + Q",       hl.dsp.window.close())                                       -- Close window
 hl.bind(mod .. " + T",       hl.dsp.window.float({ action = "toggle" }))                  -- Toggle floating
+hl.bind(mod .. " + ALT + T", hl.dsp.window.pseudo())                                      -- Toggle pseudotile (keeps its own size inside its tile)
 hl.bind(mod .. " + F",       hl.dsp.window.fullscreen({ mode = "maximized" }))            -- Fullscreen (with bar)
 hl.bind(mod .. " + ALT + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))           -- True fullscreen
 hl.bind(mod .. " + P",       hl.dsp.window.pin())                                         -- Pin window
@@ -111,7 +112,7 @@ hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))   
 -- arrow binds above (focus, movewindow, group-swap script all work in both
 -- layouts). Column-stacking ops (consume/expel/promote/inhibit/swapcol) and
 -- viewport pan are unused.
-hl.bind(mod .. " + ALT + T",         hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
+hl.bind(mod .. " + SHIFT + T",       hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
 
 -- ── 7. Workspace Navigation ──────────────────────────────────────
 -- QWERTY 1-7
