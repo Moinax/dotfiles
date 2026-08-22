@@ -39,9 +39,34 @@ hl.window_rule({
     center = true,
 })
 
--- Opacity toggles driven by binds (see binds.lua)
-hl.window_rule({ match = { tag = "switch_opacity" },      opacity = "1 override" })
-hl.window_rule({ match = { tag = "switch_opacity_half" }, opacity = "0.5 override" })
+-- Opacity toggles driven by binds (see binds.lua). These rules are named so the
+-- global rule below can reliably take precedence over them while it is enabled.
+hl.window_rule({
+    name    = "focused-opacity-full",
+    match   = { tag = "switch_opacity" },
+    opacity = "1 override",
+})
+hl.window_rule({
+    name    = "focused-opacity-half",
+    match   = { tag = "switch_opacity_half" },
+    opacity = "0.5 override",
+})
+
+-- Session-wide opacity switch. A window rule, unlike changing
+-- decoration.active_opacity at runtime, also becomes the default for windows
+-- created after the switch. Keep the handle global: `hyprctl eval` uses it from
+-- toggle-all-opacity.sh. The runtime marker preserves the mode across a config
+-- reload without making it persistent across login sessions.
+GlobalOpacityRule = hl.window_rule({
+    name    = "global-opacity-full",
+    match   = { class = ".*" },
+    opacity = "1 override 1 override 1 override",
+})
+
+local opacity_state = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/hypr-opacity-disabled"
+local opacity_state_file = io.open(opacity_state, "r")
+GlobalOpacityRule:set_enabled(opacity_state_file ~= nil)
+if opacity_state_file then opacity_state_file:close() end
 
 -- ── Layer rules ───────────────────────────────────────────────────
 -- vicinae draws itself as a layer surface, not a window, so window_rule never
