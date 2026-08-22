@@ -90,7 +90,7 @@
 
 ## 8. Move to Workspace
 
-> **Convention**: `Alt` = move with focus follow, `Ctrl` = silent move (window goes, focus stays). `Shift` is reserved for less common actions (reload configs, etc.).
+> **Convention**: `Alt` = move with focus follow, `Ctrl` = silent move (window goes, focus stays), `Shift` = move *every* window of the workspace instead of just the focused one (so `Ctrl+Shift` is the silent bulk move). On the letter keys `Shift` still means the less common action (reload configs, etc.).
 
 | Action | Keys | Notes |
 |---|---|---|
@@ -104,6 +104,8 @@
 | Move to prev WS (mouse, follow) | `Mod+Alt+WheelDown` | `movetoworkspace r-1` |
 | Silent move to next WS (mouse) | `Mod+Ctrl+WheelUp` | `movetoworkspacesilent r+1` |
 | Silent move to prev WS (mouse) | `Mod+Ctrl+WheelDown` | `movetoworkspacesilent r-1` |
+| Move **all** windows to WS 1–7 (follow) | `Mod+Shift+1` .. `Mod+Shift+7` | AZERTY: `Mod+Shift+&` .. `Mod+Shift+è`; empties the current workspace — or the scratchpad, when that is the one on screen |
+| Silent move of **all** windows to WS 1–7 | `Mod+Ctrl+Shift+1` .. `Mod+Ctrl+Shift+7` | AZERTY: `Mod+Ctrl+Shift+&` .. `Mod+Ctrl+Shift+è` |
 
 ## 9. Scratchpad
 
@@ -112,6 +114,8 @@
 | Toggle scratchpad | `Mod+S` | Special workspace |
 | Move to scratchpad | `Mod+Alt+S` | |
 | Move to scratchpad (silent) | `Mod+Ctrl+S` | |
+| Move **all** windows to scratchpad | `Mod+Shift+S` | |
+| Move **all** windows to scratchpad (silent) | `Mod+Ctrl+Shift+S` | |
 
 ## 10. Reload Configs
 

@@ -159,10 +159,28 @@ hl.bind(mod .. " + ALT + mouse_down",   hl.dsp.window.move({ workspace = "r-1" }
 hl.bind(mod .. " + CTRL + mouse_up",    hl.dsp.window.move({ workspace = "r+1", follow = false }))
 hl.bind(mod .. " + CTRL + mouse_down",  hl.dsp.window.move({ workspace = "r-1", follow = false }))
 
+-- Whole workspace at once: ALT and CTRL are already spent on the single-window
+-- moves above, so SHIFT marks the bulk move and CTRL + SHIFT its silent twin.
+-- What counts as "the workspace" — the scratchpad when it is the thing on
+-- screen — is the script's business, and its header is where that is written.
+local move_all = home .. "/.local/bin/hypr-move-all.sh "
+-- QWERTY 1-7
+for i = 1, 7 do
+    hl.bind(mod .. " + SHIFT + "        .. tostring(i), hl.dsp.exec_cmd(move_all .. i))                -- Move every window to this workspace
+    hl.bind(mod .. " + CTRL + SHIFT + " .. tostring(i), hl.dsp.exec_cmd(move_all .. i .. " --silent")) -- Move every window to this workspace (silent)
+end
+-- AZERTY 1-7
+for ws, key in pairs(azerty_top_row) do
+    hl.bind(mod .. " + SHIFT + "        .. key, hl.dsp.exec_cmd(move_all .. ws))                -- Move every window to this workspace
+    hl.bind(mod .. " + CTRL + SHIFT + " .. key, hl.dsp.exec_cmd(move_all .. ws .. " --silent")) -- Move every window to this workspace (silent)
+end
+
 -- ── 10. Scratchpad (default unnamed special workspace) ──────────
 hl.bind(mod .. " + S",         hl.dsp.workspace.toggle_special(""))                                                    -- Toggle scratchpad
 hl.bind(mod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special" }))                                          -- Move to scratchpad
 hl.bind(mod .. " + CTRL + S",  hl.dsp.window.move({ workspace = "special", follow = false }))                          -- Move to scratchpad (silent)
+hl.bind(mod .. " + SHIFT + S",        hl.dsp.exec_cmd(move_all .. "special"))                                          -- Move every window of the workspace to the scratchpad
+hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent"))                                 -- Same, silent
 
 -- ── 11. Reload Configs ───────────────────────────────────────────
 hl.bind(mod .. " + SHIFT + B", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-waybar.sh"))                      -- Reload Waybar
