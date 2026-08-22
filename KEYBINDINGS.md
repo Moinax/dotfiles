@@ -26,7 +26,7 @@
 | Close / kill window | `Mod+Escape` | Enter asks the window to close through the compositor (its normal shutdown path); `Ctrl+Shift+Enter` is `SIGKILL` for the ones that ignore it. The list refreshes in place instead of closing |
 | Clipboard history | `Mod+V` | Vicinae built-in (encrypted store, text and images) |
 | Color picker (hyprpicker) | `Mod+Shift+P` | |
-| Theme selector | `Mod+R` | Vicinae "Set Theme"; `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
+| Theme selector | Search `theme` in Vicinae | `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
 | Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
 | Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
 | Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level, a microphone picker and validate/cancel buttons, so a dictation can also be finished with the pointer |
@@ -123,9 +123,7 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Reload Waybar | `Mod+Shift+B` | |
-| Reload SwayNC | `Mod+Shift+M` | `swaync-client -R && swaync-client -rs` |
-| Reload compositor | `Mod+Shift+R` | |
+| Reload Waybar, SwayNC or Hyprland | Search `reload` in Vicinae | Opens the local Reload command |
 
 ## 11. Screenshots
 
@@ -135,7 +133,16 @@
 | Screenshot window | `Mod+Print` | screenshot.sh (hyprshot); click the notification to open |
 | Screenshot region | `Mod+Shift+Print` | screenshot.sh (hyprshot); click the notification to open |
 
-## 12. Media & Volume
+## 12. Screen recordings
+
+| Action | Keys | Notes |
+|---|---|---|
+| Record monitor | `Mod+R` | Select a monitor; press any recording shortcut again to stop and save |
+| Record window | `Mod+Alt+R` | Select a visible window, including a scratchpad window |
+| Record region | `Mod+Shift+R` | Select a free-form region |
+| Cancel recording | `Mod+Ctrl+R` | Stops and deletes the unfinished video; Escape cancels the initial selection |
+
+## 13. Media & Volume
 
 > All six keys below carry the `locked` bind flag, so they keep working while hyprlock holds the screen — Hyprland dispatches only flagged binds during a session lock, and without it volume and brightness were dead the whole time the laptop sat locked. The bar for that flag is not convenience but "would I let anyone standing at the locked machine do this": these change no data and reveal nothing.
 
@@ -146,7 +153,7 @@
 | Mic mute | `XF86AudioMicMute` | swayosd-client OSD |
 | Brightness up / down | `XF86MonBrightnessUp` / `XF86MonBrightnessDown` | swayosd-client OSD |
 
-## 13. Session & System
+## 14. Session & System
 
 | Action | Keys | Notes |
 |---|---|---|
@@ -161,14 +168,14 @@
 | Toggle HDR (10-bit) | `Mod+Alt+H` | Desktop only; flips DP-3 between SDR (default) and 10-bit HDR, reverts on reload |
 | Keybinding help | `Mod+H` | Vicinae list, grouped by section with a section filter; parsed from `binds.lua` by `hypr-keybindings` |
 
-## 14. Mouse
+## 15. Mouse
 
 | Action | Keys | Notes |
 |---|---|---|
 | Mouse move window | `Mod+LMB` | |
 | Mouse resize window | `Mod+RMB` | |
 
-## 15. Opacity
+## 16. Opacity
 
 | Action | Keys | Notes |
 |---|---|---|
@@ -176,7 +183,7 @@
 | Toggle half opacity | `Mod+Ctrl+O` | |
 | Toggle global opacity on/off | `Mod+Alt+O` | Flips decoration opacity session-wide (Lua `eval`, legacy `keyword` fallback) |
 
-## 16. Layout Switching
+## 17. Layout Switching
 
 Hyprland uses `dwindle` as the default layout on every host.
 

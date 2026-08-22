@@ -80,6 +80,13 @@
       "subtitle": "Moinax",
       "description": "Search the compositor keybindings, grouped by section.",
       "mode": "view"
+    },
+    {
+      "name": "reload",
+      "title": "Reload",
+      "subtitle": "Moinax",
+      "description": "Reload Waybar, SwayNC or Hyprland.",
+      "mode": "view"
     }
   ],
   "preferences": [

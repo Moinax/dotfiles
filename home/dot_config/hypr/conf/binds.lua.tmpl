@@ -38,7 +38,6 @@ hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("vicinae 'vicinae://launch/wm/
 hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/kill-window?toggle=true'"))     -- Close or force-kill a window
 hl.bind(mod .. " + V",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/clipboard/history?toggle=true'"))              -- Clipboard history
 hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                            -- Color picker
-hl.bind(mod .. " + R",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/theme/set?toggle=true'"))                      -- Theme selector
 hl.bind(mod .. " + M",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/monitors?toggle=true'"))        -- Toggle monitors on/off
 hl.bind(mod .. " + ALT + M",      hl.dsp.exec_cmd(home .. "/.local/bin/lock-dpms-off.sh"))                                  -- Lock + screen off
 {{- if eq .chezmoi.hostname "moinax-desktop" }}
@@ -230,17 +229,25 @@ hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent" ..
 hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent"))                                 -- Same, silent
 
 -- ── 11. Reload Configs ───────────────────────────────────────────
-hl.bind(mod .. " + SHIFT + B", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-waybar.sh"))                      -- Reload Waybar
+-- The infrequent reload actions live in Vicinae's Reload command rather than
+-- occupying global chords. Search "reload" from the launcher to reach them.
 hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/wallpaper?toggle=true'"))                  -- Wallpaper picker (grid preview)
-hl.bind(mod .. " + SHIFT + M", hl.dsp.exec_cmd("swaync-client -R && swaync-client -rs"))                               -- Reload SwayNC
-hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/reload-hyprland.sh"))                    -- Reload hyprland
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
 hl.bind("PRINT",                hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))    -- Screenshot a monitor
 hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh window")) -- Screenshot a window
 hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh region")) -- Screenshot a region
 
--- ── 13. Media & Volume ───────────────────────────────────────────
+-- ── 13. Screen recordings ────────────────────────────────────────
+-- A second press on any start chord stops and saves the current recording;
+-- Ctrl is the destructive twin, stopping it and removing the unfinished file.
+local record = home .. "/.local/bin/screen-record.sh "
+hl.bind(mod .. " + R",         hl.dsp.exec_cmd(record .. "toggle output")) -- Record a monitor / stop and save
+hl.bind(mod .. " + ALT + R",   hl.dsp.exec_cmd(record .. "toggle window")) -- Record a window / stop and save
+hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(record .. "toggle region")) -- Record a region / stop and save
+hl.bind(mod .. " + CTRL + R",  hl.dsp.exec_cmd(record .. "cancel"))        -- Cancel recording and delete it
+
+-- ── 14. Media & Volume ───────────────────────────────────────────
 -- `locked = true` on all six: Hyprland dispatches only flagged binds while a
 -- session lock holds the screen, so without it the volume and brightness keys are
 -- dead the whole time the laptop sits locked. The test for the flag is not "is it

@@ -34,6 +34,7 @@ descriptions:
   hyprpicker: Color picker for Hyprland
   polkit-kde-agent: Polkit authentication agent (KDE)
   hyprshot: Screenshot tool for Hyprland
+  wf-recorder: Wayland screen recorder
   swayosd: On-screen display for volume, brightness and caps-lock
   python-pywayland: Python Wayland bindings (idle inhibitor for caffeine mode)
   waybar: Highly customizable status bar
@@ -65,6 +66,7 @@ packages:
     - hyprpicker
     - polkit-kde-agent
     - hyprshot
+    - wf-recorder
     - uwsm
 
     # Status bar and menus
