@@ -23,6 +23,13 @@ hl.bind(mod .. " + CTRL + RETURN", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@m
 hl.bind(mod .. " + SPACE",        hl.dsp.exec_cmd("vicinae vicinae://toggle"))                                              -- Launcher (apps, files, maths, everything)
 hl.bind(mod .. " + B",            hl.dsp.exec_cmd(home .. "/.local/bin/browser-launch.sh"))                                 -- Open default browser
 hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/browser?toggle=true'"))         -- Pick browser (default marked)
+{{- /* `index` and not the bare `.install_messaging`: chezmoi errors on a missing
+       key, and machines set up before the Messaging split have none until
+       reconcile_group_flags runs. Same reasoning as the gate in .chezmoiignore. */}}
+{{- if (index . "install_messaging") }}
+hl.bind(mod .. " + C",            hl.dsp.exec_cmd(home .. "/.local/bin/chats"))                                            -- Open every chat app, tabbed in pairs
+{{- end }}
+hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/chat?toggle=true'"))           -- Pick one chat app (Mod+C opens all)   
 hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                               -- Open file manager
 hl.bind(mod .. " + I",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/core/search-emojis?toggle=true'"))             -- Emoji & symbol picker
 hl.bind(mod .. " + A",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/audio-output?toggle=true'"))    -- Switch audio output
@@ -30,11 +37,6 @@ hl.bind(mod .. " + K",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@mo
 hl.bind(mod .. " + TAB",          hl.dsp.exec_cmd("vicinae 'vicinae://launch/wm/switch-windows?toggle=true'"))              -- Window switcher
 hl.bind(mod .. " + Escape",       hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/kill-window?toggle=true'"))     -- Close or force-kill a window
 hl.bind(mod .. " + V",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/clipboard/history?toggle=true'"))              -- Clipboard history
--- Arithmetic is not a command in vicinae: the root search evaluates as you type
--- (Mod+Space, then "2+2" or "40 EUR in USD"). What is a command is the history
--- of past calculations, which rofi-calc had no equivalent for at all.
-hl.bind(mod .. " + C",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/calculator/history?toggle=true'"))             -- Calculator history
-hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("kcalc"))                                                                 -- Open calculator
 hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                            -- Color picker
 hl.bind(mod .. " + R",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/theme/set?toggle=true'"))                      -- Theme selector
 hl.bind(mod .. " + M",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/monitors?toggle=true'"))        -- Toggle monitors on/off
@@ -100,12 +102,6 @@ hl.bind(mod .. " + SHIFT + down",  hl.dsp.window.resize({ x =   0, y =  30, rela
 -- ── 6. Column / Group Operations ─────────────────────────────────
 hl.bind(mod .. " + J",          hl.dsp.layout("togglesplit"))                              -- Toggle split (dwindle)
 hl.bind(mod .. " + G",          hl.dsp.group.toggle())                                     -- Toggle group
-{{- /* `index` and not the bare `.install_messaging`: chezmoi errors on a missing
-       key, and machines set up before the Messaging split have none until
-       reconcile_group_flags runs. Same reasoning as the gate in .chezmoiignore. */}}
-{{- if (index . "install_messaging") }}
-hl.bind(mod .. " + ALT + G",    hl.dsp.exec_cmd(home .. "/.local/bin/chats group"))        -- Toggle the chat grouping (Discord+Slack, WhatsApp+Messenger)
-{{- end }}
 hl.bind("ALT + TAB",            hl.dsp.group.next())                                       -- Cycle group forward
 hl.bind("ALT + SHIFT + TAB",    hl.dsp.group.prev())                                       -- Cycle group backward
 hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))              -- Move window in group

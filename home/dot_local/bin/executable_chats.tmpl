@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# chats — the chat apps as one thing (Discord, Slack, Messenger, WhatsApp).
+#
+#   chats     open all four, then tab them in pairs: WhatsApp+Messenger in one
+#             group, Slack+Discord in the other
+#
+# Where the windows land is per host, and split in two: windowrules.lua owns the
+# geometry, this owns the workspace. The pairing is here too, being the part no
+# rule can express — Hyprland has none that tabs two *named* windows.
+#
+# It refuses to run if any of the four is already up, and that is the whole
+# reason grouping can be unconditional here. The apps are single-instance, so a
+# second run spawns nothing: it would only reach windows the user has since
+# arranged, and the "group them" step would have to guess whether it meant to
+# make a group or undo one. `chats` is the cold start and nothing else.
+set -euo pipefail
+
+# Window classes, in pair order. The pairing itself is restated twice more —
+# the PAIRS table in the Lua at the bottom, and the two class regexes in
+# hypr/conf/windowrules.lua.tmpl that give each pair its slot. Change one, change
+# all three: nothing here fails loudly when they drift, it just tabs one pairing
+# into the other one's geometry.
+CLASSES=(whatsapp messenger slack discord)
+
+apps="$HOME/.local/bin/desktop-apps"
+
+{{ if eq .chezmoi.hostname "moinax-desktop" -}}
+# windowrules.lua pins the four to workspace 6 on the portrait monitor and to
+# their slots in it, so there is nothing left for the script to place.
+park_workspace() { :; }
+{{- else -}}
+# No per-host rule on this machine, so the four tile wherever they land — park
+# them on the first empty workspace rather than on top of what is being worked
+# on. dwindle then splits it between the two groups.
+#
+# Switching to it, rather than a `workspace = "empty"` window rule, is the whole
+# point: that rule is re-evaluated per window, so the second pair lands one
+# workspace past the first (tested — ws 3, then ws 4). Resolved once, here, the
+# four stay together. The cost is that focus follows, which a rule's `silent`
+# would have avoided.
+park_workspace() { hyprctl dispatch 'hl.dsp.focus({ workspace = "empty" })' >/dev/null; }
+{{- end }}
+
+# Distinct classes, not windows: Discord and Slack each map extra toplevels that
+# share their class (call popouts, huddles, the updater splash), so counting
+# windows would reach `want` with one app still missing and break the wait early.
+# Exact string match rather than a regex, because it has to agree with the Lua's
+# `by[w.class]` lookup below — the two halves disagreeing is what leaves a pair
+# silently ungrouped. No `|| true`: hyprctl or jq failing must not read as
+# "nothing is open", which would let a cold start run over an arranged desktop.
+open_count() {
+    hyprctl clients -j |
+        jq --args '[.[].class] | unique | map(select(IN($ARGS.positional[]))) | length' \
+            -- "${CLASSES[@]}"
+}
+
+if [ $# -ne 0 ]; then
+    echo "usage: $0" >&2
+    exit 2
+fi
+
+if [ "$(open_count)" -gt 0 ]; then
+    # A launcher entry swallows stderr, so the notification is the only channel
+    # that reaches anyone.
+    notify-send -a chats "Chats already open" "Close them first — chats only cold-starts."
+    exit 0
+fi
+
+# desktop-apps is the one place that knows where desktop entries live and how to
+# launch one detached, so asking it doubles as the "is this app here" test — the
+# four are gated separately (Slack and Discord by the messaging group, Messenger
+# and WhatsApp per app), so any subset can be missing.
+present=$("$apps" list InstantMessaging | cut -f1)
+
+park_workspace
+
+want=0
+for id in "${CLASSES[@]}"; do
+    grep -qxF "$id" <<<"$present" || continue
+    want=$((want + 1))
+    "$apps" launch "$id"
+done
+[ "$want" -gt 0 ] || exit 0
+
+# Electron and the two PyQt shells each take a few seconds to map a window, and
+# the group dispatchers need both members to exist. Waiting on the count rather
+# than a flat sleep is what keeps a fast machine fast and a cold cache working.
+for _ in $(seq 60); do
+    if [ "$(open_count)" -ge "$want" ]; then break; fi
+    sleep 0.5
+done
+
+# ponytail: a flat settle, because the count is satisfied by *a* window of each
+# class and Discord's updater splash maps a second or so before the real window.
+# Biggest-wins below then picks correctly — but only among the windows that
+# exist when it runs, so this is what gives the real one time to be one of them.
+# Upgrade path if it ever loses: wait per class for a window wider than any
+# popout these apps make, rather than for any window at all.
+sleep 1
+
+# Hyprland's group dispatchers all work off the focused window and a direction,
+# which cannot express "these two, wherever they are on screen". The Lua API can:
+# `hl.dsp.group.toggle` makes a group out of one window and `group:add` puts the
+# second in it, both by address. `hyprctl eval` is the way in — the same door
+# toggle-workspace-scrolling.sh uses, and unlike `hyprctl dispatch` it does not
+# demand a dispatcher handed back.
+#
+# shellcheck disable=SC2016  # the single quotes are the point: the Lua below
+# must reach hyprctl unexpanded by the shell
+out=$(hyprctl eval '(function()
+    local PAIRS = { { "whatsapp", "messenger" }, { "slack", "discord" } }
+    local by = {}
+    -- Biggest window of a class wins. Discord and Slack both spawn extra
+    -- toplevels that share the class — call popouts, huddles, the Discord
+    -- updater splash — and any of them can map *before* the real window, so
+    -- first-wins is a race that was lost in testing: Slack ended up tabbed with
+    -- a 320x370 splash while the real Discord window sat loose beside it. A chat
+    -- window is an order of magnitude larger than every one of those, which is
+    -- the one thing that separates them without naming titles per app.
+    for _, w in ipairs(hl.get_windows()) do
+        local best = by[w.class]
+        if best == nil or w.size.x * w.size.y > best.size.x * best.size.y then
+            by[w.class] = w
+        end
+    end
+
+    for _, pair in ipairs(PAIRS) do
+        local a, b = by[pair[1]], by[pair[2]]
+        if a and b and not (a.group and a.group == b.group) then
+            hl.dispatch(hl.dsp.group.toggle({ window = "address:" .. a.address }))
+            if a.group then a.group:add(b) end
+        end
+    end
+end)()')
+# `hyprctl eval` prints its Lua errors on *stdout*, not stderr, and has no
+# channel for a return value — "ok" is all a success ever says. Capturing is
+# what keeps the message that names the line and the nil value.
+[ "$out" = ok ] || { printf 'chats: %s\n' "$out" >&2; exit 1; }

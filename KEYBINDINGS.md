@@ -17,6 +17,8 @@
 | Open default browser | `Mod+B` | Launches the system default web browser |
 | Pick browser | `Mod+Alt+B` | Vicinae list of installed browsers (freedesktop `Categories=WebBrowser` scan, no hardcoded list); the system default is marked |
 | File manager (Dolphin) | `Mod+E` | |
+| Open every chat app | `Mod+C` | `chats` — opens the four and tabs them in pairs; refuses if any is already up, since it only cold-starts. Where they land is per host: on `moinax-desktop` the `windowrules.lua` slots on DP-2, without following them; anywhere else the first empty workspace, tiled, and the focus does follow |
+| Pick chat app | `Mod+Alt+C` | Vicinae list of installed chat apps (freedesktop `Categories=InstantMessaging` scan, same crawl as the browser one) — one app, where `Mod+C` opens all of them. On `moinax-desktop` the window rules send it to its slot on DP-2 whichever workspace you were on, and `silent` means the launch is not followed |
 | Emoji & symbol picker | `Mod+I` | Vicinae built-in |
 | Switch audio output | `Mod+A` | Vicinae sink picker; the current default is marked, and picking is by sink name rather than by matching a description substring |
 | Switch keyboard layout | `Mod+K` | Vicinae list of `input-layouts/` templates; the layout in force is marked, matched on `kb_layout`/`kb_variant` |
@@ -24,8 +26,6 @@
 | Close / kill window | `Mod+Escape` | Enter asks the window to close through the compositor (its normal shutdown path); `Ctrl+Shift+Enter` is `SIGKILL` for the ones that ignore it. The list refreshes in place instead of closing |
 | Clipboard history | `Mod+V` | Vicinae built-in (encrypted store, text and images) |
 | Color picker (hyprpicker) | `Mod+Shift+P` | |
-| Calculator history | `Mod+C` | Past calculations, searchable. Arithmetic itself is not a separate command — type it straight into `Mod+Space` |
-| Calculator (kcalc) | `Mod+Alt+C` | Full calculator app |
 | Theme selector | `Mod+R` | Vicinae "Set Theme"; `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
 | Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
 | Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
@@ -70,7 +70,6 @@
 | Action | Keys | Notes |
 |---|---|---|
 | Toggle group | `Mod+G` | togglegroup |
-| Toggle the chat grouping | `Mod+Alt+G` | `chats group` — Discord+Slack in one tabbed group, WhatsApp+Messenger in the other, or all four back out. Grouping pulls a pair together even from another workspace |
 | Cycle group forward | `Alt+Tab` | changegroupactive |
 | Cycle group backward | `Alt+Shift+Tab` | |
 | Swap in group | `Alt+Ctrl+Tab` | movegroupwindow |

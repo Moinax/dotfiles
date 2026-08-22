@@ -14,7 +14,6 @@ dotfiles:
   - dot_local/bin/executable_messenger
   - dot_local/bin/executable_whatsapp
   - dot_local/lib/chat_shell.py
-  - dot_local/share/applications/chats.desktop
   - dot_local/share/applications/messenger.desktop
   - dot_local/share/applications/whatsapp.desktop
   - dot_local/share/icons/hicolor/512x512/apps/messenger.png

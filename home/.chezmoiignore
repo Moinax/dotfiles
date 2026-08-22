@@ -129,10 +129,10 @@ Wallpapers/**
 
 # The all-at-once chat launcher belongs to the messaging group as a whole: it
 # opens whichever of the four apps is installed, so it is gated on the group
-# rather than on any one of them.
+# rather than on any one of them. Mod+C is its only front door — it ships no
+# desktop entry, see .chezmoiremove.
 {{- if not (index . "install_messaging") }}
 .local/bin/chats
-.local/share/applications/chats.desktop
 {{- end }}
 
 # The two chat shells are gated per app, not per group: each is a custom_install

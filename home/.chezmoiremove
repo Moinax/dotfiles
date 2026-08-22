@@ -147,3 +147,11 @@
 .config/fish/functions/wtstart.fish
 .config/fish/functions/y.fish
 .config/fish/completions/dots.fish
+
+# The Chats desktop entry, retired: Mod+C runs the script directly, so the entry
+# only put a "Chats" row in the launcher and in the Mod+Alt+C chat picker (it
+# declared Categories=InstantMessaging, which is what that picker scans) — two
+# places it was not wanted. Same pruning rule as rofi above: ~/.local/share/
+# applications is not an `exact_` directory, so deleting the source leaves the
+# file on every machine that already applied it.
+.local/share/applications/chats.desktop
