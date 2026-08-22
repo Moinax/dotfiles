@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Read-only review agent for one angle of a diff. Returns candidate findings as JSON; never edits. Spawned by the /review skill.
+description: Read-only review agent for one angle of a diff. Returns candidate findings as JSON; never edits. Spawned by the /review-generic skill.
 tools: Read, Glob, Grep, Bash
 # opus/low over sonnet or opus/default: measured on 6 diffs from a real repo's
 # own fix history, it matched default effort's recall for 51% of the cost, and

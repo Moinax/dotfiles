@@ -1,11 +1,13 @@
 ---
-name: review
+name: review-generic
 description: >-
   Review the current diff for correctness bugs AND reuse/simplification/
   efficiency/altitude/conventions cleanups in ONE pass — six read-only agents
   fan out in parallel, then their reports are adjudicated and fixed in the
   working tree. Replaces running /code-review and /simplify back to back.
-  Trigger on "/review", "relis le diff", "review avant de ship".
+  Repo-agnostic version: use it in any project that does not ship its own
+  review skill. Trigger on "/review-generic", "relis le diff", "review avant
+  de ship".
 argument-hint: "[--dry] [<target>]"
 allowed-tools: Agent, Bash, Read, Edit, Write, Glob, Grep
 ---
