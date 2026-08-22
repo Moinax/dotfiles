@@ -51,6 +51,12 @@
     }
   },
   "effortLevel": "high",
+  {{- /* Compact at 250k instead of the model's own window: on a 1M model the
+         CLI only auto-compacts at ~100% of 1M, so a long session drags a
+         near-full context (slow turns, cache churn) for hours before it fires.
+         Same knob as `/autocompact 250k`; accepted range is 100k-1M, and
+         CLAUDE_CODE_AUTO_COMPACT_WINDOW would override it. */}}
+  "autoCompactWindow": 250000,
   "permissions": {
     "defaultMode": "auto"
   },
