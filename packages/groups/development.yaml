@@ -46,11 +46,14 @@ descriptions:
   codex: OpenAI Codex coding agent CLI (npm @openai/codex)
   vite-plus: Vite+ build toolchain (`vp`, npm vite-plus)
   ccstatusline: Claude Code status line with flat Catppuccin-matched theme
+  codeburn: Token/cost tracker for the coding agents, read from local session files (npm)
+  codeburn-desktop: CodeBurn's Electron dashboard (AppImage, desktop only)
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
 
 desktop_only:
   - cursor-bin
+  - codeburn-desktop
 
 # Tools installed via custom commands (not available in package managers).
 # These appear in the package selector alongside distro packages.
@@ -102,6 +105,40 @@ custom_install:
     requires: npm
     binary: vp
     npm: vite-plus
+  # codeburn — reads what the coding agents already wrote to disk (~/.claude,
+  # ~/.codex, and a dozen more) and reports tokens + cost by day, model, project
+  # and session. No proxy, no API key, nothing leaves the machine, so it costs
+  # nothing to have installed and is only paid for when it is run.
+  #
+  # Sits next to claude-code and codex rather than in the ai group: it is the
+  # meter for those two, works headless, and the ai group is desktop-only.
+  - name: codeburn
+    check: command -v codeburn
+    install: npm install -g codeburn
+    requires: npm
+    binary: codeburn
+    npm: codeburn
+  # The Electron front end for the same data — it bundles its own copy of the
+  # CLI and drives it, so it does not read the entry above and is not broken by
+  # its absence.
+  #
+  # --tag-prefix desktop- is load-bearing: upstream cuts one release per
+  # platform under its own tag, so without it this resolves to whichever
+  # platform shipped last and finds no Linux build. Why that is, and what else
+  # a tag-prefixed app has to get right, is in
+  # .claude/rules/manage-external-apps.md.
+  - name: codeburn-desktop
+    check: '[ -x "$HOME/.local/share/AppImages/codeburn.AppImage" ]'
+    requires: curl
+    # FUSE is needed to *run* the AppImage; the import only extracts it.
+    requires_packages:
+      arch: [fuse2]
+    install: |
+      "$DOTFILES_DIR/tools/manage-external-apps.py" install-github getagentseal/codeburn \
+        --name CodeBurn --type appimage --tag-prefix desktop- --non-interactive
+    # Tracked as an external app, so 'dots update' reports it from the apps
+    # updater rather than re-running the install command.
+    updated_by: app
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
