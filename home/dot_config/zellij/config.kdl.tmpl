@@ -30,6 +30,15 @@ show_startup_tips false
 theme_dark "catppuccin-mocha"
 theme_light "catppuccin-latte"
 
+// `dev` can create the session headlessly from Vicinae, before Kitty exists to
+// provide TERM. Without this, every restored Zsh inherits an unset TERM and
+// ZLE cannot repaint edited lines (duplicated prompts, apparent spaces on
+// backspace, broken Ctrl+L). Zellij's portable terminal capabilities are the
+// xterm-256color set; enforce them for every pane regardless of launch path.
+env {
+    TERM "xterm-256color"
+}
+
 // Wayland clipboard. copy_on_select matches what kitty already does, so a
 // selection means the same thing inside a pane and outside one.
 copy_command "wl-copy"
