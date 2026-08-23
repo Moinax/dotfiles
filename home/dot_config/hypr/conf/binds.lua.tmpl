@@ -131,10 +131,9 @@ end
 -- would skip empty workspaces and jump straight to whatever's populated.
 hl.bind(mod .. " + Page_Up",   hl.dsp.focus({ workspace = "r-1" }))
 hl.bind(mod .. " + Page_Down", hl.dsp.focus({ workspace = "r+1" }))
--- Wheel inverted vs Page keys: scrolling up advances to next workspace
--- (natural-scroll feel, matches Waybar's default `on-scroll-up`).
-hl.bind(mod .. " + mouse_up",   hl.dsp.focus({ workspace = "r+1" }))
-hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "r-1" }))
+-- Wheel follows the Page keys: scrolling up goes to the previous workspace.
+hl.bind(mod .. " + mouse_up",   hl.dsp.focus({ workspace = "r-1" }))
+hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "r+1" }))
 
 -- ── 8. Move to Workspace ─────────────────────────────────────────
 -- Convention: ALT = move with follow, CTRL = silent move (no follow).

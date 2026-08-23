@@ -85,8 +85,8 @@
 | Workspace 1–7 (AZERTY) | `Mod+&` .. `Mod+è` | |
 | Focus workspace up | `Mod+Page_Up` | `workspace r-1` (cycles rule-defined WS on current monitor, incl. empty) |
 | Focus workspace down | `Mod+Page_Down` | `workspace r+1` |
-| Focus next workspace (mouse) | `Mod+WheelUp` | Wheel inverted vs page keys (`r+1` on scroll up, natural-scroll feel) |
-| Focus prev workspace (mouse) | `Mod+WheelDown` | `r-1` on scroll down |
+| Focus prev workspace (mouse) | `Mod+WheelUp` | `r-1` on scroll up, matching `Page_Up` |
+| Focus next workspace (mouse) | `Mod+WheelDown` | `r+1` on scroll down, matching `Page_Down` |
 
 ## 8. Move to Workspace
 
