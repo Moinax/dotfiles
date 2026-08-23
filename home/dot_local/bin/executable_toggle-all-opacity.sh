@@ -2,13 +2,13 @@
 
 # Globally enable/disable window opacity in Hyprland.
 #
-# Toggles the named `GlobalOpacityRule` loaded by conf/windowrules.lua: first
-# press enables its exact opacity of 1, second press disables it and therefore
-# restores the configured defaults. Because this is a window rule, it applies
-# both to existing windows and to windows created while the mode is enabled.
+# Toggles both Hyprland's decoration defaults and the named `GlobalOpacityRule`
+# loaded by conf/windowrules.lua. The defaults keep active and inactive windows
+# solid across focus changes; the rule also covers windows created afterwards.
 #
 # Two parsers, two mechanisms (both global):
-#   * New Lua parser (Hyprland 0.55+): toggle the persistent named rule handle.
+#   * New Lua parser (Hyprland 0.55+): update the decoration defaults and toggle
+#     the persistent named rule handle in one evaluation.
 #   * Legacy parser (older Hyprland, e.g. Fedora): `eval`/hl.config is absent, so
 #     we fall back to `hyprctl keyword`, which only works on the legacy parser.
 
@@ -22,16 +22,18 @@ INACTIVE_DEFAULT=0.85
 
 set_global_opacity() {
     local enabled="$1"
-    local legacy_active="$2"
-    local legacy_inactive="$3"
+    local active="$2"
+    local inactive="$3"
 
     # Prefer the Lua parser; "ok" on stdout means it took effect.
-    if hyprctl eval "GlobalOpacityRule:set_enabled($enabled)" 2>/dev/null | grep -qx ok; then
+    if hyprctl eval \
+        "hl.config({ decoration = { active_opacity = $active, inactive_opacity = $inactive } }); GlobalOpacityRule:set_enabled($enabled)" \
+        2>/dev/null | grep -qx ok; then
         return
     fi
     # Legacy parser fallback.
-    hyprctl keyword decoration:active_opacity "$legacy_active" >/dev/null 2>&1
-    hyprctl keyword decoration:inactive_opacity "$legacy_inactive" >/dev/null 2>&1
+    hyprctl keyword decoration:active_opacity "$active" >/dev/null 2>&1
+    hyprctl keyword decoration:inactive_opacity "$inactive" >/dev/null 2>&1
 }
 
 if [[ -f "$STATE_FILE" ]]; then
