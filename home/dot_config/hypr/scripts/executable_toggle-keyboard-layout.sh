@@ -6,8 +6,8 @@ LAYOUTS_DIR="$HOME/.config/hypr/conf/input-layouts"
 
 EXT="lua"
 
-# Path to the active input configuration file
-ACTIVE_INPUT_CONF="$HOME/.config/hypr/conf/input.$EXT"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/hypr"
+STATE_FILE="$STATE_DIR/keyboard-layout"
 
 # --- Discover available layouts and their order ---
 # We'll store full paths for direct copying.
@@ -32,25 +32,30 @@ done
 
 # --- Non-interactive modes, for the vicinae Keyboard Layout command ---
 # `list` prints "<display name>\t<active 0|1>", `set NAME` applies one. The
-# copy-and-notify below is left as the single implementation of "switch layout";
-# only the picking is done elsewhere.
-#
-# Active is decided on kb_layout + kb_variant, not by diffing the files. A
-# whole-file compare looks tempting — input.lua is written by `cp` from one of
-# these templates — but it is wrong the moment the two drift for any reason
-# unrelated to the layout: input.lua starts life as chezmoi's create_input.lua
-# seed, and today it matches 2_french.lua on kb_layout while lacking that
-# template's touchpad block, so a compare reports *nothing* active. The layout
-# keys are the only part that actually defines which layout is in force.
+# script owns both listing and applying so they use the same kb_layout +
+# kb_variant identity. The active values come from Hyprland itself; input.lua is
+# now a stable loader and is never rewritten at runtime.
 kb_id() { # $1: a lua input config → "<layout>/<variant>"
     sed -n 's/.*kb_layout  *= *"\([^"]*\)".*/\1/p' "$1" | head -1 | tr -d '\n'
     printf '/'
     sed -n 's/.*kb_variant  *= *"\([^"]*\)".*/\1/p' "$1" | head -1
 }
 
+active_kb_id() {
+    local layout variant
+    layout="$(hyprctl getoption input:kb_layout -j 2>/dev/null | jq -r '.str // empty')"
+    variant="$(hyprctl getoption input:kb_variant -j 2>/dev/null | jq -r '.str // empty')"
+    printf '%s/%s\n' "$layout" "$variant"
+}
+
+persist_layout() { # $1: layout template
+    mkdir -p "$STATE_DIR"
+    basename "$1" > "$STATE_FILE"
+}
+
 case "${1:-}" in
     list)
-        active_id="$(kb_id "$ACTIVE_INPUT_CONF")"
+        active_id="$(active_kb_id)"
         for display_name in "${layout_display_names[@]}"; do
             if [ "$(kb_id "${layout_paths[$display_name]}")" = "$active_id" ]; then
                 printf '%s\t1\n' "$display_name"
@@ -80,8 +85,25 @@ if [ -z "$NEXT_LAYOUT_FILE" ] || [ ! -f "$NEXT_LAYOUT_FILE" ]; then
     exit 1
 fi
 
-# --- Copy the content of the selected layout to the active config file ---
-# Success is silent — the waybar keyboard-layout module already shows the
-# active layout, and the callers are headless (vicinae, waybar); only
-# failures notify. Hyprland reloads the config on write.
-cp "$NEXT_LAYOUT_FILE" "$ACTIVE_INPUT_CONF"
+# Selecting the layout already in force needs no compositor call, but still
+# repairs missing or stale persistence state.
+active_id="$(active_kb_id)"
+next_id="$(kb_id "$NEXT_LAYOUT_FILE")"
+if [ "$next_id" = "$active_id" ]; then
+    persist_layout "$NEXT_LAYOUT_FILE"
+    exit 0
+fi
+
+# Apply the template directly in the running compositor. Unlike writing an
+# imported config file, `hyprctl eval` changes only input state and therefore
+# leaves runtime monitor settings (including HDR) untouched.
+layout_lua="$(<"$NEXT_LAYOUT_FILE")"
+if ! hyprctl eval $'do\n'"$layout_lua"$'\nend' 2>/dev/null | grep -qx ok; then
+    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "Could not apply: $selected_display_name"
+    echo "Error: Hyprland rejected layout: $selected_display_name" >&2
+    exit 1
+fi
+
+# Persistence is deliberately outside ~/.config/hypr: input.lua reads this on
+# startup or an unrelated future reload, but changing it triggers no reload.
+persist_layout "$NEXT_LAYOUT_FILE"

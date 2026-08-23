@@ -138,9 +138,8 @@ export type KeyboardLayout = { name: string; isActive: boolean };
  * Keyboard layouts, from toggle-keyboard-layout.sh.
  *
  * The script owns both halves for a reason: which layout is *active* is decided
- * on kb_layout/kb_variant rather than by diffing input.lua against the
- * templates (they legitimately differ on unrelated blocks), and that rule
- * belongs next to the copy that applies a layout.
+ * from Hyprland's live kb_layout/kb_variant rather than from persisted state,
+ * and that rule belongs next to the runtime eval that applies a layout.
  */
 export async function keyboardLayouts(): Promise<KeyboardLayout[]> {
   const lines = await captureLines(`${HOME}/.config/hypr/scripts/toggle-keyboard-layout.sh`, ["list"]);
@@ -193,4 +192,3 @@ export async function browsers(): Promise<Browser[]> {
     return id ? [{ id, name: name || id, icon: icon || "", isDefault: isDefault === "1" }] : [];
   });
 }
-
