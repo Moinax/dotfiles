@@ -7,8 +7,14 @@ environment: desktop
 # No specific dotfiles for gaming
 dotfiles: []
 
-# No services of its own. Wireless controllers (xpadneo, DualSense) pair over
-# bluetooth, but that stack is baseline for every desktop install now — see
+# No services of its own. ratbagd looks like one — piper is a GUI over its DBus
+# API and lists no device when it is down — but it is DBus-activated
+# (org.freedesktop.ratbag1.service carries SystemdService=ratbagd.service), so
+# piper starts it on demand, and its unit has no `WantedBy=` for an enable to
+# hook into: `systemctl enable` writes an Alias symlink and nothing that runs at
+# boot. Declaring it would cost an install step and a `dots update` prompt to buy
+# nothing. Wireless controllers (xpadneo, DualSense) pair over bluetooth, but
+# that stack is baseline for every desktop install now — see
 # packages/arch/base.yaml — rather than something this group has to assert.
 services: []
 
@@ -18,6 +24,7 @@ descriptions:
   gamemode: Game performance optimization daemon
   heroic-games-launcher-bin: Launcher for Epic, GOG, and Amazon Prime games (AUR)
   xpadneo-dkms: Advanced Linux driver for Xbox One/Series wireless controllers — Bluetooth + rumble (AUR)
+  piper-git: GUI to configure gaming mice — DPI, button remapping, LEDs, onboard profiles (AUR)
   dualsensectl: PS5 DualSense control tool — light bar, player LEDs, battery, mic, adaptive triggers (AUR)
 
 # The PS5 DualSense needs no driver — it is fully supported by the mainline
@@ -36,4 +43,14 @@ packages:
     # the right headers provider as a dependency, and on CachyOS the headers for
     # the default kernel are already installed by the base system anyway. If you
     # run a non-default kernel variant, install its matching -headers manually.
+    - piper-git  # AUR — mouse configuration GUI, pulls libratbag-git as a dependency
+    # NOTE: -git deliberately, not the released piper/libratbag in extra. The
+    # G502 X PLUS (usb:046d:4099) reached libratbag on 2025-05-10 and piper's SVG
+    # lookup table after 0.8, both later than those releases — so the released
+    # pair detects no mouse, or detects it and falls back to the 404 artwork with
+    # an unusable Buttons page, since button placement comes from the SVG.
+    # libratbag-git conflicts with libratbag/ratbagd/liblur, and paru runs here
+    # with --noconfirm (install/distros/arch.sh), where pacman's conflict prompt
+    # takes the default no — so a machine that already carries the released pair
+    # fails the whole group batch, not just this package. Remove them first.
     - dualsensectl  # AUR — PS5 DualSense control (LEDs, battery, mic, adaptive triggers); the driver itself is in-kernel (hid-playstation)
