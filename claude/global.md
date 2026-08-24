@@ -42,11 +42,11 @@ context, so this block costs no tokens.
 
 ## File paths in answers
 
-- **Always write file paths inside backticks** — `src/app.ts:42`, `packages/groups/`.
-  I work in T3 Code, which only turns a path into a link inside an inline-code span
-  or a markdown link destination, so a path written in bare prose is dead text
-  however it is spelled. Relative, absolute and `~/…` all resolve to the same file
-  once backticked. A `:42` or `:42:7` suffix rides along and opens on that line.
+- **Always use absolute file paths, inside backticks or as Markdown link destinations**
+  — `/home/me/project/src/app.ts:42`, not `src/app.ts:42`. T3 Code turns either
+  form into a workspace-relative chip, but a relative path depends on the thread's
+  cwd while an absolute one resolves on its own. A `:42` or `:42:7` suffix opens
+  the file at that position.
 
 ## Scratch files
 
