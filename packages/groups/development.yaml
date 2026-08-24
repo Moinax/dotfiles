@@ -32,6 +32,7 @@ descriptions:
   hunk: Review-first terminal diff viewer for agent changesets (npm hunkdiff)
   tuicr: Code review TUI with vim keybindings (local diffs + GitHub PRs)
   tea: Command-line client for Gitea servers
+  forgejo-cli-git: Forgejo CLI (`fj`) for repositories, issues, and pull requests (AUR)
   docker: Container runtime engine
   docker-compose: Multi-container orchestration
   lazydocker: Terminal UI for Docker
@@ -165,6 +166,7 @@ packages:
     - lazygit
     - tuicr
     - tea
+    - forgejo-cli-git  # AUR
     
     # Containers
     - docker

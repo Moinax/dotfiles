@@ -48,7 +48,7 @@ The interactive installer will:
 | Group | Description |
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `awww`, `hyprshot`, `wf-recorder`, `waybar`, `vicinae`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
-| **Development** | `neovim`, Cursor, Zed, Git tooling (`gh`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
+| **Development** | `neovim`, Cursor, Zed, Git tooling (`gh`, `fj`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam and Heroic with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
 | **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), KDE apps (Kate, Ghostwriter, Gwenview, Okular, Ark), file sharing (Dropbox, LocalSend), archive tools, and themes/icons |
@@ -208,7 +208,7 @@ After running the installer:
 - **Shell**: zsh, with the starship prompt, zoxide, television
 - **Terminal**: kitty
 - **Editor**: Neovim (AstroNvim-based), Cursor, Zed
-- **Git**: hunk for diffs, tuicr for reviews, lazygit for Git operations, `gh-dash` for pull requests, WorkTrunk for worktrees
+- **Git**: hunk for diffs, tuicr for reviews, lazygit for Git operations, `gh-dash` for GitHub pull requests, `fj` for Forgejo, WorkTrunk for worktrees
 - **Multiplexer**: Zellij — one persistent `main` session, one tab per checkout, opened by `term` / `dev`
 - **File Manager**: yazi, dolphin
 - **Hyprland**: hypridle, hyprlock, awww, hyprshot, wf-recorder, waybar, vicinae, swaync, wlogout
