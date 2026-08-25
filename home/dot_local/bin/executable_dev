@@ -19,10 +19,10 @@ set -euo pipefail
 session="main"
 dir="${1:-.}"
 
-# GUI launchers do not have a terminal and therefore provide no useful TERM.
-# `dev` still starts the Zellij server before Kitty in that path, so ensure the
-# server itself gets the portable capability set Zellij exposes. Some
-# non-interactive launch paths synthesize "dumb" instead of leaving it unset.
+# GUI launchers do not have a terminal and therefore provide no useful TERM,
+# and some synthesize "dumb" instead of leaving it unset. The zellij clients
+# below (`action ...`) inherit it; the server gets its own from Kitty, and its
+# panes from `env { TERM }` in config.kdl.
 if [[ -z "${TERM:-}" || "$TERM" == "dumb" ]]; then
     export TERM="xterm-256color"
 fi
@@ -47,10 +47,35 @@ if common="$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null)"; then
     fi
 fi
 
-# Create the session if it is not up, or resurrect a serialized one — detached
-# is enough, `term` below attaches it. Already-running is an error here, not a
-# blocking attach (verified), so it is safe to run unconditionally.
-zellij attach -c -b "$session" >/dev/null 2>&1 || true
+# Only Kitty may bring the session up.
+#
+# `zellij attach -c -b` here would do it too, but a server started by a process
+# with no terminal — `dev` under Vicinae — has no size to read and falls back
+# to a 50x50 viewport (measured). Resurrecting a serialized session at that
+# size drops every tab whose layout does not fit ("Not enough room for panes"
+# in the server log), and the attaching client then lands on the tab that was
+# active when the session died, now empty: a blank pane with a cursor and no
+# zellij UI. From Kitty the same code works, because there the size is real.
+#
+# So `term` starts it, since what `term` starts is a Kitty running the client.
+# It returns once the window has focus, which is before that client has
+# finished attaching — hence the wait. `query-tab-names` is the probe because
+# it is the same call the tab check below makes: exit 0 means the server is
+# answering, 1 means there is no session (measured; `list-sessions` answers the
+# weaker question of whether the *name* is known).
+session_up() { zellij -s "$session" action query-tab-names >/dev/null 2>&1; }
+
+if ! session_up; then
+    # Bare, this dies silently under `set -e` when there is no compositor to
+    # put a window on — an ssh shell, a plain TTY.
+    term || { echo "dev: could not bring up the terminal" >&2; exit 1; }
+
+    for _ in $(seq 50); do
+        session_up && break
+        sleep 0.1
+    done
+    session_up || { echo "dev: zellij session \"$session\" did not come up" >&2; exit 1; }
+fi
 
 # `go-to-tab-name` exits 0 whether or not the tab existed, so it cannot be used
 # as the existence check; query-tab-names can. zellij 0.44.3 ignores new-tab's
@@ -78,4 +103,9 @@ if ! zellij -s "$session" action query-tab-names 2>/dev/null | grep -qxF "$name"
 fi
 zellij -s "$session" action go-to-tab-name "$name" >/dev/null
 
+# Last, not first: the raise has to happen after the tab work, or a Vicinae
+# action still dismissing itself takes the focus back afterwards — the case
+# `term`'s own retry loop is written for. Idempotent, so the call above that
+# started Kitty costs nothing here, and `exec` keeps `term`'s exit status as
+# `dev`'s.
 exec term
