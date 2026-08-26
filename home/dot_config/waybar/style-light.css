@@ -162,6 +162,7 @@ window#waybar.empty #window {
 }
 #custom-hdr.hdr { color: #40a02b; }
 #custom-hdr.sdr { color: #9ca0b0; }
+#custom-hdr.mixed { color: #df8e1d; }
 #custom-exit {
   margin-right: 20px;
 }

@@ -181,6 +181,7 @@ window#waybar.empty #window {
 }
 #custom-hdr.hdr { color: #a6e3a1; }
 #custom-hdr.sdr { color: #6c7086; }
+#custom-hdr.mixed { color: #f9e2af; }
 #custom-exit {
   margin-right: 20px;
 }

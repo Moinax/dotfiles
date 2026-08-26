@@ -55,6 +55,7 @@ descriptions:
   xdg-desktop-portal-kde: KDE portal backend (color-scheme, file chooser, etc.)
   xdg-desktop-portal-hyprland: Hyprland portal backend (screenshot, screencast)
   uwsm: Universal Wayland Session Manager (wraps Hyprland in a systemd unit)
+  v4l-utils: Video utilities (provides edid-decode for HDR capability detection)
 
 packages:
   arch:
@@ -68,6 +69,7 @@ packages:
     - hyprshot
     - wf-recorder
     - uwsm
+    - v4l-utils  # edid-decode: detect PQ/HDR from each connected display's EDID
 
     # Status bar and menus
     - waybar

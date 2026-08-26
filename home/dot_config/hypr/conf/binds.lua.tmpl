@@ -40,9 +40,7 @@ hl.bind(mod .. " + V",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/cli
 hl.bind(mod .. " + SHIFT + P",    hl.dsp.exec_cmd("hyprpicker"))                                                            -- Color picker
 hl.bind(mod .. " + M",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/monitors?toggle=true'"))        -- Toggle monitors on/off
 hl.bind(mod .. " + ALT + M",      hl.dsp.exec_cmd(home .. "/.local/bin/lock-dpms-off.sh"))                                  -- Lock + screen off
-{{- if eq .chezmoi.hostname "moinax-desktop" }}
-hl.bind(mod .. " + ALT + H",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-hdr.sh"))                                     -- Toggle 10-bit HDR on DP-3
-{{- end }}
+hl.bind(mod .. " + ALT + H",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-hdr.sh"))                                     -- Toggle HDR on the detected capable monitor
 {{- if .install_ai }}
 hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh"))                               -- Toggle dictation
 -- Discard, the keyboard twin of the overlay's ✕. Safe to leave always live:

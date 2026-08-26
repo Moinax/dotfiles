@@ -6,8 +6,9 @@
 --   * `dofile`d by apply-dark-mode.sh through one `hyprctl eval`, so Mod+N
 --     repaints the tabs without a whole-config reload. That matters: a reload
 --     re-applies the config over the live session, reverting every runtime
---     toggle set through `hyprctl eval` — toggle-monitors, toggle-hdr,
---     toggle-all-opacity and toggle-workspace-scrolling all live only in memory.
+--     toggle set through `hyprctl eval` — toggle-monitors, toggle-all-opacity
+--     and toggle-workspace-scrolling all live only in memory. HDR is the
+--     exception: toggle-hdr.sh persists it and autostart.lua restores it.
 --     dofile also sidesteps `require`'s cache, which would hand back the palette
 --     from before the flip.
 -- (`hyprctl keyword` is not an option either way: Hyprland 0.55+ rejects it on

@@ -169,7 +169,7 @@
 | Toggle caffeine mode | `Mod+Alt+N` | Inhibits idle (prevents lock/sleep) |
 | Toggle Tailscale VPN | `Mod+Ctrl+N` | Connect/disconnect Tailscale |
 | Lock + screen off | `Mod+Alt+M` | Locks the session, then powers the screen off; wake by mouse/key, then unlock |
-| Toggle HDR (10-bit) | `Mod+Alt+H` | Desktop only; flips DP-3 between SDR (default) and 10-bit HDR, reverts on reload |
+| Toggle HDR (10-bit) | `Mod+Alt+H` | Detects HDR from EDID; targets the focused capable display (or the only one), and remembers the mode across connectors, reloads and sessions |
 | Keybinding help | `Mod+H` | Vicinae list, grouped by section with a section filter; parsed from `binds.lua` by `hypr-keybindings` |
 
 ## 15. Mouse

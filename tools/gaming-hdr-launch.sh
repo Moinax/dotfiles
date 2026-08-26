@@ -40,8 +40,8 @@ else
 fi
 
 # ── Find HDR monitor(s) ─────────────────────────────────────────────────────────
-# A monitor is HDR-capable in the running session when Hyprland reports its
-# colorManagementPreset as "hdr" (driven by the `cm,hdr` flag in monitor.conf).
+# A monitor is actively running HDR when Hyprland reports its color-management
+# preset as "hdr". Capability detection and activation belong to toggle-hdr.sh.
 
 monitors_json=$(hyprctl monitors -j 2>/dev/null) || monitors_json=""
 
@@ -55,9 +55,8 @@ if $check_only; then
 fi
 
 if [ ${#hdr_monitors[@]} -eq 0 ]; then
-    print_error "No HDR monitor found in the current Hyprland session"
-    print_info "Add 'cm,hdr' (and 'bitdepth,10') to the monitor in monitor.conf.tmpl,"
-    print_info "then re-apply with chezmoi and reload Hyprland."
+    print_error "No monitor is currently running in HDR"
+    print_info "Enable HDR with Mod+Alt+H, then run this helper again."
     exit 1
 fi
 

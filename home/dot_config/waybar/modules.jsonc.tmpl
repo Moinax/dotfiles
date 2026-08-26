@@ -177,10 +177,11 @@
     },
     "on-click-right": "loginctl lock-session",
   },
-  // HDR/SDR toggle for the HDR-capable monitor (desktop DP-3)
+  // HDR/SDR toggle; hidden automatically when no HDR-capable display is present.
   "custom/hdr": {
     "exec": "~/.local/bin/waybar-hdr.sh",
     "return-type": "json",
+    "hide-empty-text": true,
     "signal": 9,
     "interval": 5,
     "on-click": "~/.local/bin/toggle-hdr.sh",

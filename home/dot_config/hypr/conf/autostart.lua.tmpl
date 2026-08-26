@@ -10,7 +10,17 @@
 -- live (Lua dispatch available) but don't have their own systemd lifecycle.
 local home = assert(os.getenv("HOME"), "HOME not set")
 
+local function restore_hdr()
+    hl.exec_cmd(home .. "/.local/bin/toggle-hdr.sh --restore")
+end
+
 hl.on("hyprland.start", function()
     -- Restore dark/light mode
     hl.exec_cmd(home .. "/.local/bin/apply-dark-mode.sh")
+    restore_hdr()
 end)
+
+-- Monitor rules are reapplied on config reload and hotplug. Restore only after
+-- those rules have settled so the saved per-display mode wins.
+hl.on("config.reloaded", restore_hdr)
+hl.on("monitor.added", restore_hdr)
