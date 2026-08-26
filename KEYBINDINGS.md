@@ -3,6 +3,11 @@
 > **Mod** = Super / Win key.
 >
 > Source file: `home/dot_config/hypr/conf/binds.lua.tmpl`
+>
+> Letter shortcuts and workspace-number shortcuts use **physical AZERTY
+> positions**. Their labels below are the French/Belgian legends: switching the
+> active layout to US changes what applications type, but every Hyprland
+> shortcut stays under the same fingers.
 
 ---
 
@@ -21,7 +26,7 @@
 | Pick chat app | `Mod+Alt+C` | Vicinae list of installed chat apps (freedesktop `Categories=InstantMessaging` scan, same crawl as the browser one) — one app, where `Mod+C` opens all of them. On `moinax-desktop` the window rules send it to its slot on DP-2 whichever workspace you were on, and `silent` means the launch is not followed |
 | Emoji & symbol picker | `Mod+I` | Vicinae built-in |
 | Switch audio output | `Mod+A` | Vicinae sink picker; the current default is marked, and picking is by sink name rather than by matching a description substring |
-| Switch keyboard layout | `Mod+K` | Vicinae list of `input-layouts/` templates; the layout in force is marked, matched on `kb_layout`/`kb_variant` |
+| Switch keyboard layout | `Mod+K` | Vicinae list of `input-layouts/` entries; the active XKB group is marked |
 | Window switcher (vicinae) | `Mod+Tab` | Vicinae built-in |
 | Close / kill window | `Mod+Escape` | Enter asks the window to close through the compositor (its normal shutdown path); `Ctrl+Shift+Enter` is `SIGKILL` for the ones that ignore it. The list refreshes in place instead of closing |
 | Clipboard history | `Mod+V` | Vicinae built-in (encrypted store, text and images) |
@@ -81,8 +86,7 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Workspace 1–7 (QWERTY) | `Mod+1` .. `Mod+7` | |
-| Workspace 1–7 (AZERTY) | `Mod+&` .. `Mod+è` | |
+| Workspace 1–7 | `Mod+&` .. `Mod+è` | Physical number-row positions; the same keys are `Mod+1` .. `Mod+7` while the US layout is active |
 | Focus workspace up | `Mod+Page_Up` | `workspace r-1` (cycles rule-defined WS on current monitor, incl. empty) |
 | Focus workspace down | `Mod+Page_Down` | `workspace r+1` |
 | Focus prev workspace (mouse) | `Mod+WheelUp` | `r-1` on scroll up, matching `Page_Up` |
@@ -94,8 +98,8 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Move to WS 1–7 (follow) | `Mod+Alt+1` .. `Mod+Alt+7` | AZERTY: `Mod+Alt+&` .. `Mod+Alt+è` |
-| Silent move to WS 1–7 | `Mod+Ctrl+1` .. `Mod+Ctrl+7` | AZERTY: `Mod+Ctrl+&` .. `Mod+Ctrl+è` |
+| Move to WS 1–7 (follow) | `Mod+Alt+&` .. `Mod+Alt+è` | Same physical keys as `Mod+Alt+1` .. `Mod+Alt+7` in US |
+| Silent move to WS 1–7 | `Mod+Ctrl+&` .. `Mod+Ctrl+è` | Same physical keys as `Mod+Ctrl+1` .. `Mod+Ctrl+7` in US |
 | Move window to WS up (follow) | `Mod+Alt+Page_Up` | `movetoworkspace r-1` |
 | Move window to WS down (follow) | `Mod+Alt+Page_Down` | `movetoworkspace r+1` |
 | Silent move to WS up | `Mod+Ctrl+Page_Up` | `movetoworkspacesilent r-1` |
@@ -104,8 +108,8 @@
 | Move to prev WS (mouse, follow) | `Mod+Alt+WheelDown` | `movetoworkspace r-1` |
 | Silent move to next WS (mouse) | `Mod+Ctrl+WheelUp` | `movetoworkspacesilent r+1` |
 | Silent move to prev WS (mouse) | `Mod+Ctrl+WheelDown` | `movetoworkspacesilent r-1` |
-| Move **all** windows to WS 1–7 (follow) | `Mod+Shift+1` .. `Mod+Shift+7` | AZERTY: `Mod+Shift+&` .. `Mod+Shift+è`; empties the current workspace — or the scratchpad, when that is the one on screen |
-| Silent move of **all** windows to WS 1–7 | `Mod+Ctrl+Shift+1` .. `Mod+Ctrl+Shift+7` | AZERTY: `Mod+Ctrl+Shift+&` .. `Mod+Ctrl+Shift+è` |
+| Move **all** windows to WS 1–7 (follow) | `Mod+Shift+&` .. `Mod+Shift+è` | Same physical keys as `Mod+Shift+1` .. `Mod+Shift+7` in US; empties the current workspace — or the scratchpad, when that is the one on screen |
+| Silent move of **all** windows to WS 1–7 | `Mod+Ctrl+Shift+&` .. `Mod+Ctrl+Shift+è` | Same physical keys as `Mod+Ctrl+Shift+1` .. `Mod+Ctrl+Shift+7` in US |
 
 ## 9. Scratchpad
 

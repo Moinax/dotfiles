@@ -1,0 +1,15 @@
+[Unit]
+Description=Keep hot-plugged Hyprland keyboards on the selected XKB group
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Slice=background-graphical.slice
+Type=simple
+ExecStart=%h/.config/hypr/scripts/toggle-keyboard-layout.sh watch
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=graphical-session.target

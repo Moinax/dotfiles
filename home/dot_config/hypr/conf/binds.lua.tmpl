@@ -29,7 +29,7 @@ hl.bind(mod .. " + ALT + B",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@mo
 {{- if (index . "install_messaging") }}
 hl.bind(mod .. " + C",            hl.dsp.exec_cmd(home .. "/.local/bin/chats"))                                            -- Open every chat app, tabbed in pairs
 {{- end }}
-hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/chat?toggle=true'"))           -- Pick one chat app (Mod+C opens all)   
+hl.bind(mod .. " + ALT + C",      hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/chat?toggle=true'"))           -- Pick one chat app (Mod+C opens all)
 hl.bind(mod .. " + E",            hl.dsp.exec_cmd("dolphin"))                                                               -- Open file manager
 hl.bind(mod .. " + I",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/core/search-emojis?toggle=true'"))             -- Emoji & symbol picker
 hl.bind(mod .. " + A",            hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/audio-output?toggle=true'"))    -- Switch audio output
@@ -113,17 +113,14 @@ hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))   
 hl.bind(mod .. " + SHIFT + T",       hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
 
 -- ── 7. Workspace Navigation ──────────────────────────────────────
--- QWERTY 1-7
-for i = 1, 7 do
-    hl.bind(mod .. " + " .. tostring(i), hl.dsp.focus({ workspace = tostring(i) }))
-end
--- AZERTY 1-7
-local azerty_top_row = {
-    [1] = "ampersand", [2] = "eacute", [3] = "quotedbl", [4] = "apostrophe",
-    [5] = "parenleft", [6] = "minus",  [7] = "egrave",
+-- Hyprland resolves these symbols through the first configured layout (French),
+-- so they keep the same physical positions when another XKB group is active.
+local workspace_keys = {
+    "ampersand", "eacute", "quotedbl", "apostrophe",
+    "parenleft", "minus", "egrave",
 }
-for ws, key in pairs(azerty_top_row) do
-    hl.bind(mod .. " + " .. key, hl.dsp.focus({ workspace = tostring(ws) }))
+for i, key in ipairs(workspace_keys) do
+    hl.bind(mod .. " + " .. key, hl.dsp.focus({ workspace = tostring(i) }))
 end
 -- Relative prev/next workspace (scrolling up/down). `r±1` walks rule-defined
 -- workspaces on the current monitor including empty ones — so on DP-3 (WS 1-5)
@@ -137,15 +134,9 @@ hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "r+1" }))
 
 -- ── 8. Move to Workspace ─────────────────────────────────────────
 -- Convention: ALT = move with follow, CTRL = silent move (no follow).
--- QWERTY 1-7
-for i = 1, 7 do
-    hl.bind(mod .. " + ALT + "  .. tostring(i), hl.dsp.window.move({ workspace = tostring(i) }))
-    hl.bind(mod .. " + CTRL + " .. tostring(i), hl.dsp.window.move({ workspace = tostring(i), follow = false }))
-end
--- AZERTY 1-7
-for ws, key in pairs(azerty_top_row) do
-    hl.bind(mod .. " + ALT + "  .. key, hl.dsp.window.move({ workspace = tostring(ws) }))
-    hl.bind(mod .. " + CTRL + " .. key, hl.dsp.window.move({ workspace = tostring(ws), follow = false }))
+for i, key in ipairs(workspace_keys) do
+    hl.bind(mod .. " + ALT + "  .. key, hl.dsp.window.move({ workspace = tostring(i) }))
+    hl.bind(mod .. " + CTRL + " .. key, hl.dsp.window.move({ workspace = tostring(i), follow = false }))
 end
 -- Relative prev/next (mirror of focus binds above).
 hl.bind(mod .. " + ALT + Page_Up",      hl.dsp.window.move({ workspace = "r-1" }))
@@ -162,15 +153,9 @@ hl.bind(mod .. " + CTRL + mouse_down",  hl.dsp.window.move({ workspace = "r-1", 
 -- What counts as "the workspace" — the scratchpad when it is the thing on
 -- screen — is the script's business, and its header is where that is written.
 local move_all = home .. "/.local/bin/hypr-move-all.sh "
--- QWERTY 1-7
-for i = 1, 7 do
-    hl.bind(mod .. " + SHIFT + "        .. tostring(i), hl.dsp.exec_cmd(move_all .. i))                -- Move every window to this workspace
-    hl.bind(mod .. " + CTRL + SHIFT + " .. tostring(i), hl.dsp.exec_cmd(move_all .. i .. " --silent")) -- Move every window to this workspace (silent)
-end
--- AZERTY 1-7
-for ws, key in pairs(azerty_top_row) do
-    hl.bind(mod .. " + SHIFT + "        .. key, hl.dsp.exec_cmd(move_all .. ws))                -- Move every window to this workspace
-    hl.bind(mod .. " + CTRL + SHIFT + " .. key, hl.dsp.exec_cmd(move_all .. ws .. " --silent")) -- Move every window to this workspace (silent)
+for i, key in ipairs(workspace_keys) do
+    hl.bind(mod .. " + SHIFT + "        .. key, hl.dsp.exec_cmd(move_all .. i))                -- Move every window to this workspace
+    hl.bind(mod .. " + CTRL + SHIFT + " .. key, hl.dsp.exec_cmd(move_all .. i .. " --silent")) -- Move every window to this workspace (silent)
 end
 
 -- ── 10. Scratchpad (default unnamed special workspace) ──────────

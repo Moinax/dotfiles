@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Directory containing your input layout template files
 LAYOUTS_DIR="$HOME/.config/hypr/conf/input-layouts"
 
 EXT="lua"
+DEFAULT_LAYOUT="2_french.lua"
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/hypr"
 STATE_FILE="$STATE_DIR/keyboard-layout"
@@ -18,7 +20,7 @@ if [ "${#LAYOUT_FILES[@]}" -eq 0 ]; then
     exit 1
 fi
 
-# --- Prepare layout names for Rofi and map them to their full paths ---
+# --- Prepare display names and map them to their metadata files ---
 declare -A layout_paths # Associative array to map display name to file path
 layout_display_names=() # Array to store names for Rofi display
 
@@ -32,20 +34,16 @@ done
 
 # --- Non-interactive modes, for the vicinae Keyboard Layout command ---
 # `list` prints "<display name>\t<active 0|1>", `set NAME` applies one. The
-# script owns both listing and applying so they use the same kb_layout +
-# kb_variant identity. The active values come from Hyprland itself; input.lua is
-# now a stable loader and is never rewritten at runtime.
-kb_id() { # $1: a lua input config → "<layout>/<variant>"
-    sed -n 's/.*kb_layout  *= *"\([^"]*\)".*/\1/p' "$1" | head -1 | tr -d '\n'
-    printf '/'
-    sed -n 's/.*kb_variant  *= *"\([^"]*\)".*/\1/p' "$1" | head -1
+# script owns both listing and applying so they use the same XKB group index.
+# input.lua keeps fr,us,be loaded together; changing group never reloads the
+# config and therefore cannot disturb runtime monitor state such as HDR.
+layout_index() { # $1: a lua metadata file → zero-based XKB group index
+    sed -n 's/^[[:space:]]*return[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$1" | head -1
 }
 
-active_kb_id() {
-    local layout variant
-    layout="$(hyprctl getoption input:kb_layout -j 2>/dev/null | jq -r '.str // empty')"
-    variant="$(hyprctl getoption input:kb_variant -j 2>/dev/null | jq -r '.str // empty')"
-    printf '%s/%s\n' "$layout" "$variant"
+active_layout_index() {
+    hyprctl devices -j 2>/dev/null \
+        | jq -r '([.keyboards[] | select(.main)][0] // .keyboards[0]).active_layout_index // empty'
 }
 
 persist_layout() { # $1: layout template
@@ -53,11 +51,43 @@ persist_layout() { # $1: layout template
     basename "$1" > "$STATE_FILE"
 }
 
+watch_layout_events() {
+    local socket event keyboard desired_file desired_index current_index
+    socket="${XDG_RUNTIME_DIR:?}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:?}/.socket2.sock"
+
+    # A newly attached keyboard announces its initial group through
+    # `activelayout`. It always starts at group 0, so bring that device to the
+    # persisted group without touching keyboards that are already in sync.
+    socat -u "UNIX-CONNECT:$socket" - | while IFS= read -r event; do
+        case "$event" in
+            activelayout\>\>*) ;;
+            *) continue ;;
+        esac
+
+        keyboard="${event#activelayout>>}"
+        keyboard="${keyboard%%,*}"
+        desired_file="$LAYOUTS_DIR/$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)"
+        [ -f "$desired_file" ] || desired_file="$LAYOUTS_DIR/$DEFAULT_LAYOUT"
+        desired_index="$(layout_index "$desired_file")"
+        [[ "$desired_index" =~ ^[0-9]+$ ]] || continue
+
+        current_index="$(hyprctl devices -j 2>/dev/null | jq -r --arg keyboard "$keyboard" \
+            '[.keyboards[] | select(.name == $keyboard)][0].active_layout_index // empty')"
+        if [ -n "$current_index" ] && [ "$current_index" != "$desired_index" ]; then
+            hyprctl switchxkblayout "$keyboard" "$desired_index" >/dev/null 2>&1 || true
+        fi
+    done
+}
+
 case "${1:-}" in
+    watch)
+        watch_layout_events
+        exit 0
+        ;;
     list)
-        active_id="$(active_kb_id)"
+        active_index="$(active_layout_index)"
         for display_name in "${layout_display_names[@]}"; do
-            if [ "$(kb_id "${layout_paths[$display_name]}")" = "$active_id" ]; then
+            if [ "$(layout_index "${layout_paths[$display_name]}")" = "$active_index" ]; then
                 printf '%s\t1\n' "$display_name"
             else
                 printf '%s\t0\n' "$display_name"
@@ -85,25 +115,28 @@ if [ -z "$NEXT_LAYOUT_FILE" ] || [ ! -f "$NEXT_LAYOUT_FILE" ]; then
     exit 1
 fi
 
-# Selecting the layout already in force needs no compositor call, but still
-# repairs missing or stale persistence state.
-active_id="$(active_kb_id)"
-next_id="$(kb_id "$NEXT_LAYOUT_FILE")"
-if [ "$next_id" = "$active_id" ]; then
-    persist_layout "$NEXT_LAYOUT_FILE"
-    exit 0
+# Always apply the selected group to every keyboard. This also brings a keyboard
+# hot-plugged since the previous switch into sync when the user reselects the
+# layout already marked active.
+next_index="$(layout_index "$NEXT_LAYOUT_FILE")"
+if ! [[ "$next_index" =~ ^[0-9]+$ ]]; then
+    notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "Invalid layout index: $selected_display_name"
+    echo "Error: Invalid layout index in $NEXT_LAYOUT_FILE" >&2
+    exit 1
 fi
+# Persist first so the hot-plug watcher recognizes events caused by this
+# intentional switch as the new desired state.
+previous_layout="$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)"
+persist_layout "$NEXT_LAYOUT_FILE"
 
-# Apply the template directly in the running compositor. Unlike writing an
-# imported config file, `hyprctl eval` changes only input state and therefore
-# leaves runtime monitor settings (including HDR) untouched.
-layout_lua="$(<"$NEXT_LAYOUT_FILE")"
-if ! hyprctl eval $'do\n'"$layout_lua"$'\nend' 2>/dev/null | grep -qx ok; then
+# Switch every keyboard to the selected group in the shared keymap.
+if ! hyprctl switchxkblayout all "$next_index" >/dev/null 2>&1; then
+    if [ -n "$previous_layout" ]; then
+        printf '%s\n' "$previous_layout" > "$STATE_FILE"
+    else
+        unlink "$STATE_FILE"
+    fi
     notify-send -u critical "Hyprland Keyboard Layout Toggle Error" "Could not apply: $selected_display_name"
     echo "Error: Hyprland rejected layout: $selected_display_name" >&2
     exit 1
 fi
-
-# Persistence is deliberately outside ~/.config/hypr: input.lua reads this on
-# startup or an unrelated future reload, but changing it triggers no reload.
-persist_layout "$NEXT_LAYOUT_FILE"

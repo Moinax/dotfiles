@@ -145,6 +145,7 @@ parse_hyprland() {
         s = expr
         gsub(/^[ \t]+|[ \t]+$/, "", s)
         gsub(/\<mod\>/, "\"Mod\"", s)
+        gsub(/\<key\>/, "\"<I>\"", s)
         gsub(/tostring\(i\)/, "\"<I>\"", s)
         while (gsub(/"[ \t]*\.\.[ \t]*"/, "", s)) {}
         gsub(/"/, "", s)
@@ -168,7 +169,7 @@ parse_hyprland() {
         return out
     }
 
-    BEGIN { section = ""; skip_block = 0; in_for_i = 0 }
+    BEGIN { section = ""; in_for_i = 0 }
 
     # Section headers: -- ── N. Name ─────
     /^-- ── [0-9]+[a-z]?\./ {
@@ -179,19 +180,14 @@ parse_hyprland() {
         section = s; next
     }
 
-    # AZERTY loop: skip its bindings (they duplicate the QWERTY layer)
-    /for ws, key in pairs\(azerty_top_row\) do/ { skip_block = 1; next }
-
-    # Numeric QWERTY loop: expand <I> placeholder over 1..7
-    /for i = 1, 7 do/ { in_for_i = 1; next }
+    # Physical number-row loop: show its AZERTY symbols as workspace 1..7.
+    /for i, key in ipairs\(workspace_keys\) do/ { in_for_i = 1; next }
 
     /^[ \t]*end[ \t]*$/ {
-        if (skip_block) skip_block = 0
-        else if (in_for_i) in_for_i = 0
+        if (in_for_i) in_for_i = 0
         next
     }
 
-    skip_block             { next }
     /^[ \t]*--/            { next }
     /^[ \t]*$/             { next }
 
