@@ -44,7 +44,7 @@ descriptions:
   tailscale: Mesh VPN for secure networking
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   claude-code: AI-powered coding assistant CLI
-  codex: OpenAI Codex coding agent CLI (npm @openai/codex)
+  codex: OpenAI Codex coding agent CLI (standalone installer)
   vite-plus: Vite+ build toolchain (`vp`, npm vite-plus)
   ccstatusline: Claude Code status line with flat Catppuccin-matched theme
   codeburn: Token/cost tracker for the coding agents, read from local session files (npm)
@@ -70,18 +70,17 @@ custom_install:
     install: curl -fsSL https://claude.ai/install.sh | bash
     binary: claude
     updated_by: self
-  # OpenAI Codex CLI — bootstrapped via npm, but the package then manages its
-  # own standalone builds under ~/.codex/packages/ (a `current` symlink per
-  # release), so it is no longer an npm global and updates itself.
+  # OpenAI Codex CLI — the official standalone installer owns the stable
+  # ~/.local/bin/codex symlink. Re-running it is also the documented update
+  # path, so `dots update` never creates a second, shadowed fnm/npm install.
   - name: codex
     check: command -v codex
-    install: npm install -g @openai/codex
-    requires: npm
+    install: curl -fsSL https://chatgpt.com/codex/install.sh | sh
     binary: codex
     source: openai/codex
-    updated_by: self
   # hunk — review-first diff viewer for agent changesets. Not in distro repos;
-  # installed via npm like codex. Needs node/npm, which fnm provides.
+  # installed via npm, unlike the standalone Codex CLI. Needs node/npm, which
+  # fnm provides.
   - name: hunk
     check: command -v hunk
     install: npm install -g hunkdiff
