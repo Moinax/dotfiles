@@ -1057,7 +1057,11 @@ phase_fork() {
     git -C "$FORK_DIR" reset --quiet --hard FETCH_HEAD
     ok "$(git -C "$FORK_DIR" log --oneline -1)"
 
-    have vp || npm install -g vite-plus >/dev/null 2>&1
+    if [ ! -x "$HOME/.local/share/vite-plus/bin/vp" ] \
+       && [ ! -x "$HOME/.vite-plus/bin/vp" ]; then
+        curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash >/dev/null 2>&1
+        [ ! -f "$HOME/.config/vite-plus/env" ] || . "$HOME/.config/vite-plus/env"
+    fi
     have vp || { err "vite-plus is missing and could not be installed"; return 1; }
 
     # Skip the build when the tree has not moved and the output is intact. This

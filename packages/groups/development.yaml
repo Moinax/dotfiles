@@ -93,18 +93,18 @@ custom_install:
   # T3 Code fork's AppImage and stops on its own guard without it, which is how a
   # machine ended up with that fork checked out and no way to build it.
   #
-  # The npm package rather than `curl https://vite.plus | bash` — same toolchain,
-  # the tarball ships bin/vp — because npm is the install path this file's other
-  # JS entries already use, and the one `dots update` can read a version out of
-  # (`npm outdated -g`, already fetched once per run) with no extra round trip.
-  # Note the Node-bump repair does *not* depend on this entry: it reads the
-  # globals installed under the version being left, not the yaml.
+  # Use Vite+'s standalone global CLI, not the npm project's local CLI package.
+  # The standalone binary delegates project commands to the workspace-pinned
+  # vite-plus; invoking a globally installed npm copy can load a second Vitest
+  # singleton and make every @effect/vitest suite fail before test collection.
   - name: vite-plus
-    check: command -v vp
-    install: npm install -g vite-plus
-    requires: npm
+    check: test -x "$HOME/.local/share/vite-plus/bin/vp" || test -x "$HOME/.vite-plus/bin/vp"
+    install: curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash
+    requires: curl
     binary: vp
-    npm: vite-plus
+    version: vp --version 2>/dev/null | sed -n 's/^vp v//p' | head -1
+    source: voidzero-dev/vite-plus
+    update: vp upgrade
   # codeburn — reads what the coding agents already wrote to disk (~/.claude,
   # ~/.codex, and a dozen more) and reports tokens + cost by day, model, project
   # and session. No proxy, no API key, nothing leaves the machine, so it costs

@@ -566,21 +566,20 @@ case "${1:-}" in
     # vp` fails in the one context that matters most. Both locations are stable,
     # so ask PATH first and fall back to them in turn.
     #
-    # The fnm alias path comes first because that is where the dotfiles put it:
-    # development.yaml declares vite-plus as a global npm package. `~/.vite-plus`
-    # stays as the second fallback for a machine that took the curl installer
-    # before the entry existed. Never the per-shell /run/user/*/fnm_multishells
-    # path — it does not survive a node upgrade.
+    # Prefer the official standalone install. Unlike the npm package's bin/vp,
+    # it delegates to this checkout's workspace-pinned vite-plus and therefore
+    # keeps Vite/Vitest on one module graph. The ~/.vite-plus path is the legacy
+    # monolithic layout; current installers use the XDG data directory.
     for vp in \
-      "$(command -v vp || true)" \
-      "$HOME/.local/share/fnm/aliases/default/bin/vp" \
-      "$HOME/.vite-plus/bin/vp"
+      "$HOME/.local/share/vite-plus/bin/vp" \
+      "$HOME/.vite-plus/bin/vp" \
+      "$(command -v vp || true)"
     do
       if [[ -x "$vp" ]]; then break; fi
     done
     [[ -x "$vp" ]] || {
       echo "t3fork: vp not found — 'dots packages sync' installs it, or:" >&2
-      echo "  npm install -g vite-plus" >&2
+      echo "  curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash" >&2
       exit 1
     }
     "$vp" i

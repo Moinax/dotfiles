@@ -36,9 +36,14 @@ fi
 # Cargo (worktrunk, vibewatch, etc.)
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
 
-# Vite+ (t3code's build toolchain); its installer appends the same line to
-# ~/.zshrc, which chezmoi owns and reverts — so it lives here instead.
-[[ -f "$HOME/.vite-plus/env" ]] && source "$HOME/.vite-plus/env"
+# Vite+ (t3code's build toolchain). The official global CLI delegates project
+# commands to each workspace's local vite-plus package. Its installer appends
+# the same line to shell rc files that chezmoi owns, so keep it here instead.
+if [[ -f "$HOME/.config/vite-plus/env" ]]; then
+  source "$HOME/.config/vite-plus/env"
+elif [[ -f "$HOME/.vite-plus/env" ]]; then
+  source "$HOME/.vite-plus/env"
+fi
 case ":$PATH:" in
   *":$HOME/.cargo/bin:"*) ;;
   *) [[ -d "$HOME/.cargo/bin" ]] && export PATH="$HOME/.cargo/bin:$PATH" ;;
