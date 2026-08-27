@@ -48,7 +48,7 @@ The interactive installer will:
 | Group | Description |
 |-------|-------------|
 | **Hyprland** | Hyprland compositor with `hypridle`, `hyprlock`, `awww`, `hyprshot`, `wf-recorder`, `waybar`, `vicinae`, `swaync`, `wlogout`, clipboard tooling (`cliphist`, `wl-clipboard`) and Wayland helpers |
-| **Development** | `neovim`, Cursor, Zed, Git tooling (`gh`, `fj`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
+| **Development** | `neovim`, Cursor, Zed, Git tooling (`gh`, `fj`, `gh-dash`, `lazygit`, `hunk`, `tuicr`, `worktrunk`), containers (`docker`, `docker-compose`, `lazydocker`), build/task tools (`cmake`, `gcc`/`base-devel`, `just`), optional project environments with Nix flakes, and Claude Code with [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) |
 | **Gaming** | Steam and Heroic with performance helpers (`mangohud`, `gamemode`) and controller support (`xpadneo`, `dualsensectl`) |
 | **Multimedia** | Media and creation tools (`mpv`, `obs-studio`, `ffmpeg`, ImageMagick, GIMP, Inkscape, EasyEffects) |
 | **Productivity** | File managers (Dolphin + Yazi), thumbnail support (`ffmpegthumbnailer`, `kdegraphics-thumbnailers`), KDE apps (Kate, Ghostwriter, Gwenview, Okular, Ark), file sharing (Dropbox, LocalSend), archive tools, and themes/icons |
@@ -61,6 +61,69 @@ The interactive installer will:
 BTRFS snapshots are deliberately absent: CachyOS's own `snapper` + `snap-pac` +
 `limine-snapper-sync` stack is installed by the distro, so this repo touches
 none of it.
+
+## Nix for project environments
+
+Nix is an optional part of the **Development** group on desktop and terminal
+setups. It is deliberately a complement to the existing system:
+
+- CachyOS and `pacman`/`paru` continue to own the desktop, services and normal
+  command-line tools.
+- Chezmoi continues to own dotfiles and user configuration.
+- Nix only supplies toolchains declared by project flakes and entered with
+  `nix develop`. These dotfiles never run `nix profile install`.
+- This setup uses neither NixOS nor Home Manager.
+- Outside a Nix development shell, the existing PATH order is preserved and
+  Nix's profile directories are appended, so system tools keep taking priority.
+- `just deploy` and repositories with an optional `has nix && use flake`
+  `.envrc` continue to work on machines where Development/Nix was not selected.
+
+The Development package selector installs multi-user Determinate Nix with a
+systemd daemon. Determinate enables `nix-command` and flakes by default. Zsh
+loads its daemon environment from `.zshenv`, which covers interactive,
+non-interactive and non-login shells opened by terminals, editors and agents;
+the Nix installer is told not to modify shell profiles itself. An existing Nix
+from another installer is detected and left untouched rather than overwritten.
+Determinate Nix itself can be upgraded with
+`sudo determinate-nixd upgrade`; `dots update` reports it as self-managed and
+does not replace it.
+
+Typical use:
+
+```bash
+cd ~/Projects/o27/socle
+nix flake metadata
+direnv allow                 # .envrc uses the flake when nix is available
+
+cd ~/Projects/o27/nix
+nix develop                  # tg, Terragrunt, OpenTofu, sops, ...
+```
+
+After installation, `tools/install-nix.sh verify` checks the active daemon,
+prints `nix --version`, and evaluates a small local flake. For a project-level
+check, run `nix flake metadata` in its checkout and then `nix develop`.
+
+Nix stores downloaded packages and build results in the shared immutable
+`/nix/store`; it can therefore consume several gigabytes even though nothing is
+installed into a global profile. Determinate Nixd performs automatic garbage
+collection, so no additional timer is configured here. Inspect usage with
+`nix path-info --all --closure-size --human-readable` and, if manual cleanup is
+needed, run `nix store gc`. Active shells, profiles and flake GC roots keep their
+referenced store paths alive.
+
+To uninstall the Determinate-managed installation, first leave all Nix shells,
+then run:
+
+```bash
+/nix/nix-installer uninstall
+```
+
+The command uses `/nix/receipt.json` to reverse the installation and remove the
+daemon integration. Start a new shell afterwards. If Development remains
+enabled, a later `dots packages sync` can offer Nix again because it is part of
+that group; disable Development before uninstalling if the machine should stay
+Nix-free. For a non-Determinate installation (no receipt), use that
+installation's own removal procedure instead.
 
 ## Structure
 

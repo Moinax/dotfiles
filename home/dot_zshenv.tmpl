@@ -47,6 +47,28 @@ esac
 # Lazy docker, zoxide, ...
 export PATH="$HOME/.local/bin:$PATH"
 
+{{ if .install_development }}
+# Nix project environments. The daemon profile script defines NIX_PROFILES and
+# any installer-specific environment needed by `nix`, including in non-login
+# shells opened by agents and editors. Preserve the PATH assembled above: Nix is
+# complementary, so its otherwise-prepended profile bins are appended and cannot
+# shadow CachyOS tools outside `nix develop`.
+if [[ -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
+  _nix_path_before="$PATH"
+  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  _nix_path_from_profile="$PATH"
+  export PATH="$_nix_path_before"
+  for _nix_dir in ${(s/:/)_nix_path_from_profile}; do
+    [[ -n "$_nix_dir" ]] || continue
+    case ":$PATH:" in
+      *":$_nix_dir:"*) ;;
+      *) export PATH="${PATH:+$PATH:}$_nix_dir" ;;
+    esac
+  done
+  unset _nix_dir _nix_path_before _nix_path_from_profile
+fi
+{{ end }}
+
 # Silence zoxide's "configuration issue" doctor. It fires a false positive in
 # Claude Code's Bash tool: the shell snapshot replays zoxide's `cd` wrapper but
 # not the `chpwd_functions+=(__zoxide_hook)` line from `zoxide init`, so the
