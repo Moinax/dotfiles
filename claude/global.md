@@ -30,6 +30,10 @@ context, so this block costs no tokens.
   messages, and every file written to disk stay in English, including in a
   conversation held entirely in French.
 
+## Human-facing prose
+
+- **Always apply `unslop` to English or French prose written for people.**
+
 ## Sudo
 
 - **Print every sudo command before running it**, in a fenced `bash` block, exactly as it will run. The ksshaskpass dialog that asks for the password shows sudo's prompt and never the command, so printing it is the only way to see what is about to run as root. Sessions run with `--permission-mode bypassPermissions`, which means no permission prompt will ever show it either — this rule is the whole mechanism, not a courtesy on top of one.

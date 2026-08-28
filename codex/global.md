@@ -5,3 +5,7 @@
   form into a workspace-relative chip, but a relative path depends on the thread's
   cwd while an absolute one resolves on its own. A `:42` or `:42:7` suffix opens
   the file at that position.
+
+## Human-facing prose
+
+- **Always apply `unslop` to English or French prose written for people.**
