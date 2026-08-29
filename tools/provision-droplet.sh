@@ -98,8 +98,11 @@ SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 # they name the same file when this script is executed, and only BASH_SOURCE
 # still does if anything ever sources it.
 push_and_run() {
-    local target="$1" sub="$2"
+    local target="$1" sub="$2" repo theme
+    repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+    theme="$repo/home/dot_t3/userdata/themes/catppuccin.json"
     scp -q "${SSH_OPTS[@]}" "${BASH_SOURCE[0]}" "$target:/tmp/provision-droplet.sh"
+    scp -q "${SSH_OPTS[@]}" "$theme" "$target:/tmp/t3code-theme.json"
     ssh -t "${SSH_OPTS[@]}" "$target" "bash /tmp/provision-droplet.sh $sub"
 }
 
@@ -961,6 +964,34 @@ phase_t3_service() {
         || warn "Service installed but not active — check ~/.t3/userdata/logs/boot-service.log"
 }
 
+# The browser stores its selected theme locally, but resolves that id from the
+# primary environment. Publishing the same id on the desktop and the host keeps
+# Catppuccin selected when a thread moves between them. One file contains both
+# Mocha and Latte, so KDE's appearance signal still chooses the active half.
+phase_t3_theme() {
+    header "T3 Code theme"
+    local staged="/tmp/t3code-theme.json"
+    local dir="$HOME/.t3/userdata/themes"
+    local target="$dir/catppuccin.json"
+
+    if [ ! -f "$staged" ]; then
+        warn "No staged T3 Code theme — run this through 'dots droplet setup' or 'dots droplet fork'"
+        return 0
+    fi
+
+    mkdir -p "$dir"
+    if [ -f "$target" ] && cmp -s "$staged" "$target"; then
+        ok "Catppuccin theme already current"
+        return 0
+    fi
+
+    local tmp
+    tmp=$(mktemp "$target.XXXXXX")
+    cp "$staged" "$tmp"
+    mv "$tmp" "$target"
+    ok "Catppuccin theme published"
+}
+
 # ── The fork, on the host ────────────────────────────────────────────────────
 #
 # docs/adr/0003 supersedes 0001: this host runs OUR build, not upstream's.
@@ -1306,6 +1337,7 @@ cmd_remote() {
     phase_tools
     phase_agents
     phase_t3_service
+    phase_t3_theme
     phase_env
     phase_playwright
     phase_tailscale
@@ -1354,7 +1386,7 @@ case "${1:-}" in
     restore)  shift; cmd_restore "$@" ;;
     remote)   cmd_remote ;;
     report)   cmd_report ;;
-    fork-remote) host_path; phase_fork ;;
+    fork-remote) host_path; phase_t3_theme; phase_fork ;;
     help|--help|-h|"") usage ;;
     *) err "Unknown command: $1"; exit 1 ;;
 esac

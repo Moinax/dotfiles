@@ -200,7 +200,7 @@ After running the installer:
 1. **Log out and back in** for shell changes to take effect
 2. **Add SSH key** to GitHub/GitLab (displayed during setup)
 3. **Hyprland users**: Press `Super+H` for the searchable keybinding list (also in [KEYBINDINGS.md](KEYBINDINGS.md))
-4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte (the prompt and Claude Code status line switch with it)
+4. **Dark/light mode**: Press `Mod+N` to toggle between Catppuccin Mocha and Latte (T3 Code, the prompt, and the Claude Code status line switch with it)
 5. **Plymouth**: Reboot to see the boot splash (if configured during install)
 
 ## Included Configurations
