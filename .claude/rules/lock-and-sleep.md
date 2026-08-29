@@ -64,6 +64,24 @@ not the fade runs, which made a slow screencopy look like a flag being ignored.
 Healthy reads ~1.1s lid-to-sleep, with the frame final ~90ms in and logind
 starting 5ms after the release.
 
+## Rearm idle listeners after resume
+
+`after_sleep_cmd` must enable DPMS and reset Hyprland's idle clock with
+`hyprctl dispatch 'hl.dsp.force_idle(0)'`. A pointer event can wake the kernel
+without reaching Wayland after the compositor resumes. The listeners which
+fired before suspend then remain fired, while `after_sleep_cmd` has made the lock
+screen visible. Setting the elapsed idle time to zero sends `resumed` to fired
+listeners and starts fresh timers.
+
+Do not replace this with a restart of `hypridle`. Restarting also makes fresh
+timers, but destroys the D-Bus inhibitor cookies held by applications such as
+Firefox and Steam. `force_idle(0)` preserves those cookies and the normal
+inhibitor behavior. More seriously, hypridle launches hyprlock as its child and
+the stock service uses `KillMode=control-group`. Restarting the service while the
+screen is locked kills hyprlock and leaves Hyprland in lockdead mode. Recover by
+launching a new hyprlock from the user manager; `allow_session_lock_restore =
+true` lets it take over without bypassing authentication.
+
 ## Never restart systemd-logind on a live graphical session
 
 `reload` is what you want (`CanReload=yes`). logind hands out the DRM leases the

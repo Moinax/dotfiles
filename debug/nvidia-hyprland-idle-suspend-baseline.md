@@ -41,7 +41,7 @@ Expected flow:
 general {
     lock_cmd = pidof hyprlock || hyprlock
     before_sleep_cmd = loginctl lock-session
-    after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })'
+    after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })'; hyprctl dispatch 'hl.dsp.force_idle(0)'
     inhibit_sleep = 3
 }
 
@@ -74,6 +74,10 @@ Rationale:
 - `inhibit_sleep = 3` follows the documented pattern: inhibit suspend until the
   session is locked, then allow suspend.
 - DPMS uses the documented Hyprland dispatcher directly.
+- Resetting Hyprland's idle clock after resume rearms listeners which already
+  fired before suspend. Without it, a wake event consumed before Wayland resumes
+  input leaves DPMS and suspend disarmed until a second keyboard or pointer event.
+  This keeps hypridle running, so its D-Bus inhibitor cookies survive the reset.
 
 ### Manual Lock + Screen Off
 
