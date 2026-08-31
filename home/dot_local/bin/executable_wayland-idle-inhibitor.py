@@ -9,18 +9,27 @@
 # source file here is (and stays) mode 644 like every other script in this dir.
 # ruff: noqa: EXE001
 
+import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from signal import SIGINT, SIGTERM, signal
 from threading import Event
 
 from pywayland.client.display import Display
-from pywayland.protocol.idle_inhibit_unstable_v1.zwp_idle_inhibit_manager_v1 import (
-    ZwpIdleInhibitManagerV1,
-)
-from pywayland.protocol.wayland.wl_compositor import WlCompositor
-from pywayland.protocol.wayland.wl_registry import WlRegistryProxy
-from pywayland.protocol.wayland.wl_surface import WlSurface
+
+try:
+    # PyWayland 0.4.19 generates one flat module per protocol.
+    from pywayland.protocol.idle_inhibit_unstable_v1 import ZwpIdleInhibitManagerV1
+    from pywayland.protocol.wayland import WlCompositor, WlRegistryProxy, WlSurface
+except ImportError:
+    # PyWayland <= 0.4.18 generated a package containing one module per interface.
+    from pywayland.protocol.idle_inhibit_unstable_v1.zwp_idle_inhibit_manager_v1 import (
+        ZwpIdleInhibitManagerV1,
+    )
+    from pywayland.protocol.wayland.wl_compositor import WlCompositor
+    from pywayland.protocol.wayland.wl_registry import WlRegistryProxy
+    from pywayland.protocol.wayland.wl_surface import WlSurface
 
 
 @dataclass
@@ -76,6 +85,9 @@ def main() -> None:
 
     display.dispatch()
     display.roundtrip()
+
+    if ready_file := os.environ.get("CAFFEINE_READY_FILE"):
+        Path(ready_file).touch()
 
     done.wait()
 
