@@ -9,3 +9,4 @@
 ## Human-facing prose
 
 - **Always apply `unslop` to English or French prose written for people.**
+  Apply it silently — never announce the skill or narrate the decision.
