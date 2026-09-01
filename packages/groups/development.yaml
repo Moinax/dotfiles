@@ -51,6 +51,7 @@ descriptions:
   codeburn-desktop: CodeBurn's Electron dashboard (AppImage, desktop only)
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
+  nix: Project-declared development environments via flakes and `nix develop`
 
 desktop_only:
   - cursor-bin
@@ -65,6 +66,13 @@ desktop_only:
 # Update fields (binary, version, source, update, updated_by) are documented in
 # packages/common.yaml and read by 'dots update'.
 custom_install:
+  # Nix complements the Arch host rather than managing it: only project flakes
+  # provide packages, and the helper never writes to a global Nix profile.
+  - name: nix
+    check: bash "$DOTFILES_DIR/tools/install-nix.sh" check
+    install: bash "$DOTFILES_DIR/tools/install-nix.sh" install
+    binary: nix
+    updated_by: self
   - name: claude-code
     check: command -v claude
     install: curl -fsSL https://claude.ai/install.sh | bash
