@@ -14,8 +14,8 @@ machine last agreed with it?
 
 Phases: system update (`cachy-update`) → new groups → package delta →
 `chezmoi apply` → tool refresh (`tools/manage-updates.sh`, still reachable alone as
-`dots update tools`) → `run_post_apply` → login wallpaper → re-stamp the profile →
-report fork drift → report a waiting backup.
+`dots update tools`) → `run_post_apply` → login wallpaper → encrypted DNS → prune old
+Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer
 
@@ -77,6 +77,14 @@ and writes secrets to disk, so starting one where nobody can answer is not a def
 having — the same `[ -t 0 ]` reasoning as `t3fork install`'s restart prompt. Declining
 prints the command too. A failed restore warns rather than failing the sync: it runs after
 the anchor is stamped, so the cost is the restore and nothing else.
+
+### The third reconciler is not one of those
+
+`reconcile_codex_releases` is keyed off machine state too, but it has no setup
+half: it only prunes what the standalone Codex installer leaves behind, keeping
+`current` and one rollback. It runs after the tool refresh so the release that
+refresh has just superseded is the rollback, and it never touches a release a
+live `codex` still runs from. `tests/test_codex_releases.sh` pins that.
 
 ### The two reconcilers that moved out
 

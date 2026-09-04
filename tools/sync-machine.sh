@@ -839,6 +839,43 @@ reconcile_login_wallpaper() {
     apply_login_wallpaper || return 0
 }
 
+# The standalone Codex installer keeps every release it ever laid down under
+# ~/.codex/packages/standalone/releases and prunes none of them: fifteen were
+# sitting there after two months, at ~330MB each. Keep the one `current` points
+# at and the newest other one as a rollback, drop the rest — except a release a
+# live codex still runs from: the main binary survives its own unlink, the
+# sibling binaries it launches lazily would not. After update_tools, so the
+# version a `dots update` has just superseded is the one that stays. Only this
+# command runs it, so a pile built by T3 Code's own `codex update` waits for
+# the next `dots update`.
+reconcile_codex_releases() {
+    local dir="$HOME/.codex/packages/standalone" current rel
+    local -a releases running
+    [ -L "$dir/current" ] && [ -d "$dir/releases" ] || return 0
+    current=$(basename "$(readlink -f "$dir/current")")
+    [ -d "$dir/releases/$current" ] || return 0
+
+    # Oldest first, so the last entry is the rollback to keep.
+    mapfile -t releases < <(find "$dir/releases" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+        | grep -vxF "$current" | sort -V)
+    [ "${#releases[@]}" -gt 1 ] || return 0
+    mapfile -t running < <(readlink /proc/[0-9]*/exe 2>/dev/null | grep -F "$dir/releases/" | sort -u)
+
+    print_info "Keeping Codex $current and ${releases[-1]}, pruning the rest"
+    for rel in "${releases[@]:0:${#releases[@]}-1}"; do
+        if printf '%s\n' "${running[@]}" | grep -qF "$dir/releases/$rel/"; then
+            print_warning "  $rel is still running — left for the next update"
+            continue
+        fi
+        if rm -rf -- "${dir:?}/releases/$rel"; then
+            print_info "  removed $rel"
+        else
+            print_warning "  could not remove $rel"
+        fi
+    done
+    return 0
+}
+
 # ── Tools ───────────────────────────────────────────────────────────────────
 
 update_tools() {
@@ -1157,6 +1194,7 @@ do_sync() {
     # is missing this — the seed inside it runs the picker.
     reconcile_login_wallpaper
     reconcile_encrypted_dns
+    reconcile_codex_releases
 
     # record_synced_state declines on its own while a package shortfall is
     # outstanding — mark_sync_shortfall in common.sh carries the why. Everything
