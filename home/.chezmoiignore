@@ -91,6 +91,8 @@ LICENSE
 .config/ccstatusline/**
 .claude
 .claude/**
+.claude-mbrella
+.claude-mbrella/**
 .zsh/rc.d/60-worktree.zsh
 .local/bin/wtupdate
 .local/bin/dev-clean

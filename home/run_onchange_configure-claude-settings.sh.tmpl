@@ -9,18 +9,10 @@
 # wiped settings.json gets them back on the next apply.
 set -e
 
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-
 # Bail out if jq is not available
 if ! command -v jq &>/dev/null; then
     echo "claude-settings: jq not found, skipping Claude Code settings convergence"
     exit 0
-fi
-
-# Ensure the directory and file exist
-mkdir -p "$HOME/.claude"
-if [ ! -f "$CLAUDE_SETTINGS" ]; then
-    echo '{}' > "$CLAUDE_SETTINGS"
 fi
 
 # Canonical settings, inlined from dot_claude/create_settings.json at chezmoi
@@ -28,17 +20,32 @@ fi
 # re-triggers the run_onchange execution.
 CANONICAL='{{ includeTemplate "dot_claude/create_settings.json.tmpl" . }}'
 
-# Merge into existing settings (jq * operator does a recursive merge)
-tmp=$(mktemp)
-if jq --argjson canonical "$CANONICAL" '. * $canonical' "$CLAUDE_SETTINGS" > "$tmp"; then
-    mv "$tmp" "$CLAUDE_SETTINGS"
-    chmod 644 "$CLAUDE_SETTINGS"
-    echo "claude-settings: canonical Claude Code settings converged"
-else
-    rm -f "$tmp"
-    echo "claude-settings: failed to update Claude Code settings"
-    exit 1
-fi
+# Two config dirs, one per subscription: ~/.claude is the personal account,
+# ~/.claude-mbrella the Mbrella one, reached through CLAUDE_CONFIG_DIR (T3 Code
+# sets it per provider instance). Identity lives in each dir's .claude.json and
+# .credentials.json; everything else — CLAUDE.md, skills, agents, plugins — is a
+# symlink back into ~/.claude (dot_claude-mbrella/), so only settings.json
+# needs converging twice: Claude Code writes it in place, so a symlink there
+# would be replaced by a plain file on the first `/config` edit.
+for dir in "$HOME/.claude" "$HOME/.claude-mbrella"; do
+    settings="$dir/settings.json"
+    mkdir -p "$dir"
+    # A new dir starts as a copy of the personal one so the machine-local keys
+    # (model, theme, locally enabled plugins) carry over; ~/.claude comes first
+    # in the loop, so on a fresh machine it exists by the time this runs.
+    [ -f "$settings" ] || cp "$HOME/.claude/settings.json" "$settings" 2>/dev/null || echo '{}' > "$settings"
+    # Merge into existing settings (jq * operator does a recursive merge)
+    tmp=$(mktemp)
+    if jq --argjson canonical "$CANONICAL" '. * $canonical' "$settings" > "$tmp"; then
+        mv "$tmp" "$settings"
+        chmod 644 "$settings"
+        echo "claude-settings: canonical Claude Code settings converged into $settings"
+    else
+        rm -f "$tmp"
+        echo "claude-settings: failed to update $settings"
+        exit 1
+    fi
+done
 
 # Declaring a plugin in enabledPlugins only *enables* it — it never installs it,
 # and nothing else in the pipeline runs `claude plugin install`. Left at the
