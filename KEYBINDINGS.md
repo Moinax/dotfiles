@@ -30,7 +30,7 @@
 | Window switcher (vicinae) | `Mod+Tab` | Vicinae built-in |
 | Close / kill window | `Mod+Escape` | Enter asks the window to close through the compositor (its normal shutdown path); `Ctrl+Shift+Enter` is `SIGKILL` for the ones that ignore it. The list refreshes in place instead of closing |
 | Clipboard history | `Mod+V` | Vicinae built-in (encrypted store, text and images) |
-| Color picker (hyprpicker) | `Mod+Shift+P` | |
+| Color picker (hyprpicker) | `Mod+Alt+P` | |
 | Theme selector | Search `theme` in Vicinae | `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
 | Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
 | Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
