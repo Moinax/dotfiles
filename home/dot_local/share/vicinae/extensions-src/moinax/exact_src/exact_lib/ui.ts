@@ -1,5 +1,6 @@
 import { showHUD, showToast, Toast } from "@vicinae/api";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { capture, CommandError } from "./shell";
 
 /** Message for a Toast, without leaking a stack trace into the UI. */
 export function describeError(error: unknown): string {
@@ -100,7 +101,7 @@ export function closeAfter(run: () => Promise<unknown>, hud: string): () => Prom
  */
 export function closeAfterProgress(
   run: (report: (step: string) => void) => Promise<unknown>,
-  opts: { start: string; hud: string },
+  opts: { start: string; hud?: string },
 ): () => Promise<void> {
   return async () => {
     const toast = await showToast({ style: Toast.Style.Animated, title: opts.start });
@@ -109,8 +110,19 @@ export function closeAfterProgress(
         toast.title = step;
         void toast.update();
       });
-      await toast.hide();
-      await showHUD(opts.hud);
+      if (opts.hud) {
+        await toast.hide();
+        await showHUD(opts.hud);
+      } else {
+        // Use the launcher's CLI after external app navigation. It closes the
+        // window independently of the extension's current view lifecycle.
+        // Do not wait for a toast belonging to a view that may have unloaded.
+        try {
+          await capture("vicinae", ["vicinae://close?popToRootType=immediate&clearRootSearch=true"]);
+        } catch (error) {
+          if (!(error instanceof CommandError && error.stderr.includes("Already closed"))) throw error;
+        }
+      }
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = "Launch failed";

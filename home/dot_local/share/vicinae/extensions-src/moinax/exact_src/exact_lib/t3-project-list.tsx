@@ -1,12 +1,10 @@
-import { Action, ActionPanel, Color, Icon, List, showToast, Toast, useNavigation } from "@vicinae/api";
+import { Action, ActionPanel, Color, Icon, List, showToast, Toast } from "@vicinae/api";
 import { useMemo } from "react";
 import { listProjects, type Project } from "./projects";
 import {
-  addT3Project,
   isThreadLive,
   listT3Projects,
   listT3Threads,
-  type T3Project,
   type T3Thread,
 } from "./t3";
 import { ThreadList } from "./thread-list";
@@ -42,26 +40,17 @@ const NO_THREADS: Counts = { threads: 0, live: 0, waiting: 0 };
  * column of one query.
  */
 async function loadRows(): Promise<Row[]> {
-  const [projects, [t3Projects, threads]] = await Promise.all([
+  const [projects, t3Projects, threads] = await Promise.all([
     listProjects(),
-    // What T3 Code knows is an annotation on this list, never a condition of
-    // it. Listed flat in the same `Promise.all`, it was one: any failure
-    // reading the projection — the app down, a renamed column, the helper not
-    // on PATH — rejected the whole load, and the picker said "No projects
-    // found" over a disk full of repositories. The one row that then mattered,
-    // "Add to T3 Code…", was the one that had disappeared with it.
-    //
-    // One catch over both reads rather than one each: they are the same helper
-    // against the same file, so they fail together, and a catch apiece said the
-    // same thing twice. The toast is not awaited — the list is ready, and
-    // nothing about it depends on the notification having been drawn.
-    Promise.all([listT3Projects(), listT3Threads()]).catch((error) => {
+    listT3Projects(),
+    // Counts are optional; a failed thread query must not erase project IDs.
+    listT3Threads().catch((error) => {
       void showToast({
         style: Toast.Style.Failure,
-        title: "T3 Code state unavailable",
+        title: "Thread counts unavailable",
         message: describeError(error),
       });
-      return [[], []] as [T3Project[], T3Thread[]];
+      return [] as T3Thread[];
     }),
   ]);
 
@@ -138,47 +127,15 @@ export function T3ProjectList() {
   );
 }
 
-/**
- * Enter opens the project's threads. For a directory T3 Code has never seen,
- * that means registering it first — in the action, so the view it pushes always
- * holds a real project id and never has to model its absence.
- *
- * This is not the implicit-`/start` the worktree picker refuses: the row says
- * "Add to T3 Code…", so it was asked for, and registering a workspace root is
- * inert metadata rather than an agent run.
- */
+/** Every project opens the thread picker, including an unregistered directory. */
 function RowActions({ row }: { row: Row }) {
-  const { push } = useNavigation();
-  const open = (projectId: string) => push(<ThreadList project={row.project} projectId={projectId} />);
-
   return (
     <ActionPanel>
-      {row.projectId === null ? (
-        <Action
-          title="Add to T3 Code…"
-          icon={Icon.Plus}
-          onAction={async () => {
-            try {
-              open(await addT3Project(row.project.path, row.project.name));
-            } catch (error) {
-              // The launcher stays open on failure, so the toast lands next to
-              // the row that was pressed rather than over a view that opened
-              // anyway on a project that does not exist.
-              await showToast({
-                style: Toast.Style.Failure,
-                title: "Could not add the project",
-                message: describeError(error),
-              });
-            }
-          }}
-        />
-      ) : (
-        <Action.Push
-          title="Open Threads…"
-          icon={Icon.SpeechBubble}
-          target={<ThreadList project={row.project} projectId={row.projectId} />}
-        />
-      )}
+      <Action.Push
+        title="Open Threads…"
+        icon={Icon.SpeechBubble}
+        target={<ThreadList project={row.project} projectId={row.projectId} />}
+      />
       <Action.CopyToClipboard
         title="Copy Path"
         content={row.project.path}

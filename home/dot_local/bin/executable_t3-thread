@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# t3-thread — the automation surface T3 Code does not ship.
+# t3-thread — project picking, draft opening and existing-thread navigation.
 #
 #   t3-thread projects                    JSON: every project T3 Code knows
+#   t3-thread open PATH                   open a new draft, starting the app if needed
 #   t3-thread threads [PROJECT_ID]        JSON: live threads, newest first
 #   t3-thread project-add PATH [TITLE]    register a project, print its id
 #   t3-thread new PROJECT_ID [TITLE]      create a thread, print its id
 #   t3-thread focus THREAD_ID             open that thread and raise the window
 #
-# T3 Code's own CLI (`t3`) manages projects but has no thread verbs at all, so
+# `open` uses the native `t3 app` command, which adds the project if needed
+# and opens the composer without creating a server thread. The older `new`
+# verb remains available for callers that explicitly need a persisted thread.
+# T3 Code's own CLI has no existing-thread navigation or listing verbs, so
 # anything outside the app that wants to open work has to speak to the server
 # directly. Three different doors are used below, each because it is the only
 # one that fits:
@@ -202,6 +206,35 @@ model_selection() {
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
 
 case "${1:-}" in
+    open)
+        [[ -n "${2:-}" ]] || die "open needs a project path"
+        path="$(cd "$2" 2>/dev/null && pwd)" || die "no such directory: $2"
+        t3-code-launch.sh --start-only
+        # The desktop broker queues this until the renderer is ready and
+        # acknowledges draft navigation. A window alone is not readiness.
+        if output="$(run_cli app "$path" 2>&1)"; then
+            printf '%s\n' "$output" >&2
+        else
+            # Startup navigation can cancel useNewThreadHandler even when
+            # another navigation has already opened the empty draft. Retry
+            # only that response; the native handler reuses empty drafts.
+            error_log="${XDG_STATE_HOME:-$HOME/.local/state}/dots/t3-thread.log"
+            mkdir -p "$(dirname "$error_log")"
+            printf '%s open %s\n%s\n' "$(date -Iseconds)" "$path" "$output" >> "$error_log"
+            if [[ "$output" != *"(thread-open-failed)"* ]]; then
+                printf '%s\nSee %s\n' "$output" "$error_log" >&2
+                exit 1
+            fi
+            if ! retry_output="$(run_cli app "$path" 2>&1)"; then
+                printf '%s\n' "$retry_output" >> "$error_log"
+                printf '%s\nSee %s\n' "$retry_output" "$error_log" >&2
+                exit 1
+            fi
+            printf '%s\n' "$retry_output" >&2
+        fi
+        setsid -f t3-code-launch.sh >/dev/null 2>&1
+        ;;
+
     projects)
         sql "SELECT project_id, title, workspace_root FROM projection_projects
              WHERE deleted_at IS NULL ORDER BY title"

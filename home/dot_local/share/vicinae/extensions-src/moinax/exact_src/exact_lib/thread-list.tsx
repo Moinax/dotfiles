@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { Project } from "./projects";
-import { focusT3Thread, isThreadLive, listT3Threads, newT3Thread, type T3Thread } from "./t3";
+import { focusT3Thread, isThreadLive, listT3Threads, openT3Draft, type T3Thread } from "./t3";
 import { closeAfterProgress, useLoader } from "./ui";
 
 /**
@@ -30,29 +30,14 @@ function stateOf(thread: T3Thread) {
 /**
  * The threads of one project, and the way into a new one.
  *
- * `projectId` is always a real id: registering a directory T3 Code has never
- * seen happens in the action that pushes this view. Doing it here as a mount
- * effect instead meant modelling `projectId: string | null`, and that one null
- * propagated into a registration ref, a second effect to re-read the list when
- * the id landed, a loading flag OR'd into the loader's own, a throw guarding
- * the create action and a conditional retry row — five compensations for a
- * state this view now never sees.
+ * An unregistered directory has no existing threads. Registration happens in
+ * `t3 app` only when the user chooses New thread.
  */
-export function ThreadList({ project, projectId }: { project: Project; projectId: string }) {
-  const load = useCallback(() => listT3Threads(projectId), [projectId]);
+export function ThreadList({ project, projectId }: { project: Project; projectId: string | null }) {
+  const load = useCallback(() => projectId ? listT3Threads(projectId) : Promise.resolve([]), [projectId]);
   const { rows: threads, isLoading } = useLoader<T3Thread>(load, "Could not list threads");
-  const [query, setQuery] = useState("");
 
-  const typed = query.trim();
-  const title = typed || "New thread";
-
-  // The same trap `branch-list.tsx` documents: the list is uncontrolled and the
-  // host does the filtering, so these rows never depend on the search text —
-  // but declaring `onSearchTextChange` re-renders on every keystroke, and
-  // without the memo each one discards every List.Item, its ActionPanel and a
-  // fresh async closure per row. Typing a twelve-character name over ~18
-  // threads throws away ~216 of them. The create row genuinely does depend on
-  // what was typed, so it stays outside.
+  // Keep the existing-thread rows stable while the host filters the list.
   const rows = useMemo(
     () =>
       threads.map((thread) => {
@@ -81,7 +66,6 @@ export function ThreadList({ project, projectId }: { project: Project; projectId
                   // launcher just sits there looking wedged.
                   onAction={closeAfterProgress(() => focusT3Thread(thread.thread_id), {
                     start: `Opening ${thread.title}…`,
-                    hud: `Opening ${thread.title}`,
                   })}
                 />
                 <Action.CopyToClipboard
@@ -100,35 +84,22 @@ export function ThreadList({ project, projectId }: { project: Project; projectId
   return (
     <List
       isLoading={isLoading}
-      // Same reason as the branch list: declaring `onSearchTextChange` is what
-      // makes the host hand through the unfiltered list, so `filtering` has to
-      // be asked for again. The text is mirrored out only to name the thread
-      // the create row would open.
-      filtering
-      onSearchTextChange={setQuery}
-      searchBarPlaceholder="Search threads, or type a name to create one"
+      searchBarPlaceholder="Search threads"
       navigationTitle={project.name}
     >
       <List.Section title="Create">
         <List.Item
-          // Typing a name and pressing Enter is the whole interaction, so the
-          // row has to say what it will be called — an unnamed thread is the
-          // one you cannot find again an hour later.
-          title={typed ? `New thread “${typed}”` : "New thread"}
-          subtitle={typed ? undefined : "type a name first"}
+          title="New thread"
+          subtitle="Write your prompt in T3 Code"
           icon={{ source: Icon.Plus, tintColor: Color.Blue }}
           actions={
             <ActionPanel>
               <Action
-                title="Create and Open"
+                title="Open New Draft"
                 icon={Icon.Plus}
                 onAction={closeAfterProgress(
-                  async (report) => {
-                    const threadId = await newT3Thread(projectId, title);
-                    report(`Opening ${title}…`);
-                    await focusT3Thread(threadId);
-                  },
-                  { start: `Creating ${title}…`, hud: `Opening ${title}` },
+                  () => openT3Draft(project.path),
+                  { start: "Opening new draft…" },
                 )}
               />
             </ActionPanel>

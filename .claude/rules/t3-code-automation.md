@@ -10,11 +10,15 @@ paths:
 
 # t3-thread rides on T3 Code's private state, not on a public API
 
-T3 Code ships a `t3` CLI that manages **projects only** — `add`, `remove`,
-`rename`, and not even a `list`. There are no thread verbs at all, so everything
-the picker does about threads is done against internals upstream never promised
-to keep. That is the whole risk of this feature, and it is concentrated in
-`t3-thread`: the vicinae extension only shapes what that script prints.
+`t3-thread open PATH` uses the native `t3 app PATH` command to open a draft.
+The CLI requires a running desktop app. The helper first calls
+`t3-code-launch.sh --start-only`, then waits for the CLI's acknowledgement
+before handing focus back. T3 Code owns project registration, draft state and
+model/workspace defaults. No server thread is created until the prompt is sent.
+
+Listing projects and existing threads still reads private projections.
+`t3-thread new` remains available for explicit persisted-thread creation but
+is no longer used by the picker.
 
 ## The three doors, and why each one
 
@@ -25,8 +29,8 @@ to keep. That is the whole risk of this feature, and it is concentrated in
   `projection_threads(thread_id, title, project_id, model_selection_json, updated_at, deleted_at, archived_at)`,
   `projection_thread_sessions(thread_id, status)` and
   `projection_pending_approvals(thread_id, status)`.
-- **write → `POST /api/orchestration/dispatch`**, which takes a whole
-  `ClientOrchestrationCommand`. The only way to create a thread. Bearer-auth'd;
+- **legacy `new` → `POST /api/orchestration/dispatch`**, which takes a whole
+  `ClientOrchestrationCommand`. Creates a persisted thread immediately. Bearer-auth'd;
   the token is minted in-process by the CLI (it needs the sqlite handle *and*
   the signing key under `userdata/secrets/`), which is why no pure-shell path to
   a token exists.

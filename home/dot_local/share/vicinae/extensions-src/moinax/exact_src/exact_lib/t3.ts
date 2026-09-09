@@ -4,8 +4,8 @@ import { capture } from "./shell";
  * T3 Code's projects and threads, read through `t3-thread` — never re-derived.
  *
  * Same split as `projects.ts` and `dev-projects`: the helper owns where the
- * state lives (a read-only sqlite handle), how a thread is created (a signed
- * POST to the orchestration API) and how one is focused (the deep-link socket,
+ * state lives (a read-only sqlite handle), how a draft is opened (`t3 app`)
+ * and how an existing thread is focused (the deep-link socket,
  * then the compositor). This module only shapes what it prints. That matters
  * more here than usual, because the extension is build output — a rule kept
  * only in a .tsx is a rule no keybind or status bar can reuse.
@@ -61,21 +61,9 @@ export function isThreadLive(thread: Pick<T3Thread, "status">): boolean {
   return thread.status === "running" || thread.status === "starting" || thread.status === "ready";
 }
 
-/** Register a workspace root as a T3 Code project; resolves to its id. */
-export async function addT3Project(path: string, title: string): Promise<string> {
-  return (await capture("t3-thread", ["project-add", path, title], { timeout: 60_000 })).trim();
-}
-
-/**
- * Create a thread and resolve to its id.
- *
- * The model, effort and context size are the project's own defaults, decided by
- * `t3-thread` rather than passed from here: they are a T3 Code setting, and a
- * picker that carried its own copy would quietly diverge from what the app does
- * on `New thread`.
- */
-export async function newT3Thread(projectId: string, title: string): Promise<string> {
-  return (await capture("t3-thread", ["new", projectId, title], { timeout: 30_000 })).trim();
+/** Open the native draft composer, allowing 30s startup plus the CLI's 17s reply deadline. */
+export async function openT3Draft(path: string): Promise<void> {
+  await capture("t3-thread", ["open", path], { timeout: 60_000 });
 }
 
 /**
