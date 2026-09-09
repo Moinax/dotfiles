@@ -1,31 +1,16 @@
+# Global agent instructions
+
 <!--
-The real file behind ~/.claude/CLAUDE.md, which is a symlink to this one
-(home/dot_claude/symlink_CLAUDE.md.tmpl creates it).
-
-Deliberately NOT named CLAUDE.md: Claude Code discovers CLAUDE.md files in
-subdirectories below the working directory and loads them on demand, so a
-claude/CLAUDE.md here would be pulled into context a second time whenever
-anything in this directory is read.
-
-Symlink rather than a plain chezmoi-managed file so it can be edited in place
-from any machine — the target IS this file, so an edit is a repo edit, and
-`git push` / `dots update` is the whole sync. A managed copy would need
-`chezmoi re-add` after every edit, which is the step nobody remembers.
-
-Keep it under 200 lines: CLAUDE.md files load in full at every session, and
-shorter files get followed more reliably. When this grows past two or three
-topics, split it into ~/.claude/rules/*.md (same idea, one file per subject,
-and that directory accepts symlinks too).
-
-HTML comments like this one are stripped before the content reaches Claude's
-context, so this block costs no tokens.
+Shared by the global Codex and Claude entry points through chezmoi-managed
+symlinks. Edit this source; changes also update the local entry points.
+Keep tool-specific rules in that tool's own configuration.
 -->
 
 ## Language
 
 - **Reply in the language of the message you are answering.** The user writes
-  French and English and switches mid-thread, so this follows the message, not
-  the thread — and never the language of the code in front of you.
+  French and English and switches mid-thread. Follow the current message,
+  regardless of the language of the code.
 - **Only the prose addressed to them switches.** Code, identifiers, commit
   messages, and every file written to disk stay in English, including in a
   conversation held entirely in French.
@@ -35,9 +20,27 @@ context, so this block costs no tokens.
 - **Always apply `unslop` to English or French prose written for people.**
   Apply it silently — never announce the skill or narrate the decision.
 
+## Test windows on Hyprland
+
+- **All GUI apps and browsers launched for testing or verification MUST open on
+  workspace 5 without taking focus.** The user must be able to keep working while
+  tests run. This applies to test runners, previews, dialogs, and child windows.
+- **Arrange silent placement before launching.** Use the installed Hyprland
+  version's supported launch options or another verified mechanism. Never open
+  on the current workspace and move the window afterward. Verify placement and
+  that the user's focused window and workspace remain unchanged.
+- **Never switch to workspace 5, activate test windows, or send desktop-wide
+  keyboard or mouse input unless the user explicitly asks.** Use automation
+  scoped to the test app. Close only windows or processes created for your tests.
+- **Use a separate browser instance and test profile.** Never reuse the user's
+  browser session. Prefer headless tests or background previews when sufficient.
+- **If silent GUI testing is unavailable, use a headless or isolated alternative.**
+  If the task requires visible interaction and no such alternative works, explain
+  the limitation before launching. Do not fall back to interrupting the desktop.
+
 ## Sudo
 
-- **Print every sudo command before running it**, in a fenced `bash` block, exactly as it will run. The ksshaskpass dialog that asks for the password shows sudo's prompt and never the command, so printing it is the only way to see what is about to run as root. Sessions run with `--permission-mode bypassPermissions`, which means no permission prompt will ever show it either — this rule is the whole mechanism, not a courtesy on top of one.
+- **Print every sudo command before running it**, in a fenced `bash` block, exactly as it will run. The ksshaskpass password dialog shows sudo's prompt, not the command. Print the command so the user can see what will run as root, even when tool approvals are disabled.
 - **One block per turn is enough.** List every sudo command the turn will run, then run them; do not interleave a block per call.
 - **Say so when sudo is reached indirectly.** A script or a `dots` command that calls sudo internally never shows the word in what gets typed — name it anyway ("`dots update` will call sudo for the package upgrade"), because that is exactly the case nothing else can catch.
 

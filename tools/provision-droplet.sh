@@ -350,8 +350,10 @@ cmd_claude() {
 
     # A copy, where the desktop has a symlink: that symlink points into this
     # repo's working tree, which is not on the host and is not going to be.
-    scp -q "${SSH_OPTS[@]}" "$repo/claude/global.md" "$target:.claude/CLAUDE.md"
-    ok "CLAUDE.md copied"
+    rsync -a --mkpath -e "ssh ${SSH_OPTS[*]}" \
+        "$repo/agents/AGENTS.md" "$target:.agents/AGENTS.md"
+    scp -q "${SSH_OPTS[@]}" "$repo/claude/CLAUDE.md" "$target:.claude/CLAUDE.md"
+    ok "Shared AGENTS.md and Claude import copied"
 
     header "Marketplaces and plugins"
     # Rendered here and shipped as a file, never piped into `bash -s`: the script
