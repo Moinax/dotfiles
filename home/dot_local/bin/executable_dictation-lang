@@ -94,7 +94,7 @@ config_lang() {
 }
 
 sticky_lang() {
-    normalise "$(cat "$STATE_FILE" 2>/dev/null)"
+    normalise "$(cat "$STATE_FILE" 2>/dev/null || printf fr)"
 }
 
 # "idle" / "recording" / "transcribing" / "injecting", or "down" when no daemon
@@ -133,16 +133,31 @@ write_lang() {
     printf '%s\n' "$body" >"$CONFIG"
 }
 
-# Block until the daemon says it took the new config, so the caller can toggle
-# knowing the next clip is transcribed with it. Bounded at 4s: a daemon that
-# stopped watching is a reason to go ahead with a stale language, not to hang on
-# a keypress.
+# v1.0.2 accepts newer LLM model IDs at startup but rejects them on hot
+# reload because its built-in model list is stale. Restart only for that exact
+# validation failure, and only while idle. Other errors must remain failures.
 wait_for_reload() {
-    local from="$1"
+    local from="$1" recent
     for _ in $(seq 1 40); do
         sleep 0.1
-        if tail -n "+$from" "$LOG" 2>/dev/null | grep -q 'configuration successfully reloaded'; then
+        recent=$(tail -n "+$from" "$LOG" 2>/dev/null)
+        if [[ "$recent" == *"configuration successfully reloaded"* ]]; then
             return 0
+        fi
+        if [[ "$recent" == *"invalid config after reload: invalid llm.model:"* ]]; then
+            [ "$(daemon_status)" = idle ] || return 1
+            hyprvoice stop >/dev/null 2>&1 || return 1
+            for _ in $(seq 1 40); do
+                [ "$(daemon_status)" = down ] && break
+                sleep 0.1
+            done
+            [ "$(daemon_status)" = down ] || return 1
+            setsid -f hyprvoice serve >>"$LOG" 2>&1 </dev/null
+            for _ in $(seq 1 40); do
+                [ "$(daemon_status)" = idle ] && return 0
+                sleep 0.1
+            done
+            return 1
         fi
     done
     return 1
@@ -176,7 +191,10 @@ apply_lang() {
     if [ "$status" = down ]; then
         return 0
     fi
-    wait_for_reload "$from" || true
+    if ! wait_for_reload "$from"; then
+        notify "Language reload failed"
+        return 1
+    fi
 }
 
 set_lang() {
