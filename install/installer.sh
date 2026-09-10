@@ -37,6 +37,7 @@ source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/hyprvoice.sh"
 source "$SCRIPT_DIR/lib/dns-encrypted.sh"
+source "$SCRIPT_DIR/lib/regional-formats.sh"
 source "$SCRIPT_DIR/lib/login-wallpaper.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
@@ -1773,6 +1774,17 @@ setup_encrypted_dns() {
     apply_encrypted_dns || return 0
 }
 
+# The installer's framing over install/lib/regional-formats.sh (`dots update`'s is
+# reconcile_regional_formats in tools/sync-machine.sh). Not gated on the install
+# purpose: a headless box formats timestamps in logs and `ls -l` too, and the lib
+# skips the Firefox half by itself where no browser is installed.
+setup_regional_formats() {
+    print_header "Regional Formats"
+    # A failure is already tracked as a warning by apply_regional_formats, and must
+    # not abort the install over a date format.
+    apply_regional_formats || return 0
+}
+
 # The installer's framing over install/lib/login-wallpaper.sh — the lib holds the
 # mechanism, each caller frames it (dots update's framing is
 # reconcile_login_wallpaper in tools/sync-machine.sh). Unconditional, since setup
@@ -2045,6 +2057,7 @@ main() {
     setup_clamav
     setup_biometric
     setup_encrypted_dns
+    setup_regional_formats
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_login_wallpaper
         setup_plymouth

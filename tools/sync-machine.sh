@@ -30,6 +30,7 @@ source "$DOTFILES_DIR/install/lib/detect.sh"
 source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
+source "$DOTFILES_DIR/install/lib/regional-formats.sh"
 
 install_interrupt_trap
 
@@ -801,6 +802,31 @@ reconcile_encrypted_dns() {
     apply_encrypted_dns || return 0
 }
 
+# ── Regional formats ────────────────────────────────────────────────────────
+
+# Belgian date, currency, measurement and paper formats on an English machine —
+# see install/lib/regional-formats.sh, which both this and `dots setup` call.
+#
+# Here for the reason spelled out at reconcile_login_wallpaper: setup is not
+# re-run, so a machine that merely pulled this feature would get the Firefox
+# user.js from chezmoi and none of the system half — and the pref alone does
+# nothing without the language pack that makes fr-BE resolvable. The trigger is
+# machine state: locale.conf and the installed packages, never CHANGED_FILES.
+reconcile_regional_formats() {
+    regional_formats_needs_setup || return 0
+
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the regional formats setup"
+        return 0
+    fi
+
+    print_header "Regional Formats"
+    print_info "Dates still read mm/dd/yyyy — moving formats to fr_BE while messages stay English (needs sudo)"
+    apply_regional_formats || return 0
+}
+
 # ── The lock and login screens ──────────────────────────────────────────────
 
 # The two privileged steps behind /var/lib/wallpaper/current — see
@@ -1194,6 +1220,7 @@ do_sync() {
     # is missing this — the seed inside it runs the picker.
     reconcile_login_wallpaper
     reconcile_encrypted_dns
+    reconcile_regional_formats
     reconcile_codex_releases
 
     # record_synced_state declines on its own while a package shortfall is

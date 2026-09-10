@@ -14,8 +14,8 @@ machine last agreed with it?
 
 Phases: system update (`cachy-update`) → new groups → package delta →
 `chezmoi apply` → tool refresh (`tools/manage-updates.sh`, still reachable alone as
-`dots update tools`) → `run_post_apply` → login wallpaper → encrypted DNS → prune old
-Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
+`dots update tools`) → `run_post_apply` → login wallpaper → encrypted DNS → regional
+formats → prune old Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer
 

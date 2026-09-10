@@ -1,0 +1,51 @@
+{{- if .install_browsers -}}
+#!/bin/bash
+# Belgian formats inside Firefox — the browser half of install/lib/regional-formats.sh.
+#
+# Firefox does not read LC_TIME. Its date and number formats come from its own
+# application locale, and nothing in the environment moves that: LC_TIME,
+# LC_ALL, intl.regional_prefs.use_os_locale, intl.accept_languages and
+# intl.date_time.pattern_override were each tried against a `<input type="date">`
+# and every one of them kept rendering mm/dd/yyyy. Two things do work — `LANG`
+# set to a French locale, or this pref — and both also turn the Firefox UI
+# French, because the application locale is what a date field follows. That
+# trade is the point of the setting, not a side effect of it.
+#
+# Enterprise policy would be the tidier home for it, but neither
+# /etc/firefox/policies/policies.json nor distribution/policies.json is read by
+# the Arch build: about:policies reports "the service is active but there are no
+# policies enabled" for both. So: user.js, per profile.
+#
+# Profiles live under ~/.config/mozilla (Firefox's XDG layout) and are named
+# randomly, hence discovery through profiles.ini rather than a chezmoi path.
+# user.js is re-read at every start and re-asserts the pref, so a hand edit in
+# about:config lasts until the next restart — which is what makes this
+# convergent rather than a one-shot. Run on every apply so profiles created
+# after setup are picked up by the next dots update.
+set -e
+
+PREF='user_pref("intl.locale.requested", "fr-BE");'
+FIREFOX_ROOT="$HOME/.config/mozilla/firefox"
+INI="$FIREFOX_ROOT/profiles.ini"
+
+[ -f "$INI" ] || { echo "firefox-locale: no profiles.ini, nothing to configure"; exit 0; }
+
+# Path= lines only; Default= in the [InstallXXXX] section names the same folder
+# and would double every write. Relative to FIREFOX_ROOT, and names contain
+# spaces ("WTuUKJtt.Profile 1"), so the read has to survive them.
+while IFS= read -r profile; do
+    dir="$FIREFOX_ROOT/$profile"
+    [ -d "$dir" ] || continue
+    user_js="$dir/user.js"
+    if [ -f "$user_js" ] && grep -q 'intl\.locale\.requested' "$user_js"; then
+        # Rewrite rather than skip: the value is what this owns, so a stale one
+        # from an earlier version of this script gets corrected.
+        sed -i "s|^user_pref(\"intl\.locale\.requested\".*|$PREF|" "$user_js"
+    else
+        printf '%s\n%s\n' '// Belgian date and number formats. Managed by the dotfiles.' "$PREF" >> "$user_js"
+    fi
+    echo "firefox-locale: fr-BE set in $profile"
+done < <(sed -n 's/^Path=//p' "$INI")
+
+echo "firefox-locale: takes effect the next time Firefox starts"
+{{- end -}}
