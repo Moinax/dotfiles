@@ -53,7 +53,11 @@ fi
 
 # Everything else: copy + paste (reliable here — same path as the emoji picker).
 # `-k v` sends the V *key* (not the character, which mistypes under Shift).
-printf '%s' "$text" | wl-copy
+# wl-copy launches cat through execvp. An inherited AppImage PATH can contain
+# a disconnected FUSE mount after the app exits; execvp then stops with
+# ENOTCONN before reaching /usr/bin. Use system tools for this subprocess.
+# Propagate copy failures instead of reporting a successful paste of old data.
+printf '%s' "$text" | PATH=/usr/bin:/bin /usr/bin/wl-copy || exit $?
 # `*[Tt]erm*` is the catch-all and subsumes the wezterm/Terminal spellings this
 # used to list beside it (verified against both sets); only the classes with no
 # "term" in them need naming.
