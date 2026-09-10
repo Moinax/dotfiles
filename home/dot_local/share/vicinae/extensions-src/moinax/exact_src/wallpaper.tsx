@@ -29,7 +29,7 @@ export default function Command() {
   const dir = wallpaperDir || process.env.WALLPAPER_DIR || "";
 
   const load = useCallback(() => captureLines(PICKER, dir ? ["list", dir] : ["list"]), [dir]);
-  const { rows: files, isLoading } = useLoader<string>(load, "Could not list wallpapers");
+  const { rows: files, isLoading, refresh } = useLoader<string>(load, "Could not list wallpapers");
 
   return (
     <Grid
@@ -83,6 +83,12 @@ export default function Command() {
                 />
                 <Action.CopyToClipboard title="Copy Path" content={path} shortcut={{ modifiers: ["ctrl"], key: "c" }} />
                 <Action.ShowInFinder title="Reveal in File Manager" path={path} />
+                <Action.Trash
+                  title="Delete Wallpaper"
+                  paths={path}
+                  shortcut="remove"
+                  onTrash={() => void refresh()}
+                />
               </ActionPanel>
             }
           />
