@@ -9,7 +9,7 @@ command-triggered constraints here so agents see them before running commands.
 
 Personal dotfiles for CachyOS (Arch-based), managed with [Chezmoi](https://www.chezmoi.io/), installed through an interactive TUI powered by [gum](https://github.com/charmbracelet/gum). Other Arch derivatives work on a best-effort basis; non-Arch distros are unsupported.
 
-The one exception is `tools/provision-droplet.sh`, which targets Ubuntu because it provisions a *remote* host (`.claude/rules/droplet.md`). Anything that applies to the local machine stays Arch-only.
+The remote provisioners target Ubuntu: `tools/provision-droplet.sh` manages the disposable T3 host (`.claude/rules/droplet.md`), and `tools/apps-host.py` with `tools/apps-host/` manages the persistent application host (`.claude/rules/apps-host.md`). Anything that applies to the local machine stays Arch-only.
 
 NVIDIA policy: install no drivers and apply no workarounds (no env vars, modprobe options, or kernel parameters) — CachyOS's stock NVIDIA stack is used as-is.
 

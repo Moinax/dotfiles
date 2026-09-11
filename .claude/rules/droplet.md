@@ -11,9 +11,10 @@ The DigitalOcean host has no backups, so `tools/provision-droplet.sh` *is* the
 recovery path: every phase is idempotent and re-running `setup` on a live host is
 the repair, not a reinstall (see `docs/adr/0002`).
 
-**The repo's one deliberate non-Arch target, and not the start of multi-distro
-support.** It provisions the remote box that runs T3 Code headless
-(`dots droplet`), is unreachable from `dots setup`, and deliberately does not
+**A remote Ubuntu target, not local multi-distro support.** It provisions the
+disposable box that runs T3 Code headless. The persistent application host has
+its own provisioner in `tools/apps-host/` and `tools/apps-host.py`.
+The T3 provisioner (`dots droplet`) is unreachable from `dots setup` and does not
 source `install/lib/common.sh` — its remote half is scp'd to a bare box that has
 none of this repo.
 

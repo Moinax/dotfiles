@@ -28,6 +28,7 @@ Commands:
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
   droplet     Build and reach the remote T3 Code host (create/setup/pair/status)
+  hosting     Deploy and maintain the private Finance and Daylight host
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
 
@@ -326,8 +327,8 @@ do_backup() {
 
 # The remote DigitalOcean host. `wizard` is the human half — the browser logins
 # and key registrations no script can do — and everything else forwards to the
-# machine half. Both live in tools/ and are the only things in this repo that
-# target a non-Arch OS; see docs/adr/0002 for why the host exists at all.
+# machine half. Both target remote Ubuntu; see docs/adr/0002 for the T3 host
+# and docs/adr/0004 for the separate persistent application host.
 do_droplet() {
     if [[ "${1:-}" == wizard ]]; then
         shift
@@ -335,6 +336,10 @@ do_droplet() {
     else
         "$SCRIPT_DIR/tools/provision-droplet.sh" "$@"
     fi
+}
+
+do_hosting() {
+    python3 "$SCRIPT_DIR/tools/apps-host.py" "${@:-help}"
 }
 
 do_lazy_lock() {
@@ -431,7 +436,7 @@ do_menu() {
 case "${2:-}" in
     help|--help|-h)
         case "${1:-}" in
-            packages|update|apps|backup|gaming|droplet) ;;  # forward: these answer for themselves
+            packages|update|apps|backup|gaming|droplet|hosting) ;;  # forward: these answer for themselves
             # setup answers for itself too, but going through tools/setup.sh
             # would install git and gum first — far too much for a help request
             # or a completion probe. The installer parses --help before it
@@ -456,6 +461,7 @@ case "${1:-}" in
     gaming)     shift; do_gaming "$@" ;;
     backup)     shift; do_backup "$@" ;;
     droplet)    shift; do_droplet "$@" ;;
+    hosting)    shift; do_hosting "$@" ;;
     lazy-lock)  do_lazy_lock ;;
     help|--help|-h) usage ;;
     *)          do_menu ;;
