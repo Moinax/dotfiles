@@ -53,10 +53,9 @@ bite when you touch `phase_fork`.
   one is what clears the unit's own line. **Dropping `service-launcher.mjs` is
   the feature**: the launcher is the self-update supervisor, and self-updating a
   fork host means npm-installing upstream over our build.
-- **`vp i` dirties `pnpm-lock.yaml` every run**, so the phase's refuse-on-dirty
-  guard excludes that one path. It is the same toll `t3fork` pays on the desktop
-  with `rebase --autostash`, and without the exception the phase refuses on its
-  second run, forever, over a file it dirtied itself.
+- **Use `vp i --frozen-lockfile` on the 4 GiB host.** Resolving the workspace
+  again can exhaust Node's default heap. The dirty-tree guard still excludes
+  `pnpm-lock.yaml` so checkouts changed by older provisioner runs can recover.
 - **`vp run --filter t3 build`, never `build:bundle`.** The short one is the two
   `vp pack` calls; the web client only reaches `dist/client` through the `build`
   task's `dependsOn @t3tools/web#build`. Built short, the server comes up, serves

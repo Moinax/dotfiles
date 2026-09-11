@@ -35,7 +35,7 @@ set -euo pipefail
 
 DROPLET_NAME="${DROPLET_NAME:-t3code-host}"
 REGION="${REGION:-ams3}"
-SIZE="${SIZE:-s-4vcpu-8gb-amd}"
+SIZE="${SIZE:-s-2vcpu-4gb-amd}"
 IMAGE="${IMAGE:-ubuntu-24-04-x64}"
 REMOTE_USER="${REMOTE_USER:-jerome}"
 FIREWALL_NAME="${FIREWALL_NAME:-$DROPLET_NAME-deny-all}"
@@ -128,6 +128,10 @@ Commands:
 `remote`, `report` and `fork-remote` also exist; all three run ON the host and
 are called by setup, status and fork. Running them from the desktop does
 nothing useful.
+
+Snapshot encryption defaults to a passphrase. For unattended recovery, set
+DROPLET_STATE_RECIPIENT to an age recipient when snapshotting and
+DROPLET_STATE_IDENTITY to the matching private key file when restoring.
 EOF
 }
 
@@ -467,7 +471,12 @@ cmd_snapshot() {
     mkdir -p "$(dirname "$out")"
 
     header "Snapshotting the credentials of $DROPLET_NAME"
-    info "age asks for a passphrase — use the one your project backup uses."
+    local age_args=(-p)
+    if [ -n "${DROPLET_STATE_RECIPIENT:-}" ]; then
+        age_args=(-r "$DROPLET_STATE_RECIPIENT")
+    else
+        info "age asks for a passphrase — use the one your project backup uses."
+    fi
 
     # Encrypted on the desktop, never on the host: the plaintext tar exists only
     # inside the pipe. Written to .tmp first so an interrupted run cannot leave a
@@ -492,7 +501,7 @@ cmd_snapshot() {
     # and then hung. Held in a file and replayed once age has its passphrase.
     local manifest rc=0
     manifest=$(mktemp)
-    ssh -o BatchMode=yes "$target" "bash -s ${STATE_PATHS[*]}" 2>"$manifest" <<'REMOTE' | age -p -o "$out.tmp" || rc=$?
+    ssh -o BatchMode=yes "$target" "bash -s ${STATE_PATHS[*]}" 2>"$manifest" <<'REMOTE' | age "${age_args[@]}" -o "$out.tmp" || rc=$?
 set -eu
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT INT TERM
@@ -580,8 +589,11 @@ cmd_restore() {
     # every warn/ok line and every network condition below — an unmeasurable
     # constant. The sleep stays, but as a courtesy that keeps the common case
     # tidy rather than as the thing holding the exit status up.
-    local rc=0
-    age -d "$archive" | ssh -o BatchMode=yes "$target" '
+    local rc=0 age_args=(-d)
+    if [ -n "${DROPLET_STATE_IDENTITY:-}" ]; then
+        age_args+=(-i "$DROPLET_STATE_IDENTITY")
+    fi
+    age "${age_args[@]}" "$archive" | ssh -o BatchMode=yes "$target" '
         set -eu
         stage=$HOME/.cache/droplet-state
         rm -rf "$stage"; mkdir -p "$stage"
@@ -818,7 +830,7 @@ phase_tools() {
     want=$(curl -fsSL https://api.github.com/repos/getsops/sops/releases/latest 2>/dev/null \
            | jq -r '.tag_name // empty' | sed 's/^v//')
     want="${want:-3.13.3}"
-    ver=$(sops --version 2>/dev/null | awk '{print $2}')
+    ver=$(sops --version 2>/dev/null | awk '{print $2}' || true)
     if [ "$ver" != "$want" ]; then
         local deb
         deb=$(mktemp --suffix=.deb)
@@ -860,7 +872,7 @@ phase_tools() {
     tea_want=$(curl -fsSL 'https://gitea.com/api/v1/repos/gitea/tea/releases?limit=1' 2>/dev/null \
                | jq -r '.[0].tag_name // empty' | sed 's/^v//')
     tea_want="${tea_want:-0.15.1}"
-    tea_have=$(tea_version)
+    tea_have=$(tea_version || true)
     if [ "$tea_have" != "$tea_want" ]; then
         mkdir -p "$HOME/.local/bin"
         if curl -fsSL -o "$HOME/.local/bin/tea.new" \
@@ -885,7 +897,9 @@ phase_agents() {
 
     # Upstream, not the fork — see docs/adr/0001. Installed globally so the
     # systemd unit names a stable binary rather than resolving through npx.
-    have t3 || npm install -g t3 >/dev/null 2>&1
+    # npm 11 loops resolving Effect prerelease peers for t3 0.0.40.
+    # Keep the package's declared dependencies without peer auto-resolution.
+    have t3 || npm install -g --legacy-peer-deps t3 >/dev/null 2>&1
     have t3 && ok "t3 $(t3 --version 2>/dev/null || echo '') present"
 }
 
@@ -960,7 +974,7 @@ phase_t3_service() {
         ok "Service already installed ($(systemctl --user is-active t3code))"
         return 0
     fi
-    t3 service install
+    npm_config_legacy_peer_deps=true t3 service install
     systemctl --user is-active t3code >/dev/null 2>&1 \
         && ok "Service active" \
         || warn "Service installed but not active — check ~/.t3/userdata/logs/boot-service.log"
@@ -1068,12 +1082,9 @@ phase_fork() {
     # is precisely why an edit that exists anyway is worth stopping for instead
     # of discarding. Untracked files are left alone: no -d, no -x.
     #
-    # pnpm-lock.yaml excepted, because `vp i` below rewrites it with registry
-    # metadata on every install — so the guard fired on the second run, every
-    # time, over a file this phase had dirtied itself. `t3fork` pays the same
-    # toll on the desktop and answers it with `rebase --autostash`; here the
-    # reset restores it and the next `vp i` dirties it again. Same file, same
-    # cause, and worth naming twice.
+    # Keep accepting lockfile changes left by older runs of `vp i`. Current
+    # builds use the published lockfile, but repairs must also work on hosts
+    # provisioned before that change.
     if ! git -C "$FORK_DIR" diff --quiet -- . ':(exclude)pnpm-lock.yaml' \
        || ! git -C "$FORK_DIR" diff --cached --quiet; then
         err "$FORK_DIR has uncommitted changes — refusing to reset over them"
@@ -1093,8 +1104,8 @@ phase_fork() {
     if [ ! -x "$HOME/.local/share/vite-plus/bin/vp" ] \
        && [ ! -x "$HOME/.vite-plus/bin/vp" ]; then
         curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash >/dev/null 2>&1
-        [ ! -f "$HOME/.config/vite-plus/env" ] || . "$HOME/.config/vite-plus/env"
     fi
+    [ ! -f "$HOME/.config/vite-plus/env" ] || . "$HOME/.config/vite-plus/env"
     have vp || { err "vite-plus is missing and could not be installed"; return 1; }
 
     # Skip the build when the tree has not moved and the output is intact. This
@@ -1110,7 +1121,10 @@ phase_fork() {
         # Each wrapped in its own error: bare under `set -e` a failed install
         # kills the run with pnpm's output as the last thing on screen and no
         # line of this script's own saying which step died.
-        (cd "$FORK_DIR" && vp i) || { err "vp i failed in $FORK_DIR"; return 1; }
+        # Use the published lockfile: resolving the whole workspace again can
+        # exhaust Node's default heap on the 4 GiB host.
+        (cd "$FORK_DIR" && vp i --frozen-lockfile) \
+            || { err "vp i --frozen-lockfile failed in $FORK_DIR"; return 1; }
         # `build`, not `build:bundle`. build:bundle is the two `vp pack` calls
         # and stops there; the web client reaches dist/client through the `build`
         # task's dependsOn @t3tools/web#build. Built the short way the server
