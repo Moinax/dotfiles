@@ -1,5 +1,6 @@
 """Exercise destructive-boundary guards without any cloud or SSH operations."""
 import importlib.util
+import io
 import json
 import tarfile
 import tempfile
@@ -14,6 +15,32 @@ spec.loader.exec_module(host)
 
 
 class AppsHostTests(unittest.TestCase):
+    def test_domain_conflict_is_found_before_either_record_changes(self):
+        results = [[{'id': 'zone'}], [], [{'type': 'CNAME', 'content': 'public.example', 'proxied': True}]]
+        replies = [io.StringIO(json.dumps({'success': True, 'result': r})) for r in results]
+        with patch.object(Path, 'read_text', return_value='test-token'), \
+             patch.object(host.urllib.request, 'urlopen', side_effect=replies) as api:
+            with self.assertRaisesRegex(RuntimeError, 'conflicting DNS'):
+                host.domain_records('100.64.0.5')
+            self.assertTrue(all(call.args[0].get_method() == 'GET' for call in api.call_args_list))
+
+    def test_domains_are_explicit_dns_only_records(self):
+        results = [[{'id': 'zone'}], [], [], {}, {}]
+        replies = [io.StringIO(json.dumps({'success': True, 'result': r})) for r in results]
+        with patch.object(Path, 'read_text', return_value='test-token'), \
+             patch.object(host.urllib.request, 'urlopen', side_effect=replies) as api:
+            host.domain_records('100.64.0.5')
+        writes = [json.loads(call.args[0].data) for call in api.call_args_list if call.args[0].data]
+        self.assertEqual(writes, [{'type': 'A', 'name': app + '.moinax.com', 'content': '100.64.0.5',
+                                  'proxied': False, 'ttl': 120} for app in host.APPS])
+
+    def test_domain_preflight_never_writes_dns(self):
+        replies = [io.StringIO(json.dumps({'success': True, 'result': r})) for r in [[{'id': 'zone'}], [], []]]
+        with patch.object(Path, 'read_text', return_value='test-token'), \
+             patch.object(host.urllib.request, 'urlopen', side_effect=replies) as api:
+            host.domain_records('100.64.0.5', apply=False)
+            self.assertTrue(all(call.args[0].get_method() == 'GET' for call in api.call_args_list))
+
     def test_target_prefers_tailnet_without_contacting_cloud(self):
         with patch.object(host, 'tailnet', return_value={'Peer': {'p': {
             'HostName': 'apps-host', 'Online': True, 'TailscaleIPs': ['100.64.0.5'],

@@ -12,6 +12,8 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -27,6 +29,8 @@ COMMANDS = {
     'setup': 'Install or repair the remote runtime and service definitions',
     'join': 'Print the Tailscale enrollment link',
     'configure': 'Configure private HTTPS and the authorized owner',
+    'prepare-domains': 'Prepare custom HTTPS on staging ports and verify provider callbacks',
+    'activate-domains': 'Activate private app domains after public policy links have been updated',
     'firewall': 'Close public ingress after verifying private SSH',
     'deploy': 'Build and deploy finance, daylight, or both',
     'migrate': 'Import local data once and disable local services',
@@ -107,9 +111,10 @@ def create():
 def setup():
     host = target()
     remote(host, 'install', '-d', '-m', '700', ROOT + '/admin')
-    for name in ('remote.sh', 'backup.sh'):
+    for name in ('remote.sh', 'backup.sh', 'proxy.sh', 'Caddyfile', 'apps-proxy.service', 'apps-proxy-auth.service'):
         send(host, REPO / 'tools/apps-host' / name, ROOT + '/admin/' + name)
     remote(host, 'bash', ROOT + '/admin/remote.sh', 'setup')
+    remote(host, 'bash', '-c', 'if test -f /etc/personal-apps/proxy.env; then bash /opt/personal-apps/admin/proxy.sh prepare; fi')
     configure_backup()
 
 
@@ -133,6 +138,84 @@ def configure():
     state = tailnet()
     owner = state['User'][str(state['Self']['UserID'])]['LoginName']
     remote(target(), 'bash', ROOT + '/admin/remote.sh', 'configure', owner)
+
+
+def prepare_domains():
+    credential = (BACKUP_CONFIG / 'cloudflare-api-token').read_text().strip()
+    if not credential or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in credential):
+        raise RuntimeError('Expected a Cloudflare API token in the local apps-host configuration.')
+    run(['python3', REPO / 'tools/apps-host/build-proxy.py'])
+    host = target()
+    remote(host, 'install', '-d', '-m', '700', ROOT + '/admin')
+    for name in ('remote.sh', 'backup.sh', 'proxy.sh', 'Caddyfile', 'apps-proxy.service', 'apps-proxy-auth.service', 'check-domains.mjs'):
+        send(host, REPO / 'tools/apps-host' / name, ROOT + '/admin/' + name)
+    for name in ('caddy', 'nginx-auth'):
+        send(host, REPO / '.scratch/custom-domains/bin' / name, ROOT + '/admin/' + name)
+    # The secret travels over SSH stdin, never a command argument or a log line.
+    remote(host, 'bash', '-c', 'umask 077; cat > /etc/personal-apps/cloudflare.env',
+           input=('CLOUDFLARE_API_TOKEN=' + credential + '\n').encode())
+    remote(host, 'node', ROOT + '/admin/check-domains.mjs')
+    remote(host, 'bash', ROOT + '/admin/proxy.sh', 'prepare')
+    remote(host, 'install', '-m', '755', ROOT + '/admin/backup.sh', '/usr/local/sbin/personal-apps-backup')
+
+
+def domain_records(ip, *, apply=True):
+    """Add only explicit private A records; never change the public wildcard."""
+    credential = (BACKUP_CONFIG / 'cloudflare-api-token').read_text().strip()
+
+    def request(path, data=None):
+        req = urllib.request.Request('https://api.cloudflare.com/client/v4' + path,
+            data=None if data is None else json.dumps(data).encode(),
+            headers={'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.load(response)
+        if not result.get('success'):
+            raise RuntimeError('Cloudflare rejected the DNS operation.')
+        return result['result']
+
+    zones = request('/zones?name=moinax.com')
+    if len(zones) != 1:
+        raise RuntimeError('Expected exactly one moinax.com zone.')
+    base = '/zones/' + zones[0]['id'] + '/dns_records'
+    missing = []
+    # Check BOTH names before any mutation, so a conflict cannot leave one changed.
+    for app in APPS:
+        name = app + '.moinax.com'
+        existing = request(base + '?' + urllib.parse.urlencode({'name': name}))
+        if existing:
+            if len(existing) != 1 or any(existing[0].get(k) != v for k, v in
+                    {'type': 'A', 'content': ip, 'proxied': False}.items()):
+                raise RuntimeError(f'{name} has conflicting DNS records; inspect them before changing DNS.')
+        else:
+            missing.append(name)
+    for name in missing if apply else []:
+        request(base, {'type': 'A', 'name': name, 'content': ip, 'proxied': False, 'ttl': 120})
+        print(f'{name}: private DNS record created.')
+
+
+def activate_domains():
+    host = target()
+    remote(host, 'node', ROOT + '/admin/check-domains.mjs')
+    peer = next(p for p in tailnet()['Peer'].values() if p['HostName'] == NAME and p.get('Online'))
+    ip = next(ip for ip in peer['TailscaleIPs'] if ':' not in ip)
+    domain_records(ip, apply=False)
+    for path in ('/privacy', '/terms'):
+        run(['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
+             'https://finance-info.moinax.com' + path])
+    backup()
+    previous = remote(host, 'bash', '-c', "grep -qx 'APPS_HTTPS_PORT=443' /etc/personal-apps/proxy.env && echo active || echo staged", capture=True).stdout.strip()
+    remote(host, 'bash', ROOT + '/admin/proxy.sh', 'activate')
+    try:
+        for app in APPS:
+            domain = app + '.moinax.com'
+            run(['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
+                 '--resolve', f'{domain}:443:{ip}', f'https://{domain}/'])
+    except BaseException:
+        if previous == b'staged':
+            remote(host, 'bash', ROOT + '/admin/proxy.sh', 'rollback')
+        raise
+    domain_records(ip)
+    install_launchers()
 
 
 def firewall():
@@ -285,12 +368,22 @@ WantedBy=timers.target
 
 
 def install_launchers():
-    peer = next(p for p in tailnet().get('Peer', {}).values() if p['HostName'] == NAME)
-    origin = 'https://' + peer['DNSName'].rstrip('.')
+    script = """import json
+from pathlib import Path
+origins = {}
+for app, key in [('finance', 'SELF_URL'), ('daylight', 'DAYLIGHT_ORIGIN')]:
+    values = dict(line.split('=', 1) for line in (Path('/etc/personal-apps') / (app + '.env')).read_text().splitlines() if '=' in line)
+    origins[app] = values[key]
+print(json.dumps(origins))
+"""
+    origins = json.loads(remote(target(), 'python3', '-c', script, capture=True).stdout)
     directory = Path.home() / '.local/share/applications'
     directory.mkdir(parents=True, exist_ok=True)
     for app in APPS:
-        address = origin if app == 'finance' else origin + ':8443'
+        address = origins[app]
+        parsed = urllib.parse.urlsplit(address)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.path or parsed.query or parsed.fragment or any(c.isspace() or c in '%\\"' for c in address):
+            raise RuntimeError('Invalid production origin for ' + app)
         icon = source_dir(app) / ('public/logo.svg' if app == 'finance' else 'public/favicon.svg')
         (directory / f'{app}.desktop').write_text(f'''[Desktop Entry]
 Type=Application
@@ -337,7 +430,7 @@ def restore_check():
 def status():
     host = droplet()
     print(json.dumps({k: host.get(k) for k in ('name', 'size_slug', 'status', 'features')}, indent=2))
-    remote(target(), 'bash', '-c', 'systemctl is-active finance daylight tailscaled; tailscale serve status; systemctl list-timers personal-apps-backup.timer --no-pager; free -h; df -h /')
+    remote(target(), 'bash', '-c', 'systemctl is-active finance daylight tailscaled; if test -f /etc/personal-apps/proxy.env; then systemctl is-active apps-proxy apps-proxy-auth; fi; tailscale serve status; systemctl list-timers personal-apps-backup.timer --no-pager; free -h; df -h /')
 
 
 def main():

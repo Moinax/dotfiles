@@ -98,18 +98,23 @@ UNIT
 }
 
 configure() {
-    local owner=$1 dns
+    local owner=$1 dns domains=false
     [[ $owner =~ ^[a-zA-Z0-9._+@-]+$ && $owner == *@* ]]
     dns=$(tailscale status --json | jq -er '.Self.DNSName | rtrimstr(".")')
     [[ $dns == apps-host.*.ts.net ]]
+    if [[ -f /etc/personal-apps/proxy.env ]] && grep -qx 'APPS_HTTPS_PORT=443' /etc/personal-apps/proxy.env; then
+        domains=true
+    fi
     # Keep provider secrets from a previous migration. These entries are not secrets.
-    python3 - "$owner" "$dns" <<'PY'
+    python3 - "$owner" "$dns" "$domains" <<'PY'
 from pathlib import Path
 import sys
-owner, dns = sys.argv[1:]
+owner, dns, domains = sys.argv[1:]
+finance = 'https://finance.moinax.com' if domains == 'true' else f'https://{dns}'
+daylight = 'https://daylight.moinax.com' if domains == 'true' else f'https://{dns}:8443'
 settings = {
- 'finance': {'PORT':'3001','SELF_URL':f'https://{dns}', 'EB_REDIRECT_URL':f'https://{dns}/api/callback', 'FINANCE_DB':'/var/lib/finance/finance.sqlite', 'EB_PRIVATE_KEY_PATH':'/var/lib/finance/enablebanking.pem', 'TAILSCALE_USER':owner},
- 'daylight': {'DAYLIGHT_PORT':'4280','DAYLIGHT_ORIGIN':f'https://{dns}:8443','DAYLIGHT_DATA_DIR':'/var/lib/daylight','TAILSCALE_USER':owner}
+ 'finance': {'PORT':'3001','SELF_URL':finance, 'EB_REDIRECT_URL':finance+'/api/callback', 'FINANCE_DB':'/var/lib/finance/finance.sqlite', 'EB_PRIVATE_KEY_PATH':'/var/lib/finance/enablebanking.pem', 'TAILSCALE_USER':owner},
+ 'daylight': {'DAYLIGHT_PORT':'4280','DAYLIGHT_ORIGIN':daylight,'DAYLIGHT_DATA_DIR':'/var/lib/daylight','TAILSCALE_USER':owner}
 }
 for app, values in settings.items():
  p = Path(f'/etc/personal-apps/{app}.env')
@@ -117,8 +122,12 @@ for app, values in settings.items():
  p.write_text('\n'.join(kept + [f'{k}={v}' for k,v in values.items()])+'\n')
  p.chmod(0o600)
 PY
-    tailscale serve --bg --yes --https=443 http://127.0.0.1:3001
-    tailscale serve --bg --yes --https=8443 http://127.0.0.1:4280
+    if "$domains"; then
+        systemctl reload apps-proxy
+    else
+        tailscale serve --bg --yes --https=443 http://127.0.0.1:3001
+        tailscale serve --bg --yes --https=8443 http://127.0.0.1:4280
+    fi
     systemctl try-restart finance daylight
 }
 

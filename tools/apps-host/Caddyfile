@@ -1,0 +1,68 @@
+{
+	admin unix//run/apps-proxy/admin.sock
+	auto_https disable_redirects
+	servers {
+		protocols h1 h2
+		strict_sni_host
+	}
+	# OAuth callback URLs contain codes. Do not log requests, including errors.
+	log default {
+		exclude http.log.error
+	}
+}
+
+(private_app) {
+	bind {$APPS_IPV4} {$APPS_IPV6}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+	route {
+		# Discard alternative services cached before the move from Cloudflare.
+		header Alt-Svc clear
+		# Never accept a browser's claimed identity. Whois uses the TCP peer.
+		request_header -Tailscale-*
+		forward_auth unix//run/apps-proxy-auth/auth.sock {
+			uri /auth
+			header_up Remote-Addr {remote_host}
+			header_up Remote-Port {remote_port}
+			header_up -Expected-Tailnet
+			header_up -Original-URI
+			copy_headers Tailscale-User>Tailscale-User-Login
+		}
+		reverse_proxy {args[0]}
+	}
+}
+
+https://finance.moinax.com:{$APPS_HTTPS_PORT:443} {
+	import private_app 127.0.0.1:3001
+}
+
+https://daylight.moinax.com:{$APPS_HTTPS_PORT:443} {
+	import private_app 127.0.0.1:4280
+}
+
+http://finance.moinax.com:{$APPS_HTTP_PORT:80} {
+	bind {$APPS_IPV4} {$APPS_IPV6}
+	redir https://finance.moinax.com{uri} 308
+}
+
+http://daylight.moinax.com:{$APPS_HTTP_PORT:80} {
+	bind {$APPS_IPV4} {$APPS_IPV6}
+	redir https://daylight.moinax.com{uri} 308
+}
+
+# Caddy fetches these certificates from tailscaled. Old bookmarks keep working.
+https://{$APPS_TAILSCALE_DNS}:{$APPS_HTTPS_PORT:443} {
+	bind {$APPS_IPV4} {$APPS_IPV6}
+	@navigation method GET HEAD
+	redir @navigation https://finance.moinax.com{uri} 302
+	respond "Open Finance at https://finance.moinax.com" 409
+}
+
+https://{$APPS_TAILSCALE_DNS}:{$APPS_LEGACY_PORT:8443} {
+	bind {$APPS_IPV4} {$APPS_IPV6}
+	@navigation method GET HEAD
+	redir @navigation https://daylight.moinax.com{uri} 302
+	respond "Open Daylight at https://daylight.moinax.com" 409
+}

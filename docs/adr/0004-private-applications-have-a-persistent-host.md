@@ -14,8 +14,16 @@ Tailscale Serve terminates HTTPS and proxies to loopback-only Node listeners.
 Finance uses HTTPS port 443; Daylight uses 8443 on the same tailnet hostname.
 Applications authorize the configured Tailscale login and validate request
 origins. The public DigitalOcean firewall has no inbound rules. Named Tailscale
-Services can replace the port-based addresses later, with corresponding OAuth
-registration updates.
+Services were considered as a replacement for the port-based addresses.
+
+The September 12 custom-domain migration replaces Serve with Caddy on the
+Tailscale addresses. Finance and Daylight use `finance.moinax.com` and
+`daylight.moinax.com`, with Cloudflare DNS-only records and DNS-validated HTTPS
+certificates. The official Tailscale Whois auth helper supplies identity; each
+app retains its owner and origin checks. The old addresses redirect to the new
+ones. Public policies move to `finance-info.moinax.com` on Vercel before the
+Finance hostname becomes private. Provider clients and existing tokens remain
+in place; callback registrations include the new origins.
 
 Daily DigitalOcean backups protect the machine. A daily application backup
 also captures a consistent SQLite copy, Daylight data and encryption key,

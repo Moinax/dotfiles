@@ -1,0 +1,38 @@
+[Unit]
+Description=Private application HTTPS with Tailscale identity
+After=network-online.target tailscaled.service apps-proxy-auth.service
+Wants=network-online.target
+Requires=apps-proxy-auth.service
+PartOf=tailscaled.service
+
+[Service]
+User=caddy
+Group=caddy
+EnvironmentFile=/etc/personal-apps/proxy.env
+EnvironmentFile=/etc/personal-apps/cloudflare.env
+Environment=XDG_DATA_HOME=/var/lib/apps-proxy
+Environment=XDG_CONFIG_HOME=/var/lib/apps-proxy
+ExecStart=/usr/local/bin/apps-caddy run --config /etc/apps-proxy/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/apps-caddy reload --config /etc/apps-proxy/Caddyfile --adapter caddyfile --address unix//run/apps-proxy/admin.sock
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=apps-proxy
+RuntimeDirectoryMode=0700
+StateDirectory=apps-proxy
+StateDirectoryMode=0700
+UMask=0077
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

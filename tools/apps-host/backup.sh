@@ -8,6 +8,9 @@ stage=$(mktemp -d /var/lib/apps-backup/stage.XXXXXX)
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/data" "$stage/config" "$stage/releases"
 cp -a /etc/personal-apps/. "$stage/config/"
+if [[ -d /etc/apps-proxy ]]; then
+    cp -a /etc/apps-proxy "$stage/config/apps-proxy"
+fi
 for app in finance daylight; do
     [[ -f /var/lib/$app/.migrated ]] || { echo "$app has not been migrated" >&2; exit 1; }
     mkdir "$stage/data/$app"

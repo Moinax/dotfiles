@@ -4,14 +4,21 @@ Production runs on DigitalOcean `apps-host` in Amsterdam, with Ubuntu 24.04,
 1 vCPU and 2 GiB RAM. The droplet costs $12/month before tax; daily DigitalOcean
 backups add 30%, for $15.60/month before tax at provisioning time.
 
-- Finance: <https://apps-host.taildade28.ts.net>
-- Daylight: <https://apps-host.taildade28.ts.net:8443>
+- Finance: <https://finance.moinax.com>
+- Daylight: <https://daylight.moinax.com>
+- Public information and policies: <https://finance-info.moinax.com>
 
 Access requires Tailscale and the configured owner, currently
-`jerome@moinax.com`. The applications listen on loopback only. Tailscale Serve
-terminates HTTPS and supplies identity, which the applications verify. The
+`jerome@moinax.com`. The applications listen on loopback only. Caddy listens on
+the host's Tailscale addresses, terminates HTTPS, and removes incoming Tailscale
+identity headers. Tailscale's official `nginx-auth` helper resolves the TCP peer
+through Whois. Caddy passes that login to each app, which checks its owner. The
 DigitalOcean firewall has no inbound rules. SSH administration also uses the
 tailnet after bootstrap. No Funnel or public application ports are configured.
+
+The original `apps-host.taildade28.ts.net` URLs on ports 443 and 8443 redirect
+to the custom domains. They are bookmark compatibility addresses, not OAuth
+origins. The applications still validate Host, Origin, sessions, and OAuth state.
 
 ## Operations
 
@@ -55,12 +62,66 @@ builds and tests.
 Keep localhost callback registrations for local development. Enable Banking
 and Google also need the production callback in their existing application:
 
-- `https://apps-host.taildade28.ts.net/api/callback`
-- `https://apps-host.taildade28.ts.net:8443/auth/google/callback`
+- `https://finance.moinax.com/api/callback`
+- `https://daylight.moinax.com/auth/google/callback`
+
+Keep the old Tailscale callbacks registered for rollback. Both callbacks run in
+the browser, which must be connected to Tailscale. Do not replace the existing
+provider clients, bank key, or connected accounts when changing URLs.
 
 Daylight registers a new dynamic Todoist client on the next Connect action when
 its origin changes. It preserves the credentials that issued existing refresh
 tokens. The operator completes the normal Todoist consent in the browser.
+
+## Custom domain setup and maintenance
+
+`dots hosting prepare-domains` builds the pinned Tailscale auth helper on the
+desktop and downloads Caddy with the Cloudflare DNS module. Versions live in
+`tools/apps-host/build-proxy.py`; builds use two Go workers and repository scratch
+storage. The Cloudflare token lives at
+`/home/moinax/.config/apps-host/cloudflare-api-token`, mode 0600. It needs Zone Read
+and DNS Edit for `moinax.com` only. The command sends it over SSH stdin into the
+root-only `/etc/personal-apps/cloudflare.env` environment file.
+
+Preparation verifies the new Enable Banking and Google callbacks, installs
+`apps-proxy` and `apps-proxy-auth`, and initially uses ports 10443 and 18443,
+with HTTP redirects on port 10080. Production HTTP redirects use port 80,
+also bound only to the Tailscale addresses.
+Caddy obtains certificates through DNS challenges; no public listener is needed.
+`TS_PERMIT_CERT_UID=caddy` permits retrieval of the legacy Tailscale certificate
+without granting Caddy Tailscale operator rights. Caddy renews both kinds of
+certificates automatically. Keep the Cloudflare token valid for renewals.
+
+Before activation, update the Finance application's public website, privacy,
+and terms links in Enable Banking to `https://finance-info.moinax.com`,
+`https://finance-info.moinax.com/privacy`, and `https://finance-info.moinax.com/terms`.
+The public site is a separate static Vercel project. Do not deploy the app or its
+data to Vercel. Finish any Google, Todoist, or bank authorization in progress;
+browser-bound state cannot move between origins. Active bank authorizations
+block activation until they finish or expire.
+
+`dots hosting activate-domains` checks DNS conflicts and provider callbacks,
+backs up the apps, switches their canonical origins, and replaces Serve with
+Caddy on ports 443 and 8443. It tests both apps over HTTPS from the desktop before
+adding the two explicit DNS-only A records pointing to the Tailscale IPv4 address.
+The public Cloudflare wildcard, Twitch, and the public information site remain
+unchanged. It then updates the desktop launchers. Existing DNS caches may keep
+the public wildcard answer until its TTL expires.
+
+`dots hosting configure` preserves active custom domains. `dots hosting setup`
+reinstalls their service definitions when proxy configuration already exists.
+`apps-proxy` and `apps-proxy-auth` are persistent system services. The former's
+admin socket is accessible only to its local service user. Requests and callback
+URLs are not logged. To validate changes, run the apps-host Python tests and
+the Caddy integration tests in `tests/test_apps_proxy.py` after building the proxy.
+
+Activation failures restore the previous app environment and Serve routing.
+Before DNS creation, an operator can also run
+`bash /opt/personal-apps/admin/proxy.sh rollback` over SSH as root. This restores
+configuration only, never app data. After DNS creation, also remove only the two
+explicit private records to return to the public wildcard and regenerate
+launchers. Never reset all Serve or DNS configuration. The private backup
+contains the proxy configuration and secret.
 
 ## Backups and recovery
 

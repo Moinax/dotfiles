@@ -11,8 +11,13 @@ paths:
   provisioner, credential restore, or destroy workflow to it.
 - Remote administration runs as root through key-authenticated SSH. Application
   services run as separate unprivileged users, with root-owned code.
-- Keep both Node listeners on loopback. Tailscale Serve supplies the authenticated
-  login; each application explicitly authorizes its configured owner.
+- Keep both Node listeners on loopback. Caddy listens only on the Tailscale IPs
+  for the custom domains. It strips client identity headers and gets the login
+  through Tailscale's official `nginx-auth` Whois helper; each app authorizes its
+  configured owner. Tailscale Serve is the bootstrap and rollback path.
+- Public Finance information stays on `finance-info.moinax.com` through Vercel.
+  Update provider policy links before making `finance.moinax.com` private. Never
+  change the Cloudflare wildcard or proxy the private A records through Cloudflare.
 - Close the DigitalOcean public firewall only after a new tailnet SSH connection
   succeeds. Do not enable Funnel.
 - Migrate once, with local services stopped, then disable those services. Two
