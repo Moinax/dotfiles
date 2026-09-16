@@ -42,6 +42,7 @@ descriptions:
   just: Command runner (like make, simpler)
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
+  doctl: DigitalOcean CLI — drives the droplet provisioners (`dots droplet`, apps host)
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (standalone installer)
@@ -190,6 +191,7 @@ packages:
     
     # Networking
     - tailscale
+    - doctl  # the droplet provisioners shell out to it; `dots` gates its menu entry on it
 
     # Task runner
     - just
