@@ -97,14 +97,20 @@ custom_install:
   # The standalone binary delegates project commands to the workspace-pinned
   # vite-plus; invoking a globally installed npm copy can load a second Vitest
   # singleton and make every @effect/vitest suite fail before test collection.
+  #
+  # `version:` and `update:` resolve that binary by path rather than through
+  # PATH. The scan activates fnm for the npm rows and leaves its bin dir ahead
+  # of ~/.vite-plus/bin for the rest of the run, so a globally npm-installed
+  # vite-plus shadows the standalone from whichever row comes first — and only
+  # the standalone owns `upgrade` ("Command 'upgrade' not found").
   - name: vite-plus
     check: test -x "$HOME/.local/share/vite-plus/bin/vp" || test -x "$HOME/.vite-plus/bin/vp"
     install: curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash
     requires: curl
     binary: vp
-    version: vp --version 2>/dev/null | sed -n 's/^vp v//p' | head -1
+    version: VP="$HOME/.local/share/vite-plus/bin/vp"; [ -x "$VP" ] || VP="$HOME/.vite-plus/bin/vp"; "$VP" --version 2>/dev/null | sed -n 's/^vp v//p' | head -1
     source: voidzero-dev/vite-plus
-    update: vp upgrade
+    update: VP="$HOME/.local/share/vite-plus/bin/vp"; [ -x "$VP" ] || VP="$HOME/.vite-plus/bin/vp"; "$VP" upgrade
   # codeburn — reads what the coding agents already wrote to disk (~/.claude,
   # ~/.codex, and a dozen more) and reports tokens + cost by day, model, project
   # and session. No proxy, no API key, nothing leaves the machine, so it costs
