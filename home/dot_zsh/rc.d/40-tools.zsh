@@ -41,6 +41,12 @@ if command -v tv &> /dev/null; then
   }
 fi
 
+# direnv: per-directory env. socle's .envrc enters its Nix flake shell through
+# this hook; without it the .envrc is inert unless run via `direnv exec`.
+if command -v direnv &> /dev/null; then
+  eval "$(direnv hook zsh)"
+fi
+
 # ssh-agent. Where OpenSSH's systemd `ssh-agent.socket` user unit is active
 # (Arch), adopt its socket: it lives in $XDG_RUNTIME_DIR (tmpfs), so it can't
 # go stale across a reboot. environment.d exports SSH_AUTH_SOCK session-wide

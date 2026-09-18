@@ -89,6 +89,8 @@ LICENSE
 .config/worktrunk/**
 .config/ccstatusline
 .config/ccstatusline/**
+.config/nix
+.config/nix/**
 .claude
 .claude/**
 .claude-mbrella

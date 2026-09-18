@@ -14,11 +14,13 @@ dotfiles:
   - dot_config/worktrunk
   - dot_config/ccstatusline
   - dot_gitconfig
+  - dot_config/nix
 
 # Services to enable
 services:
   - docker
   - tailscaled
+  - nix-daemon
 
 descriptions:
   cargo-sweep: Trims stale cargo target/ artifacts (driven by cargo-sweep.timer)
@@ -40,6 +42,8 @@ descriptions:
   cpio: Archive copy utility
   base-devel: Base development tools
   just: Command runner (like make, simpler)
+  nix: Nix package manager — only socle's direnv shell and its Bazel graph use it
+  bazelisk: Bazel launcher that honours a repo's .bazelversion
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
   doctl: DigitalOcean CLI — drives the droplet provisioners (`dots droplet`, apps host)
@@ -195,6 +199,11 @@ packages:
 
     # Task runner
     - just
+
+    # socle: Bazel fetches Postgres and its test tools through rules_nixpkgs,
+    # and .envrc enters the flake shell only when nix is on PATH
+    - nix
+    - bazelisk
 
     # Worktree management
     - worktrunk-bin  # AUR
