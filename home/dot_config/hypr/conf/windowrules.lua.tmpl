@@ -39,6 +39,27 @@ hl.window_rule({
     center = true,
 })
 
+-- Firefox maps extension windows as plain `Mozilla Firefox`, then sets their real
+-- title afterwards. Static rules have already run by then, so react to the title
+-- event instead. Running the helper over existing windows also handles config reloads.
+local function place_bitwarden_firefox(w)
+    if w == nil or w.class ~= "firefox" or w.title == nil then return end
+    if not w.title:find("Extension", 1, true) or not w.title:find("Bitwarden", 1, true) then return end
+
+    if not w.floating then
+        hl.dispatch(hl.dsp.window.float({ action = "toggle", window = w }))
+        hl.exec_scheduled_prop_refresh_immediately()
+    end
+    hl.dispatch(hl.dsp.window.resize({ x = 480, y = 800, window = w }))
+    hl.dispatch(hl.dsp.window.center({ window = w }))
+end
+
+hl.on("window.title", place_bitwarden_firefox)
+
+for _, w in ipairs(hl.get_windows({ class = "firefox" })) do
+    place_bitwarden_firefox(w)
+end
+
 -- Opacity toggles driven by binds (see binds.lua). These rules are named so the
 -- global rule below can reliably take precedence over them while it is enabled.
 hl.window_rule({
