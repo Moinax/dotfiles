@@ -457,7 +457,7 @@ offer_push() {
     return 0
   }
 
-  # The droplet builds origin/$branch (docs/adr/0003), so this push is the moment
+  # The droplet builds origin/$branch (.claude/rules/t3-host.md), so this push is the moment
   # it becomes reachable-and-stale, and nothing over there notices. Offered on the
   # spot rather than printed as a next step: a command to remember at the end of a
   # maintenance run gets remembered once. This is the friction that actually cost
@@ -476,7 +476,7 @@ offer_push() {
   local dots
   if ! ask_yes "Rebuild it now?"; then
     echo "t3fork: leaving it alone. To bring it along later:"
-    echo "  dots droplet fork"
+    echo "  dots t3-host fork"
     return 0
   fi
   # A missing `dots`, or a droplet that is off, costs the remote build and
@@ -486,7 +486,7 @@ offer_push() {
     echo "t3fork: dots not found — the droplet is still on the previous build" >&2
     return 0
   fi
-  "$dots" droplet fork || echo "t3fork: the droplet build failed — re-run: dots droplet fork" >&2
+  "$dots" t3-host fork || echo "t3fork: the droplet build failed — re-run: dots t3-host fork" >&2
 }
 
 case "${1:-}" in

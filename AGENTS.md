@@ -9,7 +9,7 @@ command-triggered constraints here so agents see them before running commands.
 
 Personal dotfiles for CachyOS (Arch-based), managed with [Chezmoi](https://www.chezmoi.io/), installed through an interactive TUI powered by [gum](https://github.com/charmbracelet/gum). Other Arch derivatives work on a best-effort basis; non-Arch distros are unsupported.
 
-The remote provisioners target Ubuntu: `tools/provision-droplet.sh` manages the disposable T3 host (`.claude/rules/droplet.md`), and `tools/apps-host.py` with `tools/apps-host/` manages the persistent application host (`.claude/rules/apps-host.md`). Anything that applies to the local machine stays Arch-only.
+The remote provisioners target Ubuntu: `tools/t3-host.sh` manages the disposable T3 host (`.claude/rules/t3-host.md`), and `tools/apps-host.py` with `tools/apps-host/` manages the persistent application host (`.claude/rules/apps-host.md`). Anything that applies to the local machine stays Arch-only.
 
 NVIDIA policy: install no drivers and apply no workarounds (no env vars, modprobe options, or kernel parameters) — CachyOS's stock NVIDIA stack is used as-is.
 
@@ -44,12 +44,6 @@ went stale before, listing commands that never existed.
 - **Never create a branch or a worktree here** — same scope, this repo — unless the user or a user-invoked skill asked for it. Work on the current branch, even when the change feels branch-worthy — say so and let the user decide
 - **`dots update` only sees committed `packages/` edits**: the scan is gated on a `packages/*` path in the git diff `SYNCED_COMMIT..HEAD`, never the working tree — so an uncommitted YAML edit is ignored silently, and the anchor still advances. Commit first — *asking* first, per the rule above, which this does not license — or use `dots packages manage`
 - **Anything that runs per pane, per session, or on a timer**: multiply one invocation by the real fanout (~15 agent panes) before calling it cheap — `npx -y ccstatusline@latest` in the statusline cost ~1.4 cores. Never launch a long-lived pane command through `npx`/`npm exec` or a language wrapper around a native binary, and prefer `~/.local/share/fnm/aliases/default/bin/` over per-shell paths
-
-## Agent skills
-
-- **Issue tracker**: GitHub Issues on `Moinax/dotfiles`, via the `gh` CLI. See `docs/agents/issue-tracker.md`
-- **Triage labels**: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`
-- **Domain docs**: single-context — `CONTEXT.md` and `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`
 
 ## Instruction files
 

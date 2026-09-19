@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build (and rebuild) the DigitalOcean host that runs T3 Code headless.
 #
-# The host is deliberately disposable — see docs/adr/0002. No unique *data*
+# The host is deliberately disposable — see .claude/rules/t3-host.md. No unique *data*
 # lives on it, so this script is what brings it back. Every phase is idempotent:
 # re-running it on a live host is the repair path, not a reinstall.
 #
@@ -10,8 +10,8 @@
 #
 # A rebuild, with no browser at all:
 #
-#   dots droplet destroy && dots droplet create && dots droplet setup \
-#     && dots droplet restore
+#   dots t3-host destroy && dots t3-host create && dots t3-host setup \
+#     && dots t3-host restore
 #
 # That leaves the wizard three stages instead of eleven — repos, pairing,
 # firewall — and none of them opens a browser. It is NOT "no wizard": the scoped
@@ -25,7 +25,7 @@
 #
 # The manual steps this cannot do — Tailscale auth, registering the host's SSH
 # key on GitHub and Forgejo, the sops key, the `claude`/`codex` logins and the
-# o27 MCP servers — are walked by tools/droplet-wizard.sh. That last one was
+# o27 MCP servers — are walked by tools/t3-host-wizard.sh. That last one was
 # listed here as "Linear OAuth" for a while with no stage behind it, which is
 # worse than an omission: it reads as covered.
 #
@@ -71,7 +71,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # precisely the one that will move: fnm's `aliases/default/bin` is the stable
 # path today, a /run/user/*/fnm_multishells/* one never was. An edit that reaches
 # three of the four copies leaves the fourth failing exactly as described above.
-# (tools/droplet-wizard.sh holds its own as RPATH; it does not source this file.)
+# (tools/t3-host-wizard.sh holds its own as RPATH; it does not source this file.)
 HOST_PATH='export PATH="$HOME/.local/bin:$HOME/.local/share/fnm/aliases/default/bin:$PATH"'
 
 # eval so the string above can serve both shapes. It is a literal in this file —
@@ -94,21 +94,21 @@ SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 # to the end and a ten-minute phase looks like a hang. It also claims stdin,
 # which is why this stays scp-then-ssh rather than `bash -s`.
 #
-# BASH_SOURCE rather than $0, matching droplet-wizard.sh and backup-projects.sh:
+# BASH_SOURCE rather than $0, matching t3-host-wizard.sh and backup-projects.sh:
 # they name the same file when this script is executed, and only BASH_SOURCE
 # still does if anything ever sources it.
 push_and_run() {
     local target="$1" sub="$2" repo theme
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
     theme="$repo/home/dot_t3/userdata/themes/catppuccin.json"
-    scp -q "${SSH_OPTS[@]}" "${BASH_SOURCE[0]}" "$target:/tmp/provision-droplet.sh"
+    scp -q "${SSH_OPTS[@]}" "${BASH_SOURCE[0]}" "$target:/tmp/t3-host.sh"
     scp -q "${SSH_OPTS[@]}" "$theme" "$target:/tmp/t3code-theme.json"
-    ssh -t "${SSH_OPTS[@]}" "$target" "bash /tmp/provision-droplet.sh $sub"
+    ssh -t "${SSH_OPTS[@]}" "$target" "bash /tmp/t3-host.sh $sub"
 }
 
 usage() {
     cat <<'EOF'
-Usage: dots droplet <command>       (or tools/provision-droplet.sh <command>)
+Usage: dots t3-host <command>       (or tools/t3-host.sh <command>)
 
 Commands:
   create      Create the droplet (cloud-init: login user + your desktop key)
@@ -153,7 +153,7 @@ firewall_id() { do_lookup firewall ID        "$FIREWALL_NAME"; }
 # Where to reach the host, as a user@address for ssh and scp.
 #
 # The public IP is the answer right up until `firewall` closes it — and this
-# script is the declared recovery path (docs/adr/0002), so it has to keep
+# script is the declared recovery path (.claude/rules/t3-host.md), so it has to keep
 # working afterwards or the ADR is false. The desktop is on the same tailnet, so
 # its own tailscaled answers first-hand; nothing cached, nothing to drift.
 host_target() {
@@ -325,7 +325,7 @@ cmd_pair() {
 # composer on the desktop answered with an empty list — correctly.
 #
 # Pushed from the working tree rather than reconciled on the host, for the same
-# reason droplet-wizard.sh sends tools/backup-projects.sh that way: the skill
+# reason t3-host-wizard.sh sends tools/backup-projects.sh that way: the skill
 # being shipped may not be pushed yet.
 #
 # The settings and the reconciliation are chezmoi's job, and chezmoi is a
@@ -398,7 +398,7 @@ jq 'del(.statusLine, .hooks)' "$s" > "$s.new" && mv "$s.new" "$s"
 REMOTE
     ok "Settings converged, desktop-only keys stripped"
 
-    info "Skills are resolved by the SERVER — run 'dots droplet fork' if the"
+    info "Skills are resolved by the SERVER — run 'dots t3-host fork' if the"
     info "host is still on upstream t3, which discovers none of them."
 }
 
@@ -421,14 +421,14 @@ cmd_fork() {
 #
 # What a rebuilt host cannot re-derive on its own. Every entry is the residue of
 # a wizard stage, named by title rather than number — the numbers are only
-# `# ── N ──` banners in droplet-wizard.sh and are the most drift-prone thing
+# `# ── N ──` banners in t3-host-wizard.sh and are the most drift-prone thing
 # there is to point at. In order: "GitHub — authorize the host's own key" and
 # its Forgejo twin, "sops — convey the o27 decryption key", "Forge tokens", the
 # "Claude Code"/"Codex" sign-ins, and "Pair your desktop and your phone".
 # 20 KB compressed, measured — which is why this needs no storage of its own.
 #
 # `~/.t3/userdata/state.sqlite` is deliberately absent. It holds sessions and
-# history — that is data, and docs/adr/0002 says no unique *data* lives on this
+# history — that is data, and .claude/rules/t3-host.md says no unique *data* lives on this
 # host. A credential snapshot that quietly grew into a data backup would reverse
 # that decision by accident. It also cannot be copied honestly while t3code is
 # running, since its WAL is open.
@@ -554,7 +554,7 @@ cmd_restore() {
         # falls back to ~/Backups the moment that clone is absent — which reads
         # as "you never took one" when the truth is "you never fetched it".
         [ -d "$STATE_REPO/.git" ] \
-            && info "Take one with 'dots droplet snapshot'" \
+            && info "Take one with 'dots t3-host snapshot'" \
             || info "On a fresh desktop, clone the backup repo first ('dots backup restore' does it), then retry"
         exit 1
     fi
@@ -895,7 +895,8 @@ phase_agents() {
     have codex || npm install -g @openai/codex >/dev/null 2>&1
     have codex && ok "codex present"
 
-    # Upstream, not the fork — see docs/adr/0001. Installed globally so the
+    # Upstream as the base install; phase_fork overrides ExecStart with our build
+    # (.claude/rules/t3-host.md). Installed globally so the
     # systemd unit names a stable binary rather than resolving through npx.
     # npm 11 loops resolving Effect prerelease peers for t3 0.0.40.
     # Keep the package's declared dependencies without peer auto-resolution.
@@ -991,7 +992,7 @@ phase_t3_theme() {
     local target="$dir/catppuccin.json"
 
     if [ ! -f "$staged" ]; then
-        warn "No staged T3 Code theme — run this through 'dots droplet setup' or 'dots droplet fork'"
+        warn "No staged T3 Code theme — run this through 'dots t3-host setup' or 'dots t3-host fork'"
         return 0
     fi
 
@@ -1010,7 +1011,7 @@ phase_t3_theme() {
 
 # ── The fork, on the host ────────────────────────────────────────────────────
 #
-# docs/adr/0003 supersedes 0001: this host runs OUR build, not upstream's.
+# This host runs OUR build, not upstream's.
 #
 # Six of the fork's fifteen commits are server-side skill discovery, and upstream
 # 0.0.33 has none of it — grep its bundle and `skills` appears three times, all
@@ -1052,10 +1053,10 @@ phase_fork() {
         # Failing here is normal on a first run — the clone authenticates with
         # the key phase_sshkey just generated, which the wizard has not yet
         # registered on GitHub. It still returns non-zero: cmd_remote is what
-        # decides that is survivable, and `dots droplet fork` run for exactly
+        # decides that is survivable, and `dots t3-host fork` run for exactly
         # this reason must not answer 0 having built nothing.
         # accept-new, because this can now be reached without a human: `t3fork`
-        # offers the droplet rebuild right after a push and runs `dots droplet
+        # offers the droplet rebuild right after a push and runs `dots t3-host
         # fork` on a yes. phase_sshkey scans github.com into known_hosts, but a
         # host that never completed `setup` has no such entry — and `git clone`
         # over ssh then blocks on a host-key prompt with the `-t` tty attached
@@ -1064,7 +1065,7 @@ phase_fork() {
         if ! GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' \
              git clone --depth 1 --branch "$FORK_BRANCH" "$FORK_URL" "$FORK_DIR"; then
             err "Cannot clone the fork — register this host's key on GitHub, then:"
-            err "  dots droplet fork"
+            err "  dots t3-host fork"
             return 1
         fi
     fi
@@ -1170,7 +1171,7 @@ ExecStart=$HOME/.local/share/fnm/aliases/default/bin/node $FORK_DIR/apps/server/
     # A unit that is down is not "nothing moved" though. After a reboot, or a
     # crash loop that landed it in `failed`, the build and the drop-in are both
     # current — so the first version of this returned 0 having printed the word
-    # `failed` inside an INFO line, and `dots droplet fork` exited clean on a
+    # `failed` inside an INFO line, and `dots t3-host fork` exited clean on a
     # host with no server running. That is the state this command is most often
     # run for.
     if [ "$changed" = 0 ]; then
@@ -1333,9 +1334,9 @@ cmd_report() {
             # bin.mjs that no longer exists, so the unit cannot start — and
             # `fork ` with a trailing space reads as a healthy fork build.
             *"$FORK_DIR"*) sha=$(cut -c1-9 "$FORK_SENTINEL" 2>/dev/null || true)
-                           echo "fork ${sha:-UNBUILT (run: dots droplet fork)}" ;;
+                           echo "fork ${sha:-UNBUILT (run: dots t3-host fork)}" ;;
             '') echo 'not installed' ;;
-            *) echo 'upstream (run: dots droplet fork)' ;;
+            *) echo 'upstream (run: dots t3-host fork)' ;;
         esac)"
 }
 
@@ -1368,21 +1369,21 @@ cmd_remote() {
     # cmd_remote here, so phase_probe_o27, the report, the wizard checklist and
     # the final `cat id_ed25519.pub` never print: the recovery path would die one
     # phase from the end, hiding the very key you need to fix it. The phase keeps
-    # returning non-zero so `dots droplet fork` still fails honestly.
-    phase_fork || warn "Fork build did not complete — re-run: dots droplet fork"
+    # returning non-zero so `dots t3-host fork` still fails honestly.
+    phase_fork || warn "Fork build did not complete — re-run: dots t3-host fork"
     phase_probe_o27
 
     header "Done"
     cmd_report
     echo ""
     ok "Machine-side provisioning complete"
-    info "What is left needs you — run tools/droplet-wizard.sh from the desktop:"
+    info "What is left needs you — run tools/t3-host-wizard.sh from the desktop:"
     info "  tailscale up · register this key on GitHub + Forgejo · sops key ·"
     info "  claude/codex login · restore secrets · t3 service install · firewall"
     echo ""
     info "Then, from the desktop, the two this box cannot do for itself:"
-    info "  dots droplet claude   the skills and plugins the agents here read"
-    info "  dots droplet fork     if the key was not registered when setup ran"
+    info "  dots t3-host claude   the skills and plugins the agents here read"
+    info "  dots t3-host fork     if the key was not registered when setup ran"
     echo ""
     info "This host's public key (register it on both forges):"
     cat "$HOME/.ssh/id_ed25519.pub"

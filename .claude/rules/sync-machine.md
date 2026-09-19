@@ -130,7 +130,7 @@ warning on a sync that already succeeded, and the next run asks again.
 **It answers two questions, not one**, and the second is the only place that asks
 it: how far behind *upstream* the fork is, and how many commits `origin` has never
 seen. `t3fork` offers the push and never takes it, so declining leaves a fork
-unpublished with no trace at all — and since `docs/adr/0003` the droplet builds
+unpublished with no trace at all — and since the droplet builds
 `origin`, so it keeps serving the previous build while the desktop looks fine. That
 went unnoticed for a day. The report says none of that, deliberately: it walks every
 fork on the machine and only t3code feeds the host, so a droplet line would be false

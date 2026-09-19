@@ -1,20 +1,47 @@
 ---
 description: The DigitalOcean host has no backups, so the provisioner is its recovery path — the four traps its phase order encodes, why running a phase standalone is where they bite, and the mechanics of building the T3 Code fork there.
 paths:
-  - tools/provision-droplet.sh
-  - tools/droplet-wizard.sh
+  - tools/t3-host.sh
+  - tools/t3-host-wizard.sh
 ---
 
 # The provisioner is the recovery path
 
-The DigitalOcean host has no backups, so `tools/provision-droplet.sh` *is* the
+The DigitalOcean host has no backups, so `tools/t3-host.sh` *is* the
 recovery path: every phase is idempotent and re-running `setup` on a live host is
-the repair, not a reinstall (see `docs/adr/0002`).
+the repair, not a reinstall.
+
+## Why the host is what it is
+
+- **It is a dev box, not a hosting box.** It exists so agent work survives a
+  powered-off desktop: T3 Code headless, the agent CLIs, the dev stacks under
+  `~/Projects`. It hosts nothing — no public service, no port on its public IP —
+  and nothing on it is backed up: no DO backups, no disk snapshots. Everything
+  that matters is pushed to a forge; unpushed work does not exist. The persistent
+  application host (`apps-host.md`) is the opposite machine, and merging the two
+  would cost the right to destroy this one on a whim.
+- **Credentials are snapshotted; data never is.** The host's own SSH keypair,
+  forge tokens, agent OAuth logins and Tailscale identity are unique to it and on
+  no forge — `dots t3-host snapshot` saves exactly those (~20 KB, age-encrypted)
+  and buys back the browser wizard, not the disk. `~/.t3/userdata/state.sqlite`
+  is deliberately excluded: a snapshot that grew to cover data would reverse the
+  decision by accident.
+- **Agents effectively have root** (the `docker` group). Acceptable because the
+  host holds no unique data and every credential on it is revocable alone —
+  which is why `~/.ssh` is never copied there.
+- **It builds our T3 Code fork, not upstream.** Upstream was the first choice,
+  to avoid paying a clone, a build, a unit and an upgrade story per rebase on a
+  disposable machine. It was reversed when six fork commits turned out to be
+  server-side skill discovery under `apps/server/src/provider/`, which upstream
+  has none of: skills resolve on whichever machine runs the agent, so a session
+  paired to an upstream host got an empty list, silently. The fork's client also
+  expects contract fields upstream's server never sends. The price is now paid,
+  and the alternative does not do the job.
 
 **A remote Ubuntu target, not local multi-distro support.** It provisions the
 disposable box that runs T3 Code headless. The persistent application host has
 its own provisioner in `tools/apps-host/` and `tools/apps-host.py`.
-The T3 provisioner (`dots droplet`) is unreachable from `dots setup` and does not
+The T3 provisioner (`dots t3-host`) is unreachable from `dots setup` and does not
 source `install/lib/common.sh` — its remote half is scp'd to a bare box that has
 none of this repo.
 
@@ -32,7 +59,7 @@ where these bite** — `setup` runs them in an order that already avoids all fou
   phase generates, and reaches GitHub through the `ssh-keyscan` entry it adds to
   `known_hosts`. It used to *hang* on a host that never completed `setup` — a
   host-key prompt with the `-t` tty attached and nobody there — which stopped
-  being merely a footgun once `t3fork` began offering `dots droplet fork`
+  being merely a footgun once `t3fork` began offering `dots t3-host fork`
   automatically after a push. The clone now carries `GIT_SSH_COMMAND` with
   `accept-new`, so that state fails on authentication instead, which is a
   message rather than a wedge. The ordering still stands: without the key there
@@ -43,8 +70,8 @@ where these bite** — `setup` runs them in an order that already avoids all fou
 
 ## The fork phase, and what is not obvious about it
 
-`docs/adr/0003` says why the host builds our fork; these are the mechanics that
-bite when you touch `phase_fork`.
+The section above says why the host builds our fork; these are the mechanics
+that bite when you touch `phase_fork`.
 
 - **`t3 service install` does not run the binary you invoked it with.** It
   `npm install t3@<version>`s a pinned runtime under `~/.t3/runtime/versions`
@@ -67,6 +94,6 @@ bite when you touch `phase_fork`.
 
 ## The manual half sends the working tree
 
-`tools/droplet-wizard.sh` sends `tools/backup-projects.sh` from **the working
+`tools/t3-host-wizard.sh` sends `tools/backup-projects.sh` from **the working
 tree**, never a clone of the published repo: the scoped-restore flags it depends
 on may not be pushed yet.

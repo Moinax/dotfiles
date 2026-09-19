@@ -186,8 +186,8 @@ finish() {
 
 
 
-# A stage that MINTS A CREDENTIAL belongs in STATE_PATHS in provision-droplet.sh
-# as well, or `dots droplet restore` rebuilds a host still missing it and you
+# A stage that MINTS A CREDENTIAL belongs in STATE_PATHS in t3-host.sh
+# as well, or `dots t3-host restore` rebuilds a host still missing it and you
 # find out by being asked for it again. The drift only runs this way — a stale
 # entry there is harmless, a missing one silently costs a stage. Stages that
 # merely do work on the host (the scoped restore, pairing) are not credentials.
@@ -202,7 +202,7 @@ mkdir -p "$(dirname "$ENV_FILE")"
 
 DROPLET_NAME="${DROPLET_NAME:-t3code-host}"
 REMOTE_USER="${REMOTE_USER:-jerome}"
-# Same default and same override as provision-droplet.sh, which is what actually
+# Same default and same override as t3-host.sh, which is what actually
 # creates it — hardcoding the pattern here made stage 10 unmarkable for anyone
 # who set FIREWALL_NAME.
 FIREWALL_NAME="${FIREWALL_NAME:-$DROPLET_NAME-deny-all}"
@@ -210,16 +210,16 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOPS_KEY="$HOME/.ssh/o27_socle_sops"
 BACKUP_ARCHIVE="$HOME/Backups/projects-backup/projects-backup.tar.zst.age"
 
-# provision-droplet.sh owns "where is the host" — it already has to answer that
+# t3-host.sh owns "where is the host" — it already has to answer that
 # for setup/firewall/status, and its host_target falls back to the tailnet once
 # stage 10 closes the public IP. Asking it here rather than re-deriving keeps the
 # two scripts from disagreeing about the address, which is how a re-run of this
 # wizard once died with no output at all at the first `$(rsh …)`.
 # `|| true` because of `pipefail`: a missing or unauthenticated doctl would end
 # the run before the message that says what to do about it.
-TARGET=$(bash "$REPO_DIR/tools/provision-droplet.sh" target 2>/dev/null || true)
+TARGET=$(bash "$REPO_DIR/tools/t3-host.sh" target 2>/dev/null || true)
 if [[ -z "$TARGET" ]]; then
-  printf '%s cannot reach %s — run tools/provision-droplet.sh create first%s\n' \
+  printf '%s cannot reach %s — run tools/t3-host.sh create first%s\n' \
     "$RED" "$DROPLET_NAME" "$RESET" >&2
   printf '%s (if that droplet does exist, check `doctl auth init`)%s\n' "$DIM" "$RESET" >&2
   exit 1
@@ -334,7 +334,7 @@ if rsh true >/dev/null 2>&1; then
   note "Host: $TARGET"
 else
   printf '%s  cannot reach %s — every check below would fail and every stage\n' "$RED" "$TARGET" >&2
-  printf '  would re-ask. Fix the connection first: tools/provision-droplet.sh status%s\n' "$RESET" >&2
+  printf '  would re-ask. Fix the connection first: tools/t3-host.sh status%s\n' "$RESET" >&2
   exit 1
 fi
 
@@ -597,7 +597,7 @@ fi
 #
 # Nothing here needs re-doing on a rebuilt host: the tokens live under `mcpOAuth`
 # in ~/.claude/.credentials.json, and the trust flag in ~/.claude.json — both
-# already carried by `dots droplet snapshot`. One pass, then a re-snapshot.
+# already carried by `dots t3-host snapshot`. One pass, then a re-snapshot.
 MCP_DIR='$HOME/Projects/o27/socle'
 # The http ones only; headless_playwright and grafana-o27 are stdio and have
 # nothing to authorize.
@@ -664,7 +664,7 @@ else
         SKIPPED+=("authorize $_s on the host")
       fi
     done
-    note "Re-run 'dots droplet snapshot' afterwards: these tokens are in the"
+    note "Re-run 'dots t3-host snapshot' afterwards: these tokens are in the"
     note "archive, so a rebuilt host will not ask again."
   fi
 fi
@@ -696,7 +696,7 @@ fi
 # paired" is not a state the host can answer for. Re-running mints a new token,
 # which costs nothing and is often exactly what you came back for.
 note "Adding a device later is its own command, not a re-run of this wizard:"
-note "  tools/provision-droplet.sh pair"
+note "  tools/t3-host.sh pair"
 if confirm "Mint a pairing code now?"; then
   while :; do
     rsht "t3 pair --tailscale"
@@ -704,7 +704,7 @@ if confirm "Mint a pairing code now?"; then
     confirm "Pair another device with a fresh code?" || break
   done
 else
-  SKIPPED+=("t3 pair --tailscale (run 'provision-droplet.sh pair' when you want it)")
+  SKIPPED+=("t3 pair --tailscale (run 't3-host.sh pair' when you want it)")
 fi
 
 # ── 11 ───────────────────────────────────────────────────────────────────────
@@ -726,7 +726,7 @@ else
     warn "The host is not on the tailnet — refusing to close its only door."
     SKIPPED+=("apply the deny-all firewall (host was not on the tailnet)")
   elif confirm "Apply the deny-all firewall now?"; then
-    bash "$REPO_DIR/tools/provision-droplet.sh" firewall
+    bash "$REPO_DIR/tools/t3-host.sh" firewall
     say ""
     say "From now on, reach the host over the tailnet:"
     note "  ssh $REMOTE_USER@${TS_IP}"

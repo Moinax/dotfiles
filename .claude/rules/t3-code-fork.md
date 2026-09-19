@@ -2,7 +2,7 @@
 description: Why T3 Code is built from our fork and deliberately untracked by dots apps, and why the single launcher entry with its exact --name is load-bearing.
 paths:
   - home/dot_local/bin/executable_t3fork
-  - tools/provision-droplet.sh
+  - tools/t3-host.sh
   - tests/test_t3fork_sync.sh
   - home/dot_local/bin/executable_t3-code-launch.sh
   - tools/manage-external-apps.py
@@ -20,11 +20,11 @@ build, silently dropping every patch. The source record was removed — **never
 re-add it with `dots apps install-github`**.
 
 **The droplet is the second road onto the same rake.** `phase_fork` in
-`tools/provision-droplet.sh` builds this fork there too, and its systemd drop-in
+`tools/t3-host.sh` builds this fork there too, and its systemd drop-in
 deliberately bypasses `service-launcher.mjs` — the self-update supervisor, which
 would `npm install` upstream over our build exactly as `dots apps` did. Restoring
 the launcher "so t3 can manage itself" is the same mistake in a second file; see
-`docs/adr/0003`.
+`t3-host.md`.
 
 Upstream movement is reported instead by the fork check at the end of
 `dots update` (`fork_drift`, see `sync-machine.md`), which needs no declaration to
@@ -104,7 +104,7 @@ the local tracking ref — a ref any later fetch in the same process would move
 underneath it.
 
 **The droplet rebuild is offered right after a successful push**, not printed as a
-next step. `docs/adr/0003` makes the host a consumer of `origin/<branch>`, so the
+next step. The host builds `origin/<branch>` (`t3-host.md`), which makes it a consumer of `origin/<branch>`, so the
 push is the moment it becomes reachable-and-stale, and a command to remember at the
 end of a maintenance run is a command remembered once — a declined push left the
 host a day behind with the desktop looking healthy throughout. `dots update`'s fork

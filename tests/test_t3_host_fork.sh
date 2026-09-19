@@ -8,19 +8,19 @@
 # reset --hard on every run and an edit nobody meant to lose is exactly what a
 # blanket exception would discard.
 #
-# The build sentinel is the other one. Too eager and every `dots droplet setup`
+# The build sentinel is the other one. Too eager and every `dots t3-host setup`
 # pays three minutes reproducing byte-identical output; too lax and the unit is
 # left pointing at a stale bin.mjs with no line of the report saying so.
 #
 # The pathspec and the comparison are tested against a real git repo rather than
 # by reading the script: `:(exclude)` is git-side behaviour, not bash's.
 #
-# Run: bash tests/test_droplet_fork.sh
+# Run: bash tests/test_t3_host_fork.sh
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROVISION="$SCRIPT_DIR/../tools/provision-droplet.sh"
+PROVISION="$SCRIPT_DIR/../tools/t3-host.sh"
 
 failures=0
 check() {

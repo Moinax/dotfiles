@@ -31,3 +31,29 @@ paths:
   DigitalOcean daily backups cover the host independently of the desktop.
 - Use `dots hosting help` for commands. Restore into isolated scratch storage
   before touching live data. No automatic restore or destructive host command.
+
+## Recovery facts
+
+- Finance is `finance.moinax.com`, Daylight is `daylight.moinax.com`; the old
+  `apps-host.taildade28.ts.net` addresses (443 / 8443) redirect and are kept as
+  bookmark and rollback addresses, not OAuth origins. Provider callbacks to keep
+  registered: `https://finance.moinax.com/api/callback` and
+  `https://daylight.moinax.com/auth/google/callback`, plus the localhost ones.
+- On the host: code under `/opt/personal-apps` (root-owned), data in
+  `/var/lib/finance` and `/var/lib/daylight`, environment files in
+  `/etc/personal-apps` (root-only, passed to each service by systemd). Proxy
+  rollback before DNS changes: `bash /opt/personal-apps/admin/proxy.sh rollback`
+  as root, configuration only.
+- On the desktop: decryption identity `~/.config/apps-host/backup.agekey` (0600),
+  Cloudflare token `~/.config/apps-host/cloudflare-api-token` (0600, Zone Read +
+  DNS Edit on `moinax.com` only), pulled archives in `~/Backups/apps-host` (last
+  30, hourly when online). Host keeps 14 days; DO backups keep 7. Neither private
+  key ever goes to the server.
+- Actual recovery is manual, by design: stop both services on the old host,
+  provision a replacement and join Tailscale with a **new** node identity, decrypt
+  an archive with `age -d -i ~/.config/apps-host/backup.agekey` into private
+  scratch, restore data and configuration to the paths above, reinstall
+  dependencies from the saved release archives, fix ownership, then verify HTTPS,
+  provider sync and a fresh backup before retiring the old host. A failed deploy
+  health check rolls back code only, never migrations — `dots hosting backup`
+  before any deploy that changes stored data.

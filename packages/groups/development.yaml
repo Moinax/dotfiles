@@ -46,7 +46,7 @@ descriptions:
   bazelisk: Bazel launcher that honours a repo's .bazelversion
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
-  doctl: DigitalOcean CLI — drives the droplet provisioners (`dots droplet`, apps host)
+  doctl: DigitalOcean CLI — drives the droplet provisioners (`dots t3-host`, apps host)
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   claude-code: AI-powered coding assistant CLI
   codex: OpenAI Codex coding agent CLI (standalone installer)

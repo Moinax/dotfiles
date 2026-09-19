@@ -1267,7 +1267,7 @@ enable_selected_services() {
         # MagicDNS on, and it is a requirement rather than a taste: the remote
         # T3 Code host is reached at its `*.ts.net` name because that is what its
         # TLS certificate is issued for, so a 100.x address cannot stand in for
-        # it (`dots droplet`, docs/adr/0002).
+        # it (`dots t3-host`, .claude/rules/t3-host.md).
         #
         # This was --accept-dns=false for a long time, to stop tailscaled taking
         # over system DNS. Measured on 1.102.2 that fear does not apply to this

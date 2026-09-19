@@ -1020,7 +1020,7 @@ fork_drift() {
 
         # Is this branch published as it stands? The one question nothing else
         # asks: `t3fork` offers the push and never takes it, so declining leaves
-        # the fork unpublished with no trace at all — and since docs/adr/0003 the
+        # the fork unpublished with no trace at all — and since the
         # droplet builds origin, so it keeps serving the previous build while the
         # desktop looks fine. That went unnoticed for a day.
         #
@@ -1136,7 +1136,7 @@ report_fork_drift() {
         # No mention of the droplet, however tempting: this walk reports every
         # fork on the machine and only t3code feeds the host, so the line would
         # be false on all the others. That knowledge stays in `t3fork`, which
-        # offers the rebuild, and in docs/adr/0003.
+        # offers the rebuild, and in .claude/rules/t3-host.md.
         #
         # "as of the last fetch" is not a hedge: the count is read off the
         # tracking ref without fetching origin, so a branch another machine

@@ -27,7 +27,7 @@ Commands:
   setup       Run the full installer (first install; --force to redo one)
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
-  droplet     Build and reach the remote T3 Code host (create/setup/pair/status)
+  t3-host     Build and reach the remote T3 Code host (create/setup/pair/status)
   hosting     Deploy and maintain the private Finance and Daylight host
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
@@ -327,14 +327,14 @@ do_backup() {
 
 # The remote DigitalOcean host. `wizard` is the human half — the browser logins
 # and key registrations no script can do — and everything else forwards to the
-# machine half. Both target remote Ubuntu; see docs/adr/0002 for the T3 host
-# and docs/adr/0004 for the separate persistent application host.
-do_droplet() {
+# machine half. Both target remote Ubuntu; see .claude/rules/t3-host.md for the T3
+# host and .claude/rules/apps-host.md for the persistent application host.
+do_t3_host() {
     if [[ "${1:-}" == wizard ]]; then
         shift
-        "$SCRIPT_DIR/tools/droplet-wizard.sh" "$@"
+        "$SCRIPT_DIR/tools/t3-host-wizard.sh" "$@"
     else
-        "$SCRIPT_DIR/tools/provision-droplet.sh" "$@"
+        "$SCRIPT_DIR/tools/t3-host.sh" "$@"
     fi
 }
 
@@ -419,7 +419,7 @@ do_menu() {
             "Update whisper model")    do_whisper || true ;;
             "Gaming HDR launch")       do_gaming || true ;;
             "Backup projects")         do_backup || true ;;
-            "Remote T3 Code host")     do_droplet status || true ;;
+            "Remote T3 Code host")     do_t3_host status || true ;;
             "Exit")                    break ;;
         esac
     done
@@ -436,7 +436,7 @@ do_menu() {
 case "${2:-}" in
     help|--help|-h)
         case "${1:-}" in
-            packages|update|apps|backup|gaming|droplet|hosting) ;;  # forward: these answer for themselves
+            packages|update|apps|backup|gaming|t3-host|hosting) ;;  # forward: these answer for themselves
             # setup answers for itself too, but going through tools/setup.sh
             # would install git and gum first — far too much for a help request
             # or a completion probe. The installer parses --help before it
@@ -460,7 +460,7 @@ case "${1:-}" in
     apps)       shift; do_apps "$@" ;;
     gaming)     shift; do_gaming "$@" ;;
     backup)     shift; do_backup "$@" ;;
-    droplet)    shift; do_droplet "$@" ;;
+    t3-host)    shift; do_t3_host "$@" ;;
     hosting)    shift; do_hosting "$@" ;;
     lazy-lock)  do_lazy_lock ;;
     help|--help|-h) usage ;;

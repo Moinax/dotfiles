@@ -84,7 +84,7 @@ rebase_and_resolve() {
 
 # `</dev/null` is not tidiness. Without it the run inherits this terminal, and
 # `offer_push` asks two questions on a tty — one of which, answered `y`, force-
-# pushes, and the next runs `dots droplet fork` against the real DigitalOcean
+# pushes, and the next runs `dots t3-host fork` against the real DigitalOcean
 # host. With stdout swallowed the prompt is invisible, so the first symptom is a
 # test that appears to hang. It exercises the non-tty branch, which is the one
 # this test means to reach anyway.
