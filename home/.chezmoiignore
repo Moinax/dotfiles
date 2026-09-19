@@ -10,6 +10,10 @@ LICENSE
 # only this file — a stray `py_compile` in the source tree would otherwise
 # install .pyc files into ~/.local/bin.
 **/__pycache__
+# Same shape for an `npm install` run inside the vicinae extension source: the
+# copy chezmoi lays down loses every executable bit, and the build script's
+# own `npm install` then sees the tree as complete and never repairs it.
+**/node_modules
 **/__pycache__/**
 
 # Ignore Hyprland configs if not selected
