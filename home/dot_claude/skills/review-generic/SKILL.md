@@ -14,10 +14,6 @@ allowed-tools: Agent, Bash, Read, Edit, Write, Glob, Grep
 
 # Review — six angles in parallel, one fix pass
 
-One fan-out, one adjudication, one fix pass. `/code-review` reports without
-fixing; `/simplify` fixes without hunting bugs; this does both, and never falls
-back to a single inline pass without saying so.
-
 `$ARGUMENTS` is an optional target (a branch, a path, a PR number, or a commit
 SHA). Empty is the normal case: the current diff. `--dry` stops after Phase 2 and
 reports instead of fixing.

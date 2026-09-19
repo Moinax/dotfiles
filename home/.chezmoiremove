@@ -166,3 +166,15 @@
 # source leaves the shim (and the PATH entry's whole reason to exist) behind.
 .local/bin/shims
 .local/bin/shims/**
+
+# Skills dropped from the repo: hunk-review, landing-page-design and
+# redesign-existing-projects were chezmoi-managed copies; unslop lived at
+# skills/unslop and was reached through two symlinks that now dangle.
+.claude/skills/hunk-review
+.claude/skills/hunk-review/**
+.claude/skills/landing-page-design
+.claude/skills/landing-page-design/**
+.claude/skills/redesign-existing-projects
+.claude/skills/redesign-existing-projects/**
+.claude/skills/unslop
+.agents/skills/unslop

@@ -15,11 +15,6 @@ Keep tool-specific rules in that tool's own configuration.
   messages, and every file written to disk stay in English, including in a
   conversation held entirely in French.
 
-## Human-facing prose
-
-- **Always apply `unslop` to English or French prose written for people.**
-  Apply it silently — never announce the skill or narrate the decision.
-
 ## Test windows on Hyprland
 
 - **All GUI apps and browsers launched for testing or verification MUST open on
@@ -47,14 +42,6 @@ Keep tool-specific rules in that tool's own configuration.
 ## Tools you maintain
 
 - **Restarting `vibewatch` needs no permission** — `systemctl --user restart vibewatch.service` is idempotent: the daemon rebuilds its whole session list by rescanning processes and transcripts on boot, so a restart mid-fleet loses nothing. Never leave a change to it merely compiled — `cargo install --path .`, restart, then look at the result. (Its source is its own repo, which is why this is here rather than in the dotfiles.)
-
-## File paths in answers
-
-- **Always use absolute file paths, inside backticks or as Markdown link destinations**
-  — `/home/me/project/src/app.ts:42`, not `src/app.ts:42`. T3 Code turns either
-  form into a workspace-relative chip, but a relative path depends on the thread's
-  cwd while an absolute one resolves on its own. A `:42` or `:42:7` suffix opens
-  the file at that position.
 
 ## Scratch files
 
