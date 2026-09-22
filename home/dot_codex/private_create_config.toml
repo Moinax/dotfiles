@@ -3,6 +3,7 @@
 # repositories and prompts.
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
+mcp_oauth_credentials_store = "file"
 
 
 # Closest native Codex equivalent to the ccstatusline layout. Codex currently

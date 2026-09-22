@@ -14,8 +14,34 @@ set -euo pipefail
 class="zellij"
 session="main"
 
+# Project shells (notably Socle's Nix shell) inject a libstdc++ that may be
+# older than the host Hyprland needs. Keep the project environment for Kitty
+# and its shell, but let the host compositor client use its own libraries.
+hyprctl() {
+    env -u LD_LIBRARY_PATH hyprctl "$@"
+}
+
 window_present() {
-    hyprctl clients -j 2>/dev/null | jq -e --arg c "$class" 'any(.[]; .class == $c)' >/dev/null
+    local clients status
+    clients="$(hyprctl clients -j)" || {
+        echo "term: could not query Hyprland; refusing to open another terminal" >&2
+        exit 1
+    }
+    if jq -e --arg c "$class" '
+        if type == "array" then any(.[]; .class == $c)
+        else error("expected a client array") end
+    ' <<< "$clients" >/dev/null; then
+        return 0
+    else
+        status=$?
+        # Only a valid `false` means the window is absent. Empty or malformed
+        # replies must not turn a failed lookup into a duplicate Kitty.
+        if [[ "$status" == 1 ]]; then
+            return 1
+        fi
+        echo "term: invalid Hyprland client list; refusing to open another terminal" >&2
+        exit 1
+    fi
 }
 
 active_is_term() {

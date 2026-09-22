@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
-# Take the `notify` key back out of the live config Codex owns.
-#
-# It used to point at herdr-agent-title, which kept the tab name and vibewatch
-# in step after each Codex turn. herdr is gone, so the key now names a binary
-# that does not exist — and a config.toml is not something chezmoi can rewrite
-# wholesale, because Codex stores its own trust, project and feature state in
-# it. Hence a targeted delete rather than dropping this script: a machine that
-# already has the line would otherwise keep calling the missing binary forever.
-#
-# vibewatch does speak Codex natively (`notify --agent codex`), so pointing the
-# key there is a small follow-up if Codex turns should reach the panel again.
-#
-# No trigger hash: nothing here is derived from a template any more, so this is
-# a one-shot migration that chezmoi reruns only if this script's own text
-# changes. Keeping the old `include` of private_create_config.toml would have
-# re-fired it on every unrelated edit to that file.
+# private_create_config.toml only seeds new installations; update existing
+# configs selectively to preserve the project and feature state Codex writes.
 set -euo pipefail
 
 config="$HOME/.codex/config.toml"
@@ -23,16 +9,15 @@ config="$HOME/.codex/config.toml"
 tmp="$(mktemp "${config}.tmp.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
-# Only a top-level `notify = ...` line, and only one: anything inside a [table]
-# belongs to Codex.
 awk '
-  /^\[/ { in_table = 1 }
-  /^notify[[:space:]]*=/ && !in_table { next }
+  BEGIN { print "mcp_oauth_credentials_store = \"file\"" }
+  /^[[:space:]]*\[/ { in_table = 1 }
+  /^[[:space:]]*(["\047]?(notify|mcp_oauth_credentials_store)["\047]?)[[:space:]]*=/ && !in_table { next }
   { print }
 ' "$config" >"$tmp"
 
 if ! cmp -s "$tmp" "$config"; then
     chmod --reference="$config" "$tmp" 2>/dev/null || chmod 600 "$tmp"
     mv "$tmp" "$config"
-    echo "codex-settings: removed the notify key (herdr is gone)"
+    echo "codex-settings: configured MCP credential storage and removed the retired notify key"
 fi
