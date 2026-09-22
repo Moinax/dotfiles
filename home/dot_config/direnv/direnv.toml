@@ -1,0 +1,7 @@
+[global]
+# Keep loading messages and errors without listing every environment change.
+hide_env_diff = true
+
+[whitelist]
+# Automatically trust envrc files in Socle's T3 worktrees.
+prefix = ["~/.t3/worktrees/socle/"]

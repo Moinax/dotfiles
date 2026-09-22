@@ -95,6 +95,8 @@ LICENSE
 .config/ccstatusline/**
 .config/nix
 .config/nix/**
+.config/direnv
+.config/direnv/**
 .claude
 .claude/**
 .claude-mbrella
