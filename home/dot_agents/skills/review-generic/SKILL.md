@@ -2,21 +2,20 @@
 name: review-generic
 description: >-
   Review the current diff for correctness bugs AND reuse/simplification/
-  efficiency/altitude/conventions cleanups in ONE pass — six read-only agents
-  fan out in parallel, then their reports are adjudicated and fixed in the
+  efficiency/altitude/conventions cleanups in ONE pass — six review angles
+  are adjudicated and fixed in the
   working tree. Replaces running /code-review and /simplify back to back.
   Repo-agnostic version: use it in any project that does not ship its own
-  review skill. Trigger on "/review-generic", "relis le diff", "review avant
-  de ship".
-argument-hint: "[--dry] [<target>]"
-allowed-tools: Agent, Bash, Read, Edit, Write, Glob, Grep
+  review skill. Use for diff reviews, simplification and cleanup requests,
+  "$review-generic", "/review-generic", or review before shipping.
 ---
 
 # Review — six angles in parallel, one fix pass
 
-`$ARGUMENTS` is an optional target (a branch, a path, a PR number, or a commit
-SHA). Empty is the normal case: the current diff. `--dry` stops after Phase 2 and
-reports instead of fixing.
+The invocation may include `--dry` and an optional target (a branch, a path,
+a PR number, or a commit SHA). In Claude Code these arrive as `$ARGUMENTS`;
+in other tools, read them from the user request. No target means the current
+diff. `--dry` stops after Phase 2 and reports instead of fixing.
 
 ## Phase 0 — The scope and the repo
 
@@ -26,7 +25,7 @@ git diff HEAD                  # working tree — this often runs before the com
 ```
 
 Both, always: the second is the point when the review runs mid-work. A target
-in `$ARGUMENTS` replaces them — and a target that is a commit SHA means
+in the invocation replaces them — and a target that is a commit SHA means
 `git show <sha>`: review that commit as if it were the change under review, with
 the working tree already checked out at it. An empty scope is a stop — say so and do not
 spawn anything.
@@ -48,18 +47,33 @@ Then establish, in this context, the three repo facts the agents cannot see:
 
 Pass the first two into every agent prompt. The gates are for Phase 3.
 
-## Phase 1 — Six agents, one message
+## Phase 1 — Six independent review angles
 
-Spawn **six `reviewer` agents in a single message** so they run concurrently.
-They are read-only by construction, which is what makes the parallelism safe.
+Read [references/reviewer.md](references/reviewer.md) for the reviewer
+instructions and JSON output contract. Give each worker exactly one angle.
+Workers must only inspect and report; only the parent applies fixes.
 
-Each prompt is self-contained — a subagent shares none of this context. Give
+- **Claude Code:** use the `Agent` tool with the `reviewer` agent, whose
+  definition is linked to that reference. If it is not installed, use a
+  general-purpose agent with the reference body and a read-only instruction.
+  The model/effort/tool frontmatter in the reference configures Claude only.
+- **Codex and other tools:** use their available delegation API, passing the
+  reference body in each worker prompt. Inherit the current model and effort;
+  do not translate Claude model names into another provider's model settings.
+- Run all six concurrently when capacity permits. Otherwise schedule the
+  angles in batches within the available worker limit; reuse idle workers or
+  release completed workers as supported. Wait for all six reports before fixes.
+- If delegation is unavailable, review all six angles locally and disclose that
+  fallback. Tool names such as Read or Grep below mean the corresponding file
+  reading and search capabilities of the current tool.
+
+Each prompt is self-contained — do not rely on inherited context. Give
 every one of them:
 
 - the review scope: the exact `git diff` commands from Phase 0, or the target;
 - the repo one-liner and the shared-code directories from Phase 0;
 - **its angle, verbatim from the list below, and only its angle**;
-- the output contract: the JSON array from the `reviewer` agent definition.
+- the output contract: the JSON array from `references/reviewer.md`.
 
 Do not run any angle yourself in parallel with an agent that owns it — a
 duplicated angle is wasted tokens and a doubled finding.
@@ -121,8 +135,9 @@ duplicated angle is wasted tokens and a doubled finding.
 ### Angle 6 — Conventions
 
 > Find the CLAUDE.md / AGENTS.md files governing the changed code:
-> `~/.claude/CLAUDE.md`, the repo root one, and any in a directory that is an
-> ancestor of a changed file. Read each, then flag clear violations — quote the
+> the active global instructions (including `~/.agents/AGENTS.md`), the repo
+> root instructions, and any governing a changed file. Follow imports and
+> applicable path-scoped rules. Read each, then flag clear violations — quote the
 > exact rule and the exact line that breaks it. No style preferences, no
 > "spirit of the doc". The kinds a diff breaks most often: comments that
 > narrate what the code plainly does, a generated artefact not regenerated
@@ -172,8 +187,7 @@ unreadably in a terminal: one bullet per finding under a `## Fixed — N` /
 **`file:line`** in bold, the defect in one sentence, then the angle(s) that
 caught it in italics.
 
-Then: which gates you re-ran and their result **as a small table**, and one
-line saying six agents ran in parallel and all six reported. **If the `Agent` tool was unavailable and
-you worked the six angles inline instead, say that in the first line of the
-report** — a single-pass review and a six-agent fan-out are not the same
-evidence, and the reader must not have to guess which one ran.
+Then: which gates you re-ran and their result **as a small table**, and the
+actual execution mode: six concurrent workers, batched workers, or local
+review, with the number of completed angle reports. If you reviewed locally,
+say so in the first line. Never claim parallel execution that did not happen.

@@ -132,15 +132,18 @@ PY
 }
 
 deploy() {
-    local app=$1 release=$2 dir old port origin owner code
-    [[ $app == finance || $app == daylight ]]
+    local app=$1 release=$2 dir old port origin owner code health_path=/
+    [[ $app == finance || $app == daylight || $app == twitch-grid ]]
     [[ $release =~ ^[0-9a-f]{16}$ ]]
     dir="$ROOT/$app/releases/$release"
     [[ -f "$dir/source.tar.gz" ]]
     if [[ ! -f $dir/.installed ]]; then
         tar -xzf "$dir/source.tar.gz" -C "$dir"
         chown -R "$app:$app" "$dir"
-        if [[ -f $dir/pnpm-lock.yaml ]]; then
+        if [[ $app == twitch-grid ]]; then
+            # The API uses only Node built-ins; browser dependencies are bundled in dist.
+            test -f "$dir/production.cjs"
+        elif [[ -f $dir/pnpm-lock.yaml ]]; then
             (cd "$dir"; runuser -u "$app" -- /usr/local/bin/pnpm install --prod --frozen-lockfile --ignore-scripts)
         else
             # Recovery compatibility for Daylight archives created before the pnpm migration.
@@ -154,7 +157,8 @@ deploy() {
     ln -sfn "releases/$release" "$ROOT/$app/current.next"
     mv -Tf "$ROOT/$app/current.next" "$ROOT/$app/current"
     # A first deployment can precede migration. Do not create empty application data.
-    [[ -f /etc/personal-apps/$app.env && -f /var/lib/$app/.migrated ]] || return 0
+    [[ -f /etc/personal-apps/$app.env ]] || return 0
+    [[ $app == twitch-grid || -f /var/lib/$app/.migrated ]] || return 0
     systemctl enable "$app"
     systemctl restart "$app"
     port=4280
@@ -163,9 +167,14 @@ deploy() {
         port=3001
         origin=$(sed -n 's/^SELF_URL=//p' "/etc/personal-apps/$app.env")
     fi
+    if [[ $app == twitch-grid ]]; then
+        port=8766
+        origin=https://twitch.moinax.com
+        health_path=/healthz
+    fi
     owner=$(sed -n 's/^TAILSCALE_USER=//p' "/etc/personal-apps/$app.env")
     for _ in {1..20}; do
-        code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${origin#https://}" -H "Tailscale-User-Login: $owner" "http://127.0.0.1:$port/" || true)
+        code=$(curl --max-time 5 -s -o /dev/null -w '%{http_code}' -H "Host: ${origin#https://}" -H "Tailscale-User-Login: $owner" "http://127.0.0.1:$port$health_path" || true)
         if [[ $code == 200 ]]; then echo "$app release $release healthy"; return 0; fi
         sleep 1
     done

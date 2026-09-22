@@ -11,6 +11,9 @@ cp -a /etc/personal-apps/. "$stage/config/"
 if [[ -d /etc/apps-proxy ]]; then
     cp -a /etc/apps-proxy "$stage/config/apps-proxy"
 fi
+if [[ -d /etc/apps-public-proxy ]]; then
+    cp -a /etc/apps-public-proxy "$stage/config/apps-public-proxy"
+fi
 for app in finance daylight; do
     [[ -f /var/lib/$app/.migrated ]] || { echo "$app has not been migrated" >&2; exit 1; }
     mkdir "$stage/data/$app"
@@ -23,6 +26,10 @@ for app in finance daylight; do
     cp "/opt/personal-apps/$app/current/source.tar.gz" "$stage/releases/$app.tar.gz"
     readlink "/opt/personal-apps/$app/current" > "$stage/releases/$app.txt"
 done
+if [[ -f /opt/personal-apps/twitch-grid/current/source.tar.gz ]]; then
+    cp /opt/personal-apps/twitch-grid/current/source.tar.gz "$stage/releases/twitch-grid.tar.gz"
+    readlink /opt/personal-apps/twitch-grid/current > "$stage/releases/twitch-grid.txt"
+fi
 archive="/var/lib/apps-backup/$(date -u +%Y%m%dT%H%M%SZ).tar.gz.age"
 tar -czf - -C "$stage" . | age -R /etc/personal-apps/backup-recipient.pub -o "$archive.partial"
 mv "$archive.partial" "$archive"

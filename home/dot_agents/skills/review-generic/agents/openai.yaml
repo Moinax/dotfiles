@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Generic"
+  short_description: "Review correctness, reuse, simplification and efficiency"
+  default_prompt: "Use $review-generic to review and fix the current diff across all six angles."

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision and deploy the private Finance/Daylight host. No destructive host command."""
+"""Host private Finance/Daylight and public Twitch Grid. No destructive host command."""
 import argparse
 import hashlib
 import io
@@ -21,6 +21,7 @@ SCRATCH = REPO / '.scratch' / 'apps-host'
 NAME = 'apps-host'
 ROOT = '/opt/personal-apps'
 APPS = ('finance', 'daylight')
+DEPLOY_APPS = (*APPS, 'twitch-grid')
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10']
 BACKUPS = Path.home() / 'Backups' / NAME
 BACKUP_CONFIG = Path.home() / '.config' / NAME
@@ -31,8 +32,10 @@ COMMANDS = {
     'configure': 'Configure private HTTPS and the authorized owner',
     'prepare-domains': 'Prepare custom HTTPS on staging ports and verify provider callbacks',
     'activate-domains': 'Activate private app domains after public policy links have been updated',
+    'prepare-public': 'Prepare the isolated public Twitch Grid services without switching DNS',
+    'activate-public': 'Open public HTTP/HTTPS and switch only twitch.moinax.com after health checks',
     'firewall': 'Close public ingress after verifying private SSH',
-    'deploy': 'Build and deploy finance, daylight, or both',
+    'deploy': 'Build and deploy an app (without an argument: Finance and Daylight)',
     'migrate': 'Import local data once and disable local services',
     'configure-backup': 'Install public backup recipients; keep private keys local',
     'backup': 'Create an encrypted archive and fetch it to the desktop',
@@ -48,7 +51,7 @@ COMMANDS = {
 def run(args, *, capture=False, **kwargs):
     if capture:
         kwargs['stdout'] = subprocess.PIPE
-    return subprocess.run([str(a) for a in args], check=True, **kwargs)
+    return subprocess.run([str(a) for a in args], check=kwargs.pop('check', True), **kwargs)
 
 
 def output(args):
@@ -111,10 +114,11 @@ def create():
 def setup():
     host = target()
     remote(host, 'install', '-d', '-m', '700', ROOT + '/admin')
-    for name in ('remote.sh', 'backup.sh', 'proxy.sh', 'Caddyfile', 'apps-proxy.service', 'apps-proxy-auth.service'):
+    for name in ('remote.sh', 'backup.sh', 'proxy.sh', 'Caddyfile', 'apps-proxy.service', 'apps-proxy-auth.service', *PUBLIC_FILES):
         send(host, REPO / 'tools/apps-host' / name, ROOT + '/admin/' + name)
     remote(host, 'bash', ROOT + '/admin/remote.sh', 'setup')
     remote(host, 'bash', '-c', 'if test -f /etc/personal-apps/proxy.env; then bash /opt/personal-apps/admin/proxy.sh prepare; fi')
+    remote(host, 'bash', '-c', 'if test -f /etc/personal-apps/public-proxy.env; then bash /opt/personal-apps/admin/public.sh; fi')
     configure_backup()
 
 
@@ -240,6 +244,100 @@ def source_dir(app):
     return Path.home() / 'Projects/labs' / app
 
 
+PUBLIC_FILES = ('public.sh', 'PublicCaddyfile', 'twitch-grid.service', 'apps-public-proxy.service')
+
+
+def prepare_public():
+    host = target()
+    # Parse only the two API credentials, never forward the whole development environment.
+    script = '''const keys = ['TWITCH_SEARCH_CLIENT_ID', 'TWITCH_SEARCH_CLIENT_SECRET'];
+    for (const key of keys) {
+      const value = process.env[key];
+      if (!value || !/^[a-zA-Z0-9]+$/.test(value)) throw new Error('Missing or invalid ' + key);
+      process.stdout.write(key + '=' + value + '\\n');
+    }'''
+    env = run(['node', '--env-file=.env.local', '-e', script],
+              cwd=source_dir('twitch-grid'), capture=True).stdout
+    remote(host, 'install', '-d', '-m', '700', ROOT + '/admin')
+    for name in (*PUBLIC_FILES, 'remote.sh', 'backup.sh'):
+        send(host, REPO / 'tools/apps-host' / name, ROOT + '/admin/' + name)
+    remote(host, 'bash', '-c', 'umask 077; cat > /etc/personal-apps/twitch-grid.env', input=env)
+    ip = public_ip(droplet())
+    remote(host, 'bash', '-c', 'umask 077; cat > /etc/personal-apps/public-proxy.env',
+           input=f'APPS_PUBLIC_IPV4={ip}\n'.encode())
+    remote(host, 'bash', ROOT + '/admin/public.sh')
+    remote(host, 'install', '-m', '755', ROOT + '/admin/backup.sh', '/usr/local/sbin/personal-apps-backup')
+    print('Public services prepared; DNS and public firewall unchanged.')
+
+
+def cloudflare(path, data=None, method=None):
+    credential = (BACKUP_CONFIG / 'cloudflare-api-token').read_text().strip()
+    req = urllib.request.Request('https://api.cloudflare.com/client/v4' + path,
+        data=None if data is None else json.dumps(data).encode(), method=method,
+        headers={'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        result = json.load(response)
+    if not result.get('success'):
+        raise RuntimeError('Cloudflare rejected the DNS operation.')
+    return result['result']
+
+
+def activate_public():
+    host = droplet()
+    ip = public_ip(host)
+    zones = cloudflare('/zones?name=moinax.com')
+    if len(zones) != 1:
+        raise RuntimeError('Expected one moinax.com zone.')
+    base = '/zones/' + zones[0]['id'] + '/dns_records'
+    records = cloudflare(base + '?name=twitch.moinax.com')
+    desired = {'type': 'A', 'name': 'twitch.moinax.com', 'content': ip, 'proxied': False, 'ttl': 120}
+    if len(records) > 1 or (records and records[0]['type'] not in ('A', 'CNAME')):
+        raise RuntimeError('Conflicting Twitch DNS records; inspect before continuing.')
+    # With no explicit record, Twitch currently inherits the wildcard. Leave it intact.
+    previous = records[0] if records else None
+    curl = ['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
+            '--resolve', f'twitch.moinax.com:443:{ip}']
+    # Test the certificate and app locally on the server before allowing inbound traffic.
+    for path in ('/', '/config.json', '/healthz'):
+        remote(target(), *curl, 'https://twitch.moinax.com' + path)
+    for app in APPS:
+        run(['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
+             f'https://{app}.moinax.com/'])
+    name = NAME + '-public-web'
+    firewalls = json.loads(output(['doctl', 'compute', 'firewall', 'list', '--output', 'json']))
+    existing = next((f for f in firewalls if f['name'] == name), None)
+    if existing:
+        rules = existing['inbound_rules']
+        if len(rules) != 2 or {r['ports'] for r in rules} != {'80', '443'} or any(
+                r['protocol'] != 'tcp' or r['sources'].get('addresses') != ['0.0.0.0/0'] or
+                r.get('action', 'allow') != 'allow' for r in rules):
+            raise RuntimeError('Unexpected public firewall rules; inspect before continuing.')
+        run(['doctl', 'compute', 'firewall', 'add-droplets', existing['id'], '--droplet-ids', host['id']])
+    else:
+        run(['doctl', 'compute', 'firewall', 'create', '--name', name, '--droplet-ids', host['id'],
+             '--inbound-rules', 'protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0',
+             '--format', 'Name,Status'])
+    # A newly attached firewall may take a few seconds to propagate.
+    run([*curl, '--retry', '5', '--retry-all-errors', '--retry-delay', '2', 'https://twitch.moinax.com/healthz'])
+    for app in APPS:
+        result = run(['curl', '--silent', '--max-time', '10', '--output', '/dev/null',
+                      '--write-out', '%{http_code}', '--resolve', f'{app}.moinax.com:443:{ip}',
+                      f'https://{app}.moinax.com/'], capture=True, check=False)
+        if result.returncode == 0 and result.stdout.strip() not in (b'404', b'421'):
+            raise RuntimeError(f'{app} unexpectedly answers on the public address.')
+    if previous and all(previous.get(k) == v for k, v in desired.items()):
+        print('Twitch Grid public DNS already active.')
+        return
+    rollback = {'name': desired['name'], 'record': {
+        k: previous[k] for k in ('type', 'name', 'content', 'proxied', 'ttl')} if previous else None}
+    remote(target(), 'bash', '-c',
+           'umask 077; test -f /etc/personal-apps/twitch-dns-rollback.json || cat > /etc/personal-apps/twitch-dns-rollback.json',
+           input=json.dumps(rollback).encode())
+    cloudflare(base + '/' + previous['id'] if previous else base, desired,
+               method='PUT' if previous else 'POST')
+    print('twitch.moinax.com now points to apps-host; the previous DNS record is saved on the host.')
+
+
 def package(app):
     source = source_dir(app)
     command = ['pnpm', 'run', 'build']
@@ -250,6 +348,8 @@ def package(app):
     names += ['pnpm-lock.yaml']
     if app == 'finance':
         names += ['shared']
+    elif app == 'twitch-grid':
+        names = ['package.json', 'pnpm-lock.yaml', 'dist', 'api', 'production.cjs']
     manifest = {'app': app, 'git_head': output(['git', '-C', source, 'rev-parse', 'HEAD']),
                 'dirty': bool(output(['git', '-C', source, 'status', '--porcelain'])),
                 'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
@@ -431,6 +531,7 @@ def status():
     host = droplet()
     print(json.dumps({k: host.get(k) for k in ('name', 'size_slug', 'status', 'features')}, indent=2))
     remote(target(), 'bash', '-c', 'systemctl is-active finance daylight tailscaled; if test -f /etc/personal-apps/proxy.env; then systemctl is-active apps-proxy apps-proxy-auth; fi; tailscale serve status; systemctl list-timers personal-apps-backup.timer --no-pager; free -h; df -h /')
+    remote(target(), 'bash', '-c', 'if test -f /etc/personal-apps/public-proxy.env; then systemctl is-active twitch-grid apps-public-proxy; fi')
 
 
 def main():
@@ -438,7 +539,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='Commands:\n' + '\n'.join(f'  {name:<20} {description}' for name, description in COMMANDS.items()))
     parser.add_argument('command', choices=COMMANDS)
-    parser.add_argument('app', nargs='?', choices=APPS)
+    parser.add_argument('app', nargs='?', choices=DEPLOY_APPS)
     args = parser.parse_args()
     if args.app and args.command != 'deploy':
         parser.error('Only deploy accepts an application argument.')

@@ -1,0 +1,43 @@
+{
+	admin unix//run/apps-public-proxy/admin.sock
+	auto_https disable_redirects
+	servers {
+		protocols h1 h2
+		strict_sni_host
+	}
+	log default {
+		exclude http.log.error
+	}
+}
+
+https://twitch.moinax.com {
+	bind {$APPS_PUBLIC_IPV4}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+	header {
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Content-Type-Options nosniff
+	}
+	@api path /api/* /healthz
+	handle @api {
+		reverse_proxy 127.0.0.1:8766 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up -Tailscale-*
+		}
+	}
+	handle {
+		root * /opt/personal-apps/twitch-grid/current/dist
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=3600"
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+http://twitch.moinax.com {
+	bind {$APPS_PUBLIC_IPV4}
+	redir https://twitch.moinax.com{uri} 308
+}

@@ -39,6 +39,15 @@ Keep tool-specific rules in that tool's own configuration.
 - **One block per turn is enough.** List every sudo command the turn will run, then run them; do not interleave a block per call.
 - **Say so when sudo is reached indirectly.** A script or a `dots` command that calls sudo internally never shows the word in what gets typed — name it anyway ("`dots update` will call sudo for the package upgrade"), because that is exactly the case nothing else can catch.
 
+## Shared skills
+
+- **Shared personal skills live in `~/.agents/skills/`.** Keep one source for
+  Claude Code, Codex, and other compatible tools. Expose them to Claude with
+  symlinks in `~/.claude/skills/`; keep shared reviewer instructions with the
+  skill and link Claude's agent definition to them. Keep provider-specific
+  settings in the provider's configuration. In this repository, manage these
+  files through `home/dot_agents/` and the corresponding chezmoi symlinks.
+
 ## Tools you maintain
 
 - **Restarting `vibewatch` needs no permission** — `systemctl --user restart vibewatch.service` is idempotent: the daemon rebuilds its whole session list by rescanning processes and transcripts on boot, so a restart mid-fleet loses nothing. Never leave a change to it merely compiled — `cargo install --path .`, restart, then look at the result. (Its source is its own repo, which is why this is here rather than in the dotfiles.)

@@ -178,3 +178,7 @@
 .claude/skills/redesign-existing-projects/**
 .claude/skills/unslop
 .agents/skills/unslop
+
+# review-generic replaces the old standalone Codex simplification skill.
+.agents/skills/simplify
+.agents/skills/simplify/**

@@ -28,7 +28,7 @@ Commands:
   gaming      Gaming helpers (HDR launch string for Steam)
   backup      Backup/restore ~/Projects secrets (encrypted, manifest-based)
   t3-host     Build and reach the remote T3 Code host (create/setup/pair/status)
-  hosting     Deploy and maintain the private Finance and Daylight host
+  hosting     Deploy and maintain the private apps and public Twitch Grid host
   lazy-lock   Sync nvim lazy-lock.json back to dotfiles source
   help        Show this help message
 

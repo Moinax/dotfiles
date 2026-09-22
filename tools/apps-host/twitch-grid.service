@@ -1,0 +1,35 @@
+[Unit]
+Description=Twitch Grid public API
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/personal-apps/twitch-grid.env
+ConditionPathExists=/opt/personal-apps/twitch-grid/current/production.cjs
+
+[Service]
+User=twitch-grid
+Group=twitch-grid
+WorkingDirectory=/opt/personal-apps/twitch-grid/current
+Environment=NODE_ENV=production
+Environment=PORT=8766
+EnvironmentFile=/etc/personal-apps/twitch-grid.env
+ExecStart=/usr/local/bin/node production.cjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+MemoryMax=384M
+TasksMax=64
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=/etc/personal-apps /var/lib/finance /var/lib/daylight /opt/personal-apps/finance /opt/personal-apps/daylight
+
+[Install]
+WantedBy=multi-user.target
