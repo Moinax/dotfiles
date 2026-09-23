@@ -68,6 +68,10 @@ LICENSE
 .local/share/applications/vault.desktop
 .local/share/kio/servicemenus/vault.desktop
 .local/share/kio/servicemenus/vault-decrypt.desktop
+# Firefox reads native manifests from ~/.mozilla even with its profile under
+# ~/.config/mozilla, but Bitwarden desktop only writes there when ~/.mozilla
+# already exists. Chromium manifests it writes fine itself.
+.mozilla/native-messaging-hosts/com.8bit.bitwarden.json
 {{- end }}
 
 # vibewatch drop-in + enable symlink only when vibewatch is installed
