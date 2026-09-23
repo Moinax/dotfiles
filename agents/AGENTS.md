@@ -37,7 +37,6 @@ Keep tool-specific rules in that tool's own configuration.
 
 - **Print every sudo command before running it**, in a fenced `bash` block, exactly as it will run. The ksshaskpass password dialog shows sudo's prompt, not the command. Print the command so the user can see what will run as root, even when tool approvals are disabled.
 - **One block per turn is enough.** List every sudo command the turn will run, then run them; do not interleave a block per call.
-- **Say so when sudo is reached indirectly.** A script or a `dots` command that calls sudo internally never shows the word in what gets typed — name it anyway ("`dots update` will call sudo for the package upgrade"), because that is exactly the case nothing else can catch.
 
 ## Shared skills
 
