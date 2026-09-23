@@ -1217,8 +1217,9 @@ apply_dark_mode_defaults() {
 
 # NVIDIA note: no driver installation or tuning happens here on purpose.
 # CachyOS ships its own NVIDIA stack (prebuilt nvidia-open modules for the
-# cachyos kernels, modeset defaults, suspend/resume services) — the dotfiles
-# deliberately leave it untouched so the stock behavior can be evaluated.
+# cachyos kernels, modeset defaults, suspend/resume services, libva-nvidia-driver).
+# The session environment the Hyprland wiki prescribes on top of it lives in
+# the dotfiles (environment.d/60-nvidia.conf), not here — see AGENTS.md.
 
 # Enable services
 enable_selected_services() {

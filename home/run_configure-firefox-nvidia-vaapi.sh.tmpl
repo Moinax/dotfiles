@@ -1,0 +1,25 @@
+{{- if and (index . "install_browsers") (stat "/proc/driver/nvidia") -}}
+#!/bin/bash
+# Firefox hardware video decoding on NVIDIA — the pref half of the
+# libva-nvidia-driver README; the environment half is environment.d/60-nvidia.conf.
+#
+# Since Firefox 137 VA-API is off on NVIDIA unless this pref forces it, and the
+# README lists it as required. Same per-profile user.js mechanism, and the same
+# reasons, as run_configure-firefox-locale.sh.
+set -e
+
+PREF='user_pref("media.hardware-video-decoding.force-enabled", true);'
+FIREFOX_ROOT="$HOME/.config/mozilla/firefox"
+INI="$FIREFOX_ROOT/profiles.ini"
+
+[ -f "$INI" ] || { echo "firefox-nvidia-vaapi: no profiles.ini, nothing to configure"; exit 0; }
+
+while IFS= read -r profile; do
+    dir="$FIREFOX_ROOT/$profile"
+    [ -d "$dir" ] || continue
+    user_js="$dir/user.js"
+    [ -f "$user_js" ] && grep -qF "$PREF" "$user_js" && continue
+    printf '%s\n%s\n' '// NVIDIA VA-API video decoding. Managed by the dotfiles.' "$PREF" >> "$user_js"
+    echo "firefox-nvidia-vaapi: hardware decoding forced in $profile"
+done < <(sed -n 's/^Path=//p' "$INI")
+{{- end -}}

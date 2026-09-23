@@ -11,7 +11,7 @@ Personal dotfiles for CachyOS (Arch-based), managed with [Chezmoi](https://www.c
 
 The remote provisioners target Ubuntu: `tools/t3-host.sh` manages the disposable T3 host (`.claude/rules/t3-host.md`), and `tools/apps-host.py` with `tools/apps-host/` manages the persistent application host (`.claude/rules/apps-host.md`). Anything that applies to the local machine stays Arch-only.
 
-NVIDIA policy: install no drivers and apply no workarounds (no env vars, modprobe options, or kernel parameters) — CachyOS's stock NVIDIA stack is used as-is.
+NVIDIA policy: follow the documented standard, nothing more. CachyOS's stock NVIDIA stack is used as-is — no drivers installed, no modprobe options or kernel parameters. What the [Hyprland wiki's Nvidia page](https://wiki.hypr.land/Nvidia/) prescribes, and the upstream READMEs it defers to (libva-nvidia-driver for Firefox), is the standard setup rather than a workaround: apply it, gated on the loaded driver (`stat "/proc/driver/nvidia"`), never the hostname. Anything those docs do not prescribe needs a measured failure and the user's say-so first.
 
 ## Key Commands
 

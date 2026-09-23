@@ -1,0 +1,20 @@
+{{- if stat "/proc/driver/nvidia" -}}
+# NVIDIA session environment, as the Hyprland wiki's Nvidia page prescribes it.
+# Mirrored in hypr/conf/environments.lua for non-uwsm sessions; 50-wayland.conf
+# says why both exist.
+#
+# Gated on the loaded driver, not the hostname: the variables are only right
+# where the NVIDIA card renders the session.
+LIBVA_DRIVER_NAME=nvidia
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+
+# VA-API through NVDEC (libva-nvidia-driver, shipped by CachyOS). Without it
+# every browser decodes video on the CPU: the iGPU can decode, but the NVIDIA
+# EGL refuses to import its frames (EGL_BAD_PARAMETER), so Firefox falls back.
+NVD_BACKEND=direct
+
+# Firefox half of the driver's README (the wiki defers to it); the pref half is
+# run_configure-firefox-nvidia-vaapi.sh. The decoder runs in the RDD process,
+# whose sandbox blocks the driver.
+MOZ_DISABLE_RDD_SANDBOX=1
+{{ end -}}

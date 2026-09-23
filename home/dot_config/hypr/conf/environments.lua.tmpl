@@ -19,6 +19,15 @@ hl.env("GDK_SCALE", "1")
 -- Mozilla
 hl.env("MOZ_ENABLE_WAYLAND", "1")
 
+{{ if stat "/proc/driver/nvidia" -}}
+-- NVIDIA, per the Hyprland wiki's Nvidia page; the why is in
+-- environment.d/60-nvidia.conf.
+hl.env("LIBVA_DRIVER_NAME",         "nvidia")
+hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+hl.env("NVD_BACKEND",               "direct")
+hl.env("MOZ_DISABLE_RDD_SANDBOX",   "1")
+
+{{ end -}}
 -- Cursor: white-toned on mocha, black-toned on latte (the suffix names the
 -- cursor color, not the palette). hyprcursor falls back to xcursor.
 {{ $cursor_theme := "catppuccin-mocha-dark-cursors" -}}
