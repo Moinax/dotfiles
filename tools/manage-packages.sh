@@ -667,6 +667,7 @@ do_sync() {
     local n_missing=$(( ${#missing_distro[@]} + ${#missing_custom[@]} ))
     if [ "$n_missing" -eq 0 ]; then
         print_success "Everything in base.yaml and enabled groups is already installed"
+        reconcile_declared_services
         return 0
     fi
 
@@ -690,6 +691,17 @@ do_sync() {
     done
 
     print_success "Sync complete."
+
+    # After the message, not before: reconcile_declared_services asks through
+    # confirm_or_abort, which ends the process on a cancel — and a cancelled
+    # service prompt must not swallow the report that every package installed.
+    #
+    # It is the shared reconcile (install/lib/services.sh), the same one
+    # `dots update` runs, rather than a per-group walk through
+    # sync_group_after_change: that one gates its service branch on the group
+    # being *fully* installed, so the case this exists for — a package that just
+    # failed to build — would silently enable nothing, and it skips base.yaml.
+    reconcile_declared_services
 }
 
 # ── Main menu ────────────────────────────────────────────────────────────────

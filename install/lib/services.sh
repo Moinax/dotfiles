@@ -190,3 +190,65 @@ add_user_to_group() {
         print_success "User added to $group group (logout/login required)"
     fi
 }
+
+# Every service the repo declares for this machine — base.yaml's and every
+# enabled group's, system and user — that is not enabled, offered in one prompt.
+#
+# Scoped to base at first, which was a notch too narrow: `enable_selected_services`
+# is installer-only, `sync_group_after_change` fires only for groups a *package*
+# change touched (so a group that merely gained a service is never visited), and
+# `start_user_services_after_apply` deliberately starts without ever enabling. So
+# nothing enabled a group's newly declared service on an existing machine — which
+# made hyprland's own `user_services: vicinae.service` inert everywhere but a
+# fresh install, working only by the coincidence that vicinae-bin ships a systemd
+# preset. That coincidence is exactly what declaring it was supposed to replace.
+#
+# Lives here rather than in sync-machine.sh because `dots packages sync` needs it
+# too: that path installs the package a unit ships with and used to stop there,
+# so a machine could sit with netbird-bin installed and netbird@main disabled
+# until the next `dots update`. One copy, because a second scanner in
+# manage-packages.sh immediately disagreed with this one about `services: []`
+# and about base.yaml.
+#
+# Offered rather than enabled outright: the system half needs sudo, and a
+# `dots update` that starts asking for a root password without saying why is
+# worse than a prompt. Declining is not a shortfall — the anchor should not
+# freeze over a service the user chose to leave off.
+reconcile_declared_services() {
+    command_exists systemctl || return 0
+
+    # grep before yq: eight group files, two declare a block-form list, and yq is
+    # ~170ms of interpreter start each. `services: []` does not match `^services:$`,
+    # so the groups that declare nothing cost nothing.
+    local -a declaring=()
+    mapfile -t declaring < <(grep -l '^services:$\|^user_services:$' "$GROUPS_DIR"/*.yaml 2>/dev/null)
+
+    local -a want_system=() want_user=()
+    mapfile -t want_system < <(base_desired_services "$DOTFILES_DIR/packages")
+
+    local file
+    for file in "${declaring[@]}"; do
+        group_enabled "$file" || continue
+        mapfile -t -O "${#want_system[@]}" want_system < <(parse_services "$file")
+        mapfile -t -O "${#want_user[@]}"   want_user   < <(parse_user_services "$file")
+    done
+
+    local -a missing_system=() missing_user=()
+    [ ${#want_system[@]} -gt 0 ] \
+        && mapfile -t missing_system < <(printf '%s\n' "${want_system[@]}" | services_with_state system no)
+    [ ${#want_user[@]} -gt 0 ] \
+        && mapfile -t missing_user < <(printf '%s\n' "${want_user[@]}" | services_with_state user no)
+
+    local -a missing=("${missing_system[@]}" "${missing_user[@]}")
+    [ ${#missing[@]} -gt 0 ] || return 0
+
+    print_header "Declared Services"
+    print_info "Declared by the repo but not enabled here: ${missing[*]}"
+    if confirm_or_abort "Enable them?"; then
+        [ ${#missing_system[@]} -gt 0 ] && for_each_service enable_service      "${missing_system[@]}"
+        [ ${#missing_user[@]}   -gt 0 ] && for_each_service enable_user_service "${missing_user[@]}"
+    else
+        print_info "Skipped — run 'dots update' again to be offered them"
+    fi
+    return 0
+}

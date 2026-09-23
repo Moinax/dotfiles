@@ -107,8 +107,14 @@ multi-minute install and cost a second tagged-row format to keep beside
 `group_declared_lists` (the one-yq-call-per-group-file reader, `sync-machine.md`). A saving that only the once-per-machine path can collect
 is not worth a parallel protocol.
 
-**`reconcile_declared_services` in sync-machine.sh is the one that matters on an
-existing machine**, and it covers base *and* every enabled group, both instances.
+**`reconcile_declared_services` in `install/lib/services.sh` is the one that
+matters on an existing machine**, and it covers base *and* every enabled group,
+both instances. It lives in the lib rather than in sync-machine.sh because
+`dots packages sync` needs it too — that path installs the package a unit ships
+with, and stopping there once left a machine with netbird-bin installed and
+netbird@main disabled until the next `dots update`. Call it; never write a
+second scanner beside it, which is how the two promptly disagreed about
+`services: []` and about base.yaml.
 It was scoped to base first, which was a notch too narrow and made the
 `user_services:` declaration above inert everywhere but a fresh install:
 `enable_selected_services` is installer-only, `sync_group_after_change` fires
