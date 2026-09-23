@@ -7,6 +7,7 @@
  * hypr/conf/theme.lua — re-solve there if you change them, or a tab quietly
  * stops matching the pill it mirrors. */
 @define-color chip rgba(100, 100, 255, 0.30);
+@define-color alert rgba(243, 139, 168, 0.35);
 @define-color accent rgba(170, 40, 170, 0.45);
 /* The same magenta at rim strength — see the twin note in style-dark.css.
  * Rim-only, and deliberately not @chip/@accent, which theme.lua solves against. */
@@ -111,7 +112,7 @@ window#waybar.empty #window {
 #custom-exit,
 #custom-system,
 #custom-caffeine,
-#custom-tailscale,
+#custom-vpn,
 #custom-headset-battery,
 #custom-dark-mode,
 #custom-notification,
@@ -119,12 +120,22 @@ window#waybar.empty #window {
 #workspaces button {
   font-size: 16px;
 }
-#custom-tailscale.connected {
+#custom-vpn.tailscale,
+#custom-vpn.netbird,
+#custom-vpn.conflict,
+#custom-vpn.unknown {
   background: @accent;
   color: #1e1e2e;
-  /* shield-check's visible mass sits one pixel right of its glyph box */
+  /* shield-check, shield-lock and shield-alert all carry their visible mass one
+     pixel right of the glyph box */
   padding-left: 11px;
   padding-right: 13px;
+}
+/* Both tunnels up (NetBird's routes swallow Tailscale's peers), or the state
+   reader failed — geometry unchanged, only the colour and the glyph say so. */
+#custom-vpn.conflict,
+#custom-vpn.unknown {
+  background: @alert;
 }
 #custom-headset-battery.good { color: #40a02b; }
 #custom-headset-battery.warning { color: #df8e1d; }
@@ -135,11 +146,11 @@ window#waybar.empty #window {
 #custom-caffeine {
   padding-right: 16px;
 }
-#custom-tailscale {
+#custom-vpn {
   padding-left: 12px;
   padding-right: 12px;
 }
-#custom-tailscale.disconnected {
+#custom-vpn.disconnected {
   /* shield-off's slash shifts its visible mass roughly two pixels right */
   padding-left: 10px;
   padding-right: 14px;

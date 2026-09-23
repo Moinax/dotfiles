@@ -1,0 +1,59 @@
+# O27 production cluster — Paraphe, Havre, HeyJP, Feedback.
+# https://wiki.o27.io/s/31f95c42-916a-4dd8-8fd4-8b2761453421
+#
+# Seeded once (chezmoi `create_`), never rewritten: kubectx and kubectl both
+# edit this file, so an apply that overwrote it would drop every context added
+# afterwards — and merging into an existing config is not something chezmoi does.
+#
+# Public cluster CA and OIDC login config only; no credentials. Access needs the
+# o27-netbird-users and cluster-admins groups on the Authentik account.
+#
+# Two one-time interactive steps this file cannot carry:
+#   1. VPN, once per machine — the deployment is self-hosted, so the management
+#      URL has to be given on the first login; netbird persists it afterwards:
+#        netbird up --management-url https://vpn.o27.io
+#      Afterwards always connect through Super+Ctrl+N (the VPN picker) or
+#      `toggle-vpn.sh set netbird`, never a bare `netbird up`: the picker passes
+#      --disable-auto-connect, and a bare `up` turns auto-connect back on, which
+#      is what makes NetBird steal Tailscale's routes at the next boot.
+#      `aragorn` below resolves over that tunnel and nowhere else, so kubectl
+#      needs NetBird connected — and Tailscale down, they exclude each other.
+#   2. Cluster, once per token lifetime — `kubectx o27 && kubectl get nodes`
+#      opens the browser for the Authentik login (kubelogin caches the token).
+#
+# Then, per product: APP=paraphe (or havre / heyjp / feedback)
+#   kubens "${APP}-prod"
+#   kubectl exec "deployment/$APP" -c "$APP" -- /usr/bin/python3 /app/manage.py help
+# The image ships no shell — invoke python directly.
+apiVersion: v1
+kind: Config
+current-context: o27
+clusters:
+  - name: o27
+    cluster:
+      server: https://aragorn:6443
+      certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJkekNDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdGMyVnkKZG1WeUxXTmhRREUzTnpnMk9ESTNNekl3SGhjTk1qWXdOVEV6TVRRek1qRXlXaGNOTXpZd05URXdNVFF6TWpFeQpXakFqTVNFd0h3WURWUVFEREJock0zTXRjMlZ5ZG1WeUxXTmhRREUzTnpnMk9ESTNNekl3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFRZkJUR1ZNSFlnb1RNdE1SRVpFWGIrV0xjUkZ3R01CZGVFL0xQQ0ZhdUoKekpKMUZXWHhwV1hyQmhpcm51bG8vb2ZuZno5dkM3VVNRbG12Nkg5RmJOMEhvMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVXBQYVhmVkVRK2JlOEZnWGR1aC9mCnpaYmU5bWN3Q2dZSUtvWkl6ajBFQXdJRFNBQXdSUUloQU1qWkIvNUpHcVBYTUN0UXJ4VGdlM0FSdk5QS0pjaTAKa2FtVnA1V3VJa2l0QWlCUDVrV09qVVF4ZUhuMXEwaXFwOUw2b0tMb1dMTi9uWWRHelQ4eTEyTGFLdz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+contexts:
+  - name: o27
+    context:
+      cluster: o27
+      user: o27-oidc
+users:
+  - name: o27-oidc
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: kubectl
+        args:
+          - oidc-login
+          - get-token
+          - --oidc-issuer-url=https://auth.o27.io/application/o/k3s/
+          - --oidc-client-id=k3s
+          - --oidc-extra-scope=groups
+          - --oidc-extra-scope=profile
+          - --oidc-extra-scope=email
+          - --oidc-extra-scope=email_verified
+          - --listen-address=127.0.0.1:17842
+          - --oidc-redirect-url=http://localhost:17842
+        interactiveMode: IfAvailable
+        provideClusterInfo: false

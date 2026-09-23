@@ -1260,7 +1260,11 @@ enable_selected_services() {
     # Configure Tailscale if development is selected and tailscale is installed.
     # The tailscaled daemon is enabled above (needed for the manual toggle), but
     # Tailscale itself is NOT auto-connected — connect on demand via the waybar
-    # module or the Super+Ctrl+N keybind (toggle-tailscale.sh).
+    # shield or the Super+Ctrl+N VPN picker, both of which go through
+    # toggle-vpn.sh. That script also owns NetBird's first connect, which has to
+    # carry --disable-auto-connect: netbird@main is enabled so the CLI has a
+    # daemon, and a logged-in daemon otherwise dials the tunnel at boot and takes
+    # the overlapping 100.64/10 routes off Tailscale.
     if group_selected development && command -v tailscale &>/dev/null; then
         print_info "Setting Tailscale operator to $USER"
         sudo tailscale set --operator="$USER"
@@ -1288,7 +1292,7 @@ enable_selected_services() {
             print_info "Logging into Tailscale (a browser/URL will open for authentication)..."
             tailscale up
             tailscale down
-            print_info "Authenticated. Tailscale left disconnected — toggle it via the waybar module or Super+Ctrl+N."
+            print_info "Authenticated. Tailscale left disconnected — connect it from the waybar shield or Super+Ctrl+N."
         else
             tailscale down 2>/dev/null || true
             print_info "Tailscale already authenticated; left disconnected (connect manually)."

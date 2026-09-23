@@ -246,7 +246,7 @@ hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lo
 -- ── 14. Session & System ─────────────────────────────────────────
 hl.bind(mod .. " + N",         hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dark-mode.sh"))                 -- Toggle dark/light mode
 hl.bind(mod .. " + ALT + N",   hl.dsp.exec_cmd(home .. "/.local/bin/toggle-caffeine.sh"))                  -- Toggle caffeine mode
-hl.bind(mod .. " + CTRL + N",  hl.dsp.exec_cmd(home .. "/.local/bin/toggle-tailscale.sh"))                 -- Toggle Tailscale VPN
+hl.bind(mod .. " + CTRL + N",  hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/vpn?toggle=true'"))       -- Pick VPN (Tailscale / NetBird, exclusive)
 hl.bind(mod .. " + L",         hl.dsp.exec_cmd("wlogout-wrapper.sh"))                                      -- Power menu (wlogout)
 hl.bind(mod .. " + ALT + L",   hl.dsp.exec_cmd("loginctl lock-session"))                                   -- Lock screen
 -- locked = true so it also works from the lock screen — see the note on the media

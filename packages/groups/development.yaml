@@ -15,11 +15,16 @@ dotfiles:
   - dot_config/ccstatusline
   - dot_gitconfig
   - dot_config/nix
+  - dot_kube
 
 # Services to enable
 services:
   - docker
   - tailscaled
+  # netbird ships only a templated unit (netbird@.service), one instance per
+  # config profile; `main` is the default instance the upstream Arch docs name.
+  # The daemon runs unconnected until `netbird up` logs the peer in.
+  - netbird@main
   - nix-daemon
 
 descriptions:
@@ -46,6 +51,10 @@ descriptions:
   bazelisk: Bazel launcher that honours a repo's .bazelversion
   gh-dash: Terminal UI dashboard for GitHub PRs/issues
   tailscale: Mesh VPN for secure networking
+  netbird-bin: WireGuard overlay network with a self-hostable control plane (AUR, prebuilt)
+  kubectl: Kubernetes CLI
+  kubectx: Context and namespace switchers (kubectx, kubens)
+  kubelogin-bin: kubectl oidc-login plugin — Authentik login for the O27 cluster (AUR)
   doctl: DigitalOcean CLI — drives the droplet provisioners (`dots t3-host`, apps host)
   worktrunk-bin: Git worktree manager for AI workflows (AUR)
   claude-code: AI-powered coding assistant CLI
@@ -195,7 +204,14 @@ packages:
     
     # Networking
     - tailscale
+    - netbird-bin  # AUR; -bin over netbird so no Go build on every update
     - doctl  # the droplet provisioners shell out to it; `dots` gates its menu entry on it
+
+    # Kubernetes — O27 production access; the runbook is the header comment of
+    # home/dot_kube/create_private_config, which seeds ~/.kube/config
+    - kubectl
+    - kubectx  # ships kubens too
+    - kubelogin-bin  # AUR; kubectl oidc-login plugin (int128), prebuilt
 
     # Task runner
     - just

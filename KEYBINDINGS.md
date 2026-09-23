@@ -167,7 +167,7 @@
 | Logout | `Mod+Shift+L` | `compositor-logout.sh` |
 | Toggle dark/light mode | `Mod+N` | Switches Catppuccin Mocha/Latte + portal |
 | Toggle caffeine mode | `Mod+Alt+N` | Inhibits idle (prevents lock/sleep) |
-| Toggle Tailscale VPN | `Mod+Ctrl+N` | Connect/disconnect Tailscale |
+| Pick VPN | `Mod+Ctrl+N` | Vicinae list of Tailscale and NetBird. Connecting one disconnects the other — they both allocate out of 100.64/10 and NetBird's routes win — and both can be off. Same view as the waybar shield |
 | Lock + screen off | `Mod+Alt+M` | Locks the session, then powers the screen off; wake by mouse/key, then unlock |
 | Toggle HDR (10-bit) | `Mod+Alt+H` | Detects HDR from EDID; targets the focused capable display (or the only one), and remembers the mode across connectors, reloads and sessions |
 | Keybinding help | `Mod+H` | Vicinae list, grouped by section with a section filter; parsed from `binds.lua` by `hypr-keybindings` |

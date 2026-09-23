@@ -153,6 +153,38 @@ export async function setKeyboardLayout(name: string): Promise<void> {
   await capture(`${HOME}/.config/hypr/scripts/toggle-keyboard-layout.sh`, ["set", name], { timeout: 30_000 });
 }
 
+export type Vpn = { id: string; label: string; detail: string; connected: boolean };
+
+/**
+ * Tailscale and NetBird, from toggle-vpn.sh.
+ *
+ * Both halves go through the script for the reason the monitors pair does: the
+ * script is what knows the two are mutually exclusive, and re-deriving "connect
+ * this one" as "down the other, up this one" here would put the rule in the UI —
+ * where the waybar module, which calls the same `list`, could not see it.
+ */
+export async function vpns(): Promise<Vpn[]> {
+  const lines = await captureLines(`${HOME}/.local/bin/toggle-vpn.sh`, ["list"]);
+  return lines.flatMap((line) => {
+    const [id, connected, label, detail] = line.split("\t");
+    return id ? [{ id, label: label || id, detail: detail ?? "", connected: connected === "1" }] : [];
+  });
+}
+
+/** Connect one VPN; the script disconnects the other first. */
+export async function setVpn(id: string): Promise<void> {
+  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["set", id], { timeout: 60_000 });
+}
+
+/** Disconnect one VPN, leaving the other alone — the conflict state has both up. */
+export async function downVpn(id: string): Promise<void> {
+  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["down", id], { timeout: 60_000 });
+}
+
+export async function disconnectVpns(): Promise<void> {
+  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["off"], { timeout: 60_000 });
+}
+
 export type DesktopApp = { id: string; name: string; icon: string };
 
 /**

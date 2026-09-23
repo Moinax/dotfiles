@@ -82,6 +82,13 @@
       "mode": "view"
     },
     {
+      "name": "vpn",
+      "title": "VPN",
+      "subtitle": "Moinax",
+      "description": "Connect Tailscale or NetBird — one at a time — or disconnect both.",
+      "mode": "view"
+    },
+    {
       "name": "reload",
       "title": "Reload",
       "subtitle": "Moinax",

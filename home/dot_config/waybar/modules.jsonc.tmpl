@@ -200,13 +200,19 @@
     "restart-interval": 1,
     "on-click": "~/.local/bin/toggle-caffeine.sh",
   },
-  // Tailscale VPN toggle
-  "custom/tailscale": {
-    "exec": "~/.local/bin/waybar-tailscale.sh",
+  // VPN: which of Tailscale / NetBird is up. The click opens the same vicinae
+  // picker as Mod+Ctrl+N rather than toggling in place — there are two tunnels
+  // now and they are mutually exclusive, so a click has no single obvious
+  // meaning and the menu is where the choice belongs.
+  "custom/vpn": {
+    "exec": "~/.local/bin/waybar-vpn.sh",
     "return-type": "json",
     "signal": 11,
-    "interval": 30,
-    "on-click": "~/.local/bin/toggle-tailscale.sh",
+    // Five minutes, not thirty seconds: every switch made through toggle-vpn.sh
+    // signals the bar itself, so the poll exists only to catch a `tailscale up`
+    // or `netbird up` run by hand — and each tick costs two daemon round trips.
+    "interval": 300,
+    "on-click": "vicinae 'vicinae://launch/@moinax/moinax/vpn?toggle=true'",
   },
   // Headset battery (via headsetcontrol)
   "custom/headset-battery": {

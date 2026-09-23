@@ -97,6 +97,8 @@ LICENSE
 .config/nix/**
 .config/direnv
 .config/direnv/**
+.kube
+.kube/**
 .claude
 .claude/**
 .claude-mbrella

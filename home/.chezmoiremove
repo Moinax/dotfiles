@@ -182,3 +182,16 @@
 # review-generic replaces the old standalone Codex simplification skill.
 .agents/skills/simplify
 .agents/skills/simplify/**
+
+# The Tailscale-only module and toggle, replaced by their VPN-wide counterparts
+# now that NetBird shares the bar item and the Mod+Ctrl+N bind. Same pruning
+# rule as rofi above: ~/.local/bin is not an `exact_` directory.
+.local/bin/toggle-tailscale.sh
+.local/bin/waybar-tailscale.sh
+
+# `private_create_config.toml` was a wrong prefix order — chezmoi read only
+# `private_` and left `create_` in the filename, so this rendered to
+# `~/.codex/create_config.toml` and the real config.toml was never seeded.
+# Renamed to `create_private_config.toml`; the file the broken name produced is
+# unmanaged now and would sit in the Codex config dir forever.
+.codex/create_config.toml

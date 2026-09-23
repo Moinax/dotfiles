@@ -181,7 +181,16 @@ require_doctl() {
 # subshell, and `set -e` on the failed assignment is what stops the caller —
 # the message still reaches your terminal, since stderr is not captured.
 require_target() {
-    host_target || { err "Cannot reach $DROPLET_NAME on its public IP or the tailnet"; exit 1; }
+    # The tailnet leg is routinely unavailable now that Tailscale and NetBird
+    # exclude each other (toggle-vpn.sh). Only said when NetBird is the reason:
+    # unconditional, it is a red herring on every machine that never installed it.
+    host_target || {
+        err "Cannot reach $DROPLET_NAME on its public IP or the tailnet"
+        if netbird status 2>/dev/null | grep -q '^Management: Connected'; then
+            err "NetBird is up, so Tailscale is down — Mod+Ctrl+N, or toggle-vpn.sh set tailscale"
+        fi
+        exit 1
+    }
 }
 
 # cloud-init does exactly two things: create the login user and authorize the
