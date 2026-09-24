@@ -43,7 +43,7 @@ hl.env("OZONE_PLATFORM", "wayland")
 {{ if .install_development -}}
 -- Let CodeBurn launched from the desktop read both Claude Code accounts.
 local home = os.getenv("HOME") or ""
-hl.env("CLAUDE_CONFIG_DIRS", home .. "/.claude:" .. home .. "/.claude-mbrella")
+hl.env("CLAUDE_CONFIG_DIRS", home .. "/.claude-moinax:" .. home .. "/.claude-mbrella")
 {{ end -}}
 
 -- For KVM virtual machines (commented out by default)

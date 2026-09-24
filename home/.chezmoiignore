@@ -106,6 +106,7 @@ LICENSE
 .kube/**
 .claude
 .claude/**
+.claude-moinax
 .claude-mbrella
 .claude-mbrella/**
 .zsh/rc.d/60-worktree.zsh

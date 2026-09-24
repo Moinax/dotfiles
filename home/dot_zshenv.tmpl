@@ -53,8 +53,9 @@ esac
 export PATH="$HOME/.local/bin:$PATH"
 
 {{- if .install_development }}
-# CodeBurn combines the sessions from both Claude Code subscriptions.
-export CLAUDE_CONFIG_DIRS="$HOME/.claude:$HOME/.claude-mbrella"
+# CodeBurn names each source after its directory. The alias gives the personal
+# account its own label without changing Claude Code's ~/.claude directory.
+export CLAUDE_CONFIG_DIRS="$HOME/.claude-moinax:$HOME/.claude-mbrella"
 {{- end }}
 
 # Silence zoxide's "configuration issue" doctor. It fires a false positive in
