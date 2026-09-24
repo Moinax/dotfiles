@@ -97,6 +97,7 @@ LICENSE
 .config/worktrunk/**
 .config/ccstatusline
 .config/ccstatusline/**
+.config/environment.d/codeburn.conf
 .config/nix
 .config/nix/**
 .config/direnv

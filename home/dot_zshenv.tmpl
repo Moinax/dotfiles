@@ -52,6 +52,11 @@ esac
 # Lazy docker, zoxide, ...
 export PATH="$HOME/.local/bin:$PATH"
 
+{{- if .install_development }}
+# CodeBurn combines the sessions from both Claude Code subscriptions.
+export CLAUDE_CONFIG_DIRS="$HOME/.claude:$HOME/.claude-mbrella"
+{{- end }}
+
 # Silence zoxide's "configuration issue" doctor. It fires a false positive in
 # Claude Code's Bash tool: the shell snapshot replays zoxide's `cd` wrapper but
 # not the `chpwd_functions+=(__zoxide_hook)` line from `zoxide init`, so the

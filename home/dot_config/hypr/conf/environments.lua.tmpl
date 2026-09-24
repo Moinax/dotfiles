@@ -40,6 +40,12 @@ hl.env("HYPRCURSOR_SIZE", "24")
 -- Ozone (Chromium / Electron)
 hl.env("OZONE_PLATFORM", "wayland")
 
+{{ if .install_development -}}
+-- Let CodeBurn launched from the desktop read both Claude Code accounts.
+local home = os.getenv("HOME") or ""
+hl.env("CLAUDE_CONFIG_DIRS", home .. "/.claude:" .. home .. "/.claude-mbrella")
+{{ end -}}
+
 -- For KVM virtual machines (commented out by default)
 -- hl.env("WLR_NO_HARDWARE_CURSORS", "1")
 -- hl.env("WLR_RENDERER_ALLOW_SOFTWARE", "1")
