@@ -65,5 +65,12 @@
   {{-     $hooks = set $hooks $event (list (dict "matcher" "" "hooks" (list $vibe))) }}
   {{-   end }}
   {{- end }}
+  {{- /* The Language rule of ~/.agents/AGENTS.md is loaded once at session start
+         and gets outweighed in long English-heavy sessions (code, tool output,
+         English tickets), so it is restated on every prompt. No apostrophe in
+         the text: run_onchange_configure-claude-settings.sh.tmpl inlines this
+         JSON inside a single-quoted bash string. */}}
+  {{- $language := dict "type" "command" "command" "echo \"Language: write every piece of prose addressed to the user in the language of the user message above (French or English): the final answer, and also each progress update between tool calls. This holds whatever the language of the code, tool output, skills or earlier replies. Code, identifiers, commit messages and files stay in English (~/.agents/AGENTS.md, Language).\"" }}
+  {{- $hooks = set $hooks "UserPromptSubmit" (append (default (list) (get $hooks "UserPromptSubmit")) (dict "matcher" "" "hooks" (list $language))) }}
   "hooks": {{ $hooks | toPrettyJson | indent 2 | trim }}
 }
