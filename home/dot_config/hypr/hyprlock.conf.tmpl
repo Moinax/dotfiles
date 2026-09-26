@@ -10,16 +10,16 @@
 # wallpaper by construction rather than by two configs agreeing. Extension-less
 # on purpose: hyprlock sniffs the content (hyprgraphics links libmagic), so a
 # fixed `current.jpg` would lie the first time a .png is picked. Why it lives
-# outside $HOME, and what creates it, are in CLAUDE.md.
+# outside $HOME, and what creates it, are in .claude/rules/login-wallpaper.md.
 background {
     monitor =
     path = /var/lib/wallpaper/current
 }
 
 # Everything below is dressed to match the Plasma login greeter, which is a
-# different program on a different session (see the note in CLAUDE.md — a lock
-# screen must hold the compositor's session-lock grab, so it can never *be* the
-# greeter). Only the look is shared: Breeze accent #1d99f3 lifted from
+# different program on a different session (see .claude/rules/login-wallpaper.md
+# — a lock screen must hold the compositor's session-lock grab, so it can never
+# *be* the greeter). Only the look is shared: Breeze accent #1d99f3 lifted from
 # /usr/share/sddm/themes/breeze/theme.conf, Noto Sans as the Plasma UI font,
 # clock over a centred name and password field. Deliberately no blur — the
 # greeter blurs only while fading into the session, so a blurred lock screen

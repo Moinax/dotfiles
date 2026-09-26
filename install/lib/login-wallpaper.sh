@@ -1,8 +1,9 @@
 #!/bin/bash
 # The lock screen and the login greeter share one file, /var/lib/wallpaper/current
-# — the long version of why is in CLAUDE.md. The short version: the greeter runs
-# as the `plasmalogin` system user and $HOME is 0700, so the picked wallpaper has
-# to be copied somewhere outside $HOME that a plain user can still write.
+# — the long version of why is in .claude/rules/login-wallpaper.md. The short
+# version: the greeter runs as the `plasmalogin` system user and $HOME is 0700, so
+# the picked wallpaper has to be copied somewhere outside $HOME that a plain user
+# can still write.
 #
 # Two steps in that story need root, and they are the only two: creating that
 # directory user-owned, and pointing the greeter config at it. Neither can live in

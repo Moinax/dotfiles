@@ -6,7 +6,7 @@
 # re-running it on a live host is the repair path, not a reinstall.
 #
 # The command list lives in usage() below, and only there — a second copy in
-# this header is what CLAUDE.md warns about, and it had already drifted once.
+# this header is what AGENTS.md warns about, and it had already drifted once.
 #
 # A rebuild, with no browser at all:
 #

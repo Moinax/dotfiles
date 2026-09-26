@@ -656,7 +656,8 @@ install_common_tool() {
     # Both outcomes leave the tool absent — callers only get here when it is
     # missing — so both withhold the anchor. A missing declaration is a repo bug
     # rather than a machine one, but the machine is still short a declared tool, and
-    # the fix belongs in common.yaml where CLAUDE.md already requires the metadata.
+    # the fix belongs in common.yaml where .claude/rules/package-metadata.md
+    # already requires the metadata.
     if [ -z "$install_cmd" ]; then
         track_warning "No install command declared for $name in packages/common.yaml"
         mark_sync_shortfall

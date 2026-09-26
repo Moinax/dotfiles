@@ -53,7 +53,7 @@ apply_wallpaper() {
 # Republish for the two screens that are not the desktop: hyprlock and the Plasma
 # login greeter both read this one file, so picking is the single act that changes
 # all three. A copy and not a symlink, and the directory needs one privileged
-# creation — the reasons are in CLAUDE.md, under the /var/lib/wallpaper entry.
+# creation — the reasons are in .claude/rules/login-wallpaper.md.
 PUBLISHED_DIR=/var/lib/wallpaper
 PUBLISHED_WALLPAPER="$PUBLISHED_DIR/current"
 
