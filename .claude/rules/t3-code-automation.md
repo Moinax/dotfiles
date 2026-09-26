@@ -16,9 +16,9 @@ The CLI requires a running desktop app. The helper first calls
 before handing focus back. T3 Code owns project registration, draft state and
 model/workspace defaults. No server thread is created until the prompt is sent.
 
-Listing projects and existing threads still reads private projections.
-`t3-thread new` remains available for explicit persisted-thread creation but
-is no longer used by the picker.
+Listing projects and existing threads reads the private projections directly.
+`t3-thread new` creates a persisted thread explicitly; the picker does not use
+it.
 
 ## The three doors, and why each one
 

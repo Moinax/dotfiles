@@ -25,7 +25,7 @@ keeps whatever the last Mod+N put there and the change waits, silently, for the
 next one. A font swap surfaced it as tofu across the whole notification panel
 while `swaync-client -rs` cheerfully reported `success: true` — the reload
 re-read a stylesheet that still named the by-then-uninstalled font. The other
-five had the identical staleness and merely nothing visible to show for it,
+four had the identical staleness and merely nothing visible to show for it,
 which is the point: only swaync had a symptom, so only swaync would ever have
 been fixed.
 
@@ -55,7 +55,7 @@ it from a post-apply hook re-enters the thing that just ran.
 
 Known limit of hanging this off post-apply: it only fires through
 `apply_dotfiles`/`run_post_apply`, so a bare hand-run `chezmoi apply` still leaves
-all six copies stale. That is the general rule about hand applies, not a special
+all five copies stale. That is the general rule about hand applies, not a special
 case — but it is the one path this reconciliation does not cover.
 
 ### A user service installed mid-session is enabled but dead
@@ -138,7 +138,7 @@ files an apply touched. Being ungated on a path that runs every time is what
 makes the order of its guards the entire cost of the feature, so they escalate:
 `systemctl` exists (free) → a graphical session is active (~9ms) → `grep -l
 '^user_services:'` across the group files (~9ms) → `group_enabled` → yq. The
-first version asked none of that and simply parsed all eight group files, which
+first version asked none of that and simply parsed every group file, which
 is **~1.2s of every apply** to read a line that exists in one of them — the whole
 budget the ~5.9s→1.2s catalogue-scan optimisation (`sync-machine.md`) bought
 back, re-spent on a more

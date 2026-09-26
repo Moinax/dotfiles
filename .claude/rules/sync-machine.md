@@ -12,10 +12,11 @@ question, so a laptop that never wanted the gaming group had to say so again
 every time. This asks the smaller question: what has the repo gained since this
 machine last agreed with it?
 
-Phases: system update (`cachy-update`) → new groups → package delta →
-`chezmoi apply` → tool refresh (`tools/manage-updates.sh`, still reachable alone as
-`dots update tools`) → `run_post_apply` → login wallpaper → encrypted DNS → regional
-formats → prune old Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
+Phases: system update (`cachy-update`) → new groups → custom-install prerequisites
+→ package delta → declared services → `chezmoi apply` → tool refresh
+(`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
+`run_post_apply` → login wallpaper → encrypted DNS → regional formats → prune old
+Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer
 
@@ -308,7 +309,8 @@ the drift a rarely-taken branch invites.
 **One yq call per group file, and it is not an optimisation you may undo.**
 `group_declared_lists` (common.sh) reads *everything* a caller can want from a group
 file in a single query, as tagged rows: `N` name, `I` icon, `E` pkg=description,
-`D` desktop_only, `C` custom name, `P` package. Two consumers sit on it —
+`D` desktop_only, `C` custom name, `R` custom=required package, `P` package. Two
+consumers sit on it —
 `classify_declared_rows` (stdin → `pkg<TAB>custom`, applying the terminal-install
 `desktop_only` filter) and `load_group_meta` (sets `GROUP_NAME`, `GROUP_ICON`,
 `DESCRIPTIONS`, and leaves the raw rows in `GROUP_ROWS` so the same read can be

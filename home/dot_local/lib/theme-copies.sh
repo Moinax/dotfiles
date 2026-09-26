@@ -23,7 +23,7 @@ THEME_STATE_FILE="$HOME/.local/share/dark-light-mode"
 
 # The mode in force. Same file and same default apply-dark-mode.sh has always
 # used; anything unrecognised reads as dark rather than propagating a typo into
-# six filenames.
+# five filenames.
 theme_mode() {
     [ "$(cat "$THEME_STATE_FILE" 2>/dev/null)" = light ] && echo light || echo dark
 }
