@@ -1,6 +1,6 @@
 import { Action, ActionPanel, Color, Icon, List } from "@vicinae/api";
 import { disconnectVpns, downVpn, setVpn, vpns, type Vpn } from "./lib/system";
-import { actionRunner, useLoader } from "./lib/ui";
+import { closeAfterProgress, useLoader } from "./lib/ui";
 
 /**
  * Mod+Ctrl+N, and the waybar shield's click — the replacement for the plain
@@ -10,13 +10,15 @@ import { actionRunner, useLoader } from "./lib/ui";
  * other there are four transitions and no obvious default, so the list shows
  * which one is up and makes the switch one keypress from either row.
  *
- * The launcher stays open the way it does for monitors: connecting one VPN
- * changes the other row too, and seeing that happen is the confirmation that
- * the exclusivity did what it claims.
+ * Every action closes the launcher, the way keyboard-layout and audio-output do
+ * rather than the way monitors does: you are on one VPN at a time, so the choice
+ * ends the interaction. It closes through closeAfterProgress because the switch
+ * is not instant — it tears the other tunnel down and waits for this one to come
+ * up — so the window holds a progress toast until the daemons have answered, and
+ * stays open with the error if either refuses.
  */
 export default function Command() {
   const { rows, isLoading, refresh } = useLoader<Vpn>(vpns, "Could not read VPN state");
-  const act = actionRunner(refresh);
 
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Search VPNs" navigationTitle="VPN">
@@ -45,13 +47,19 @@ export default function Command() {
                   title={`Disconnect ${vpn.label}`}
                   icon={Icon.LockDisabled}
                   style="destructive"
-                  onAction={act(`Disconnected ${vpn.label}`, () => downVpn(vpn.id))}
+                  onAction={closeAfterProgress(() => downVpn(vpn.id), {
+                    start: `Disconnecting ${vpn.label}…`,
+                    hud: `${vpn.label} disconnected`,
+                  })}
                 />
               ) : (
                 <Action
                   title={`Connect ${vpn.label}`}
                   icon={Icon.Lock}
-                  onAction={act(`Connected ${vpn.label}`, () => setVpn(vpn.id))}
+                  onAction={closeAfterProgress(() => setVpn(vpn.id), {
+                    start: `Connecting ${vpn.label}…`,
+                    hud: `VPN: ${vpn.label}`,
+                  })}
                 />
               )}
               <Action
@@ -59,7 +67,10 @@ export default function Command() {
                 icon={Icon.LockDisabled}
                 style="destructive"
                 shortcut={{ modifiers: ["ctrl"], key: "d" }}
-                onAction={act("All VPNs disconnected", disconnectVpns)}
+                onAction={closeAfterProgress(disconnectVpns, {
+                  start: "Disconnecting…",
+                  hud: "No VPN connected",
+                })}
               />
               <Action title="Refresh" icon={Icon.ArrowClockwise} shortcut={{ modifiers: ["ctrl"], key: "r" }} onAction={refresh} />
             </ActionPanel>

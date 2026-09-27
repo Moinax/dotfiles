@@ -208,10 +208,14 @@
     "exec": "~/.local/bin/waybar-vpn.sh",
     "return-type": "json",
     "signal": 11,
-    // Five minutes, not thirty seconds: every switch made through toggle-vpn.sh
-    // signals the bar itself, so the poll exists only to catch a `tailscale up`
-    // or `netbird up` run by hand — and each tick costs two daemon round trips.
-    "interval": 300,
+    // Thirty seconds, and do not raise it. It was 300 for one commit, on the
+    // grounds that toggle-vpn.sh signals the bar itself so the poll only catches
+    // an out-of-band `tailscale up` — which missed the boot race: waybar starts
+    // ~12s before tailscaled reaches Running, reads "nothing connected" quite
+    // correctly, and then has no event to tell it otherwise. At 300 the shield
+    // lied for five minutes after every boot. Two local daemon round trips per
+    // tick is the cheaper end of that trade.
+    "interval": 30,
     "on-click": "vicinae 'vicinae://launch/@moinax/moinax/vpn?toggle=true'",
   },
   // Headset battery (via headsetcontrol)
