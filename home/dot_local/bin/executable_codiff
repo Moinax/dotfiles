@@ -1,0 +1,18 @@
+#!/bin/sh
+# The release's own CLI (resources/app/bin/codiff-app) only knows the macOS
+# bundle layout; on Linux the Electron binary parses the same arguments itself.
+app="$HOME/.local/share/codiff"
+
+case "${1:-}" in
+    # Text-only flags go through the bundled Node entry, which prints to stdout.
+    # The codiff agent skill reads --walkthrough-guide from there.
+    --help | -h | --version | -v | --walkthrough-guide | --completions)
+        ELECTRON_RUN_AS_NODE=1 exec "$app/codiff" "$app/resources/app/bin/codiff.js" "$@" ;;
+    # --plan blocks until the plan is handed back, and --share prints the URL it
+    # ends on: both need the terminal and the stdout the detach below discards.
+    --plan | --share)
+        exec "$app/codiff" "$@" ;;
+esac
+
+# setsid detaches the app so the calling terminal is not held for its lifetime.
+exec setsid -f "$app/codiff" "$@" >/dev/null 2>&1

@@ -10,6 +10,7 @@ dotfiles:
   - dot_config/Cursor
   - dot_config/hunk
   - dot_config/tuicr
+  - dot_local/bin/executable_codiff
   - dot_config/gh-dash
   - dot_config/worktrunk
   - dot_config/ccstatusline
@@ -38,6 +39,7 @@ descriptions:
   lazygit: Terminal UI for git
   hunk: Review-first terminal diff viewer for agent changesets (npm hunkdiff)
   tuicr: Code review TUI with vim keybindings (local diffs + GitHub PRs)
+  codiff: Desktop diff viewer with LLM walkthroughs (Electron, GitHub release)
   tea: Command-line client for Gitea servers
   forgejo-cli: Forgejo CLI (`fj`) for repositories, issues, and pull requests
   docker: Container runtime engine
@@ -68,6 +70,7 @@ descriptions:
 
 desktop_only:
   - cursor-bin
+  - codiff
   - codeburn-desktop
 
 # Tools installed via custom commands (not available in package managers).
@@ -101,6 +104,38 @@ custom_install:
     requires: npm
     binary: hunk
     npm: hunkdiff
+  # codiff — desktop diff viewer with agent-written walkthroughs. Not the AUR's
+  # codiff-bin: it ships /usr/bin/codiff, which pahole already owns, and pahole is
+  # a dependency of the kernel headers. The release .deb is unpacked into the home
+  # instead, and chezmoi owns the ~/.local/bin/codiff launcher, which is why
+  # `check` tests the unpacked app rather than the command.
+  - name: codiff
+    chezmoi_flag: true
+    check: '[ -x "$HOME/.local/share/codiff/codiff" ]'
+    requires: curl
+    requires_packages:
+      arch: [libarchive]
+    # Chained on && throughout, and the unpacked tree is tested before the
+    # installed one is removed: the install command is eval'd inside an `if`
+    # condition, where `set -e` is suppressed, so an unguarded sequence runs
+    # `rm -rf` on the live install even when the download never arrived — an
+    # empty $v from a rate-limited API is enough — and then reports success,
+    # because the trailing cleanup exits 0. Same hazard the dropbox entry notes.
+    install: |
+      v=$(curl -fsSL https://api.github.com/repos/nkzw-tech/codiff/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p') \
+        && tmp=$(mktemp -d) \
+        && curl -fsSL "https://github.com/nkzw-tech/codiff/releases/download/v$v/codiff_${v}_amd64.deb" \
+          | bsdtar -xOf - data.tar.zst | bsdtar -xf - -C "$tmp" ./usr/lib/codiff \
+        && [ -x "$tmp/usr/lib/codiff/codiff" ] \
+        && rm -rf "$HOME/.local/share/codiff" \
+        && mv "$tmp/usr/lib/codiff" "$HOME/.local/share/codiff" \
+        && rm -rf "$tmp"
+    # No `binary:`, deliberately: pahole owns /usr/bin/codiff, so a `command -v`
+    # that misses the chezmoi launcher would report this as a pacman package and
+    # skip its release lookup. `check` and `version` cover both jobs already.
+    version: >-
+      sed -n 's/^  "version": "\([^"]*\)".*/\1/p' "$HOME/.local/share/codiff/resources/app/package.json"
+    source: nkzw-tech/codiff
   # vite-plus — the Vite+ toolchain (`vp`). Declared so a development machine
   # gets it from `dots packages sync` and has it tracked by `dots update`, rather
   # than each consumer hand-installing it: `t3fork install` needs it to build the

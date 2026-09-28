@@ -113,6 +113,11 @@ LICENSE
 .local/bin/wtupdate
 .local/bin/dev-clean
 {{- end }}
+# codiff is a custom_install with its own flag, so unticking it alone also
+# drops the launcher chezmoi owns for it.
+{{- if not (index . "install_codiff") }}
+.local/bin/codiff
+{{- end }}
 
 # Neovim lazy-lock.json — managed via 'dots lazy-lock' instead of chezmoi apply
 .config/nvim/lazy-lock.json
