@@ -41,33 +41,9 @@ t3code_root_pids() {
   done <<<"$all"
 }
 
-# Spawn detached from this process tree *and* from its cgroup.
-#
-# The desktop launches T3 Code into a systemd scope (`app-t3code-N.scope`), and
-# everything started from inside it — this script, an agent's shell, whatever
-# they spawn — inherits that cgroup. When the app goes down systemd tears the
-# scope down and kills every process still in it, so a relauncher started with
-# plain `setsid` dies with the app it was waiting for: `setsid` makes a new
-# POSIX session, which is not a new cgroup. That is exactly what happened the
-# first time this was tried — clean kill, no relaunch.
-#
-# `systemd-run --user` puts it in a transient unit of its own instead. setsid
-# remains the fallback for a machine with no systemd, where nothing tears a
-# cgroup down and it is sufficient.
-#
-# `ELECTRON_RUN_AS_NODE` is dropped on the way out: T3 Code exports it to every
-# process it spawns, so an agent shell inside it hands the variable to whatever
-# it launches — and an Electron app started with it set runs as plain Node and
-# tries to execute its first argument as a script. systemd-run happens to dodge
-# this by starting from the user manager's environment rather than ours, but the
-# setsid fallback would inherit it, so clear it for both instead of relying on
-# which branch ran.
-spawn_detached() {
-  if command -v systemd-run >/dev/null 2>&1; then
-    systemd-run --user --collect --quiet -- "$@" >/dev/null 2>&1 && return
-  fi
-  setsid -f env -u ELECTRON_RUN_AS_NODE "$@" >/dev/null 2>&1 </dev/null
-}
+# Spawn detached from this process tree *and* from its cgroup. Shared with the
+# other launchers that start a GUI they must not outlive; the why is in the lib.
+. "$HOME/.local/lib/spawn.sh"
 
 # Ask, where there is somebody to ask. No terminal is the same answer as
 # declining — same outcome, same next step — but not the same *reason*, and the
@@ -103,22 +79,25 @@ resolve_dots() {
 restart_app() {
   local pids
   pids="$(t3code_root_pids)"
+  # Relaunched from $HOME, not from this checkout: the script cd's into $repo
+  # below, spawn_detached keeps the caller's directory, and every terminal T3
+  # Code opens inherits it — so a bare restart would put every pane in the fork.
   if [[ -z "$pids" ]]; then
     echo "t3fork: T3 Code is not running; launching it"
-    spawn_detached "$target"
+    (cd "$HOME" && spawn_detached "$target")
     return
   fi
 
   # The waiter polls rather than `wait`s: it is not the parent of what it
   # watches. The ceiling matters because a hung quit must not leave the desktop
   # with no T3 Code at all — after it, relaunch regardless.
-  spawn_detached bash -c '
+  (cd "$HOME" && spawn_detached bash -c '
     for _ in $(seq 1 40); do
       pgrep -x t3code >/dev/null || break
       sleep 0.5
     done
     exec "$1"
-  ' _ "$target"
+  ' _ "$target")
 
   echo "t3fork: restarting T3 Code"
   # shellcheck disable=SC2086

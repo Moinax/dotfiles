@@ -12,6 +12,13 @@ the entry name: television ships `tv`), plus `source:` (owner/repo) or `npm:` so
 `dots update` can resolve an upstream version. Never let the updater infer the
 binary from the entry name.
 
+The one carve-out: an entry whose executable name is already owned by an unrelated
+distro package omits `binary:` on purpose. `resolve_owners` resolves it with
+`command -v`, so the wrong package answers and the entry is reported as
+pacman-managed — its release lookup skipped for good. Cover the probe with
+`check:` (a path test) plus `version:` instead, and say so in the entry's comment.
+codiff is the example: pahole ships /usr/bin/codiff.
+
 `update:` is only ever a command; who owns updates is the separate closed-set
 `updated_by:` — `self` (the tool updates itself), `app` (tracked by the external-apps
 tool), `none` (deliberately not updatable), default `dotfiles`. Forgetting the metadata

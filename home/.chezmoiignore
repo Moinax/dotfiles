@@ -114,8 +114,13 @@ LICENSE
 .local/bin/dev-clean
 {{- end }}
 # codiff is a custom_install with its own flag, so unticking it alone also
-# drops the launcher chezmoi owns for it.
-{{- if not (index . "install_codiff") }}
+# drops the launcher chezmoi owns for it. The purpose test is not redundant:
+# codiff is `desktop_only`, which the installer honours when it picks what to
+# install, but the flag writers do not — `custom_entry_selected` knows nothing
+# about purpose — so a terminal machine that selected Development records
+# `install_codiff = true` for an app it deliberately skipped. Without this, that
+# machine gets a launcher for a missing app, shadowing pahole's /usr/bin/codiff.
+{{- if or (not (index . "install_codiff")) (eq .install_purpose "terminal") }}
 .local/bin/codiff
 {{- end }}
 

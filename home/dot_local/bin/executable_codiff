@@ -3,16 +3,34 @@
 # bundle layout; on Linux the Electron binary parses the same arguments itself.
 app="$HOME/.local/share/codiff"
 
-case "${1:-}" in
-    # Text-only flags go through the bundled Node entry, which prints to stdout.
-    # The codiff agent skill reads --walkthrough-guide from there.
-    --help | -h | --version | -v | --walkthrough-guide | --completions)
-        ELECTRON_RUN_AS_NODE=1 exec "$app/codiff" "$app/resources/app/bin/codiff.js" "$@" ;;
-    # --plan blocks until the plan is handed back, and --share prints the URL it
-    # ends on: both need the terminal and the stdout the detach below discards.
-    --plan | --share)
-        exec "$app/codiff" "$@" ;;
-esac
+# Say so rather than exiting 0 into nothing: the detached branch throws stdout
+# and stderr away, so an app that was never unpacked — a failed install, or a
+# terminal machine that skipped this desktop_only entry — would make every
+# invocation a silent no-op.
+[ -x "$app/codiff" ] || {
+    echo "codiff: not installed in $app — run 'dots packages sync'" >&2
+    exit 127
+}
 
-# setsid detaches the app so the calling terminal is not held for its lifetime.
-exec setsid -f "$app/codiff" "$@" >/dev/null 2>&1
+# The two foreground dispatches, scanned over every argument rather than "$1":
+# `codiff HEAD --share` and `--plan=file.md` are documented forms, and matching
+# only the first argument sent them to the detached branch below, where the
+# handoff never blocks, the URL is discarded and help prints into /dev/null.
+#
+# Text-only flags go through the bundled Node entry, which prints to stdout;
+# --walkthrough-guide is how an agent reads the walkthrough authoring schema.
+# --plan blocks until the plan is handed back and --share prints the URL it ends
+# on: both need the terminal and the stdout that detaching throws away.
+for arg do
+    case "$arg" in
+        --help | -h | --version | -v | --walkthrough-guide | --completions)
+            ELECTRON_RUN_AS_NODE=1 exec "$app/codiff" "$app/resources/app/bin/codiff.js" "$@" ;;
+        --plan | --plan=* | --share | --share=*)
+            exec env -u ELECTRON_RUN_AS_NODE "$app/codiff" "$@" ;;
+    esac
+done
+
+# Sourced here rather than at the top: every branch above execs away without it,
+# and this one is the only caller.
+. "$HOME/.local/lib/spawn.sh"
+spawn_detached "$app/codiff" "$@"
