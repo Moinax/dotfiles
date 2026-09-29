@@ -609,6 +609,18 @@ case "${1:-}" in
     fi
     echo "t3fork: installed $version -> $target"
 
+    # The in-app fork updater recognises the build it prepared by $target's size
+    # and mtime, so the install above — a *newer* build, by hand — reads to it as
+    # "the installed AppImage changed or is missing" and parks the sidebar on
+    # "Fork update needs attention" until some later in-app run overwrites it.
+    # A stale record of a build that no longer exists, reported as a problem with
+    # the one that replaced it. Dropping it leaves the updater idle, which is
+    # what it is. Skipped while its unit runs: that is the one case where
+    # status.json is a live job's progress rather than a leftover.
+    if ! systemctl --user is-active --quiet t3fork-update.service; then
+      rm -f "$HOME/.local/state/t3fork/status.json" "$HOME/.local/state/t3fork/prepared.json"
+    fi
+
     # Asking needs someone to answer: run from an agent or a hook there is no
     # terminal, and a `read` there would either block forever or read the
     # build's own output. So no tty means no restart unless -y said so.
