@@ -15,8 +15,9 @@ machine last agreed with it?
 Phases: system update (`cachy-update`) → new groups → custom-install prerequisites
 → package delta → declared services → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
-`run_post_apply` → login wallpaper → encrypted DNS → regional formats → prune old
-Codex releases → re-stamp the profile → report fork drift → report a waiting backup.
+`run_post_apply` → login wallpaper → encrypted DNS → regional formats → reclaim
+tuning → prune old Codex releases → re-stamp the profile → report fork drift →
+report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer
 
@@ -87,11 +88,12 @@ half: it only prunes what the standalone Codex installer leaves behind, keeping
 refresh has just superseded is the rollback, and it never touches a release a
 live `codex` still runs from. `tests/test_codex_releases.sh` pins that.
 
-### The two reconcilers that moved out
+### The three reconcilers that moved out
 
-`reconcile_login_wallpaper` and `reconcile_encrypted_dns` are phases of this
-script, but their subject matter lives with the thing they configure:
-`.claude/rules/login-wallpaper.md` and `.claude/rules/dns-encrypted.md`. Both
+`reconcile_login_wallpaper`, `reconcile_encrypted_dns` and
+`reconcile_zram_tuning` are phases of this script, but their subject matter lives
+with the thing they configure: `.claude/rules/login-wallpaper.md`,
+`.claude/rules/dns-encrypted.md` and `.claude/rules/zram-tuning.md`. All three
 share one shape worth stating here, because it is the reason they exist at all
 and it applies to the next one too.
 
@@ -113,9 +115,10 @@ installs `fprintd` and reconciles the declared services but never lays down the
 PAM stack, the polkit rule or the enrolment unit — the wallpaper bug's exact
 shape, already shipped. Anything moved out of that list wants the same treatment.
 
-**Neither asks first.** sudo already prompts for a password, which is the same
-question with a way out built in, and the alternative to answering it is a broken
-machine. Both are gated on a tty, since sudo under a pipe would sit unanswered.
+**None of them asks first.** sudo already prompts for a password, which is the
+same question with a way out built in, and the alternative to answering it is a
+broken machine. All three are gated on a tty, since sudo under a pipe would sit
+unanswered.
 
 ### Fork drift is discovered, not declared
 

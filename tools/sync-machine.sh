@@ -31,6 +31,7 @@ source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
 source "$DOTFILES_DIR/install/lib/regional-formats.sh"
+source "$DOTFILES_DIR/install/lib/zram-tuning.sh"
 
 install_interrupt_trap
 
@@ -772,6 +773,39 @@ reconcile_regional_formats() {
     apply_regional_formats || return 0
 }
 
+# ── Reclaim tuning ──────────────────────────────────────────────────────────
+
+# The two files that stop a zram machine from compressing its live working set —
+# see install/lib/zram-tuning.sh, which both this and `dots setup` call.
+#
+# Here for the reason spelled out at reconcile_login_wallpaper: setup is not
+# re-run, so a machine that merely pulled this would keep CachyOS's swappiness of
+# 150 forever. The trigger is machine state — the content of the two files, never
+# CHANGED_FILES — which is also what makes retuning either knob in the lib reach
+# a machine already carrying the previous value.
+#
+# Worth the sudo prompt even though the symptom is intermittent: the failure is a
+# desktop that freezes whole-cursor for minutes under a parallel build, and it
+# leaves nothing behind in any log to connect it back to a swappiness default.
+reconcile_zram_tuning() {
+    zram_tuning_needs_setup || return 0
+
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the reclaim tuning"
+        return 0
+    fi
+
+    # No confirmation in front of this, for the reason spelled out at
+    # reconcile_login_wallpaper: sudo already asks a question with a way out in
+    # it, and two file writes plus a udev trigger is not a transaction worth a
+    # second one.
+    print_header "Reclaim Tuning"
+    print_info "Reclaim still prefers compressing live memory over dropping page cache — inverting it (needs sudo)"
+    apply_zram_tuning || return 0
+}
+
 # ── The lock and login screens ──────────────────────────────────────────────
 
 # The two privileged steps behind /var/lib/wallpaper/current — see
@@ -1166,6 +1200,7 @@ do_sync() {
     reconcile_login_wallpaper
     reconcile_encrypted_dns
     reconcile_regional_formats
+    reconcile_zram_tuning
     reconcile_codex_releases
 
     # record_synced_state declines on its own while a package shortfall is

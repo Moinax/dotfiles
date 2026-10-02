@@ -39,6 +39,7 @@ source "$SCRIPT_DIR/lib/hyprvoice.sh"
 source "$SCRIPT_DIR/lib/dns-encrypted.sh"
 source "$SCRIPT_DIR/lib/regional-formats.sh"
 source "$SCRIPT_DIR/lib/login-wallpaper.sh"
+source "$SCRIPT_DIR/lib/zram-tuning.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
 # The prompt-heaviest script in the repo, and the last one still without this:
@@ -1791,6 +1792,18 @@ setup_regional_formats() {
     apply_regional_formats || return 0
 }
 
+# The installer's framing over install/lib/zram-tuning.sh (`dots update`'s is
+# reconcile_zram_tuning in tools/sync-machine.sh). Not gated on the install
+# purpose: a headless box that swaps its working set into zram stalls exactly the
+# same way, it just has no cursor to freeze. The lib skips a machine with no zram
+# device by itself.
+setup_zram_tuning() {
+    print_header "Reclaim Tuning"
+    # A failure is already tracked as a warning by apply_zram_tuning, and must not
+    # abort the install over a swappiness value.
+    apply_zram_tuning || return 0
+}
+
 # The installer's framing over install/lib/login-wallpaper.sh — the lib holds the
 # mechanism, each caller frames it (dots update's framing is
 # reconcile_login_wallpaper in tools/sync-machine.sh). Unconditional, since setup
@@ -2064,6 +2077,7 @@ main() {
     setup_biometric
     setup_encrypted_dns
     setup_regional_formats
+    setup_zram_tuning
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_login_wallpaper
         setup_plymouth
