@@ -30,6 +30,20 @@ hl.window_rule({
     center = true,
 })
 
+-- T3 Code's startup splash: a 360x220 frameless window shown while the local
+-- backend boots (~2s), on the same class as the main window — so the title is
+-- what tells the two apart, and it is deliberately fixed on the splash side.
+-- Without this it takes a tile of the layout and sits in the middle of a
+-- full-screen slab, then the real window shoves it aside a moment later.
+--
+-- The class is not anchored at the end: a development build stage-suffixes it
+-- (`…T3Code.Development`), and the title already scopes the rule to the splash.
+hl.window_rule({
+    match  = { class = "^(com\\.t3tools\\.T3Code.*)$", title = "^(Starting T3 Code.*)$" },
+    float  = true,
+    center = true,
+})
+
 -- Bitwarden browser-extension popout (chrome-<extension id>-<profile>): float it centered.
 -- Content is a portrait-shaped centered card; size the window to fit it (avoids empty margins).
 hl.window_rule({
