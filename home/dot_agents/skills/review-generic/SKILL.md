@@ -170,7 +170,7 @@ Wait for all six. Then, in this context, on the pooled list:
 ```json fence and nothing else — `file`, `line`, `angle`, `summary`,
 `failure_scenario`, `verdict` — then stop. Do not edit, do not run gates.
 
-Fix each survivor directly in the working tree. Leave the changes **unstaged**.
+Fix each survivor directly in the working tree.
 
 Skip a finding when the fix would change intended behaviour, when it would
 require changes well outside the reviewed diff, or when you judge it a false
