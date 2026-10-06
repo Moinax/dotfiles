@@ -1,2 +1,6 @@
 # Agent scratch space (agents/AGENTS.md), throwaway by definition.
 .scratch/
+
+# Claude Code's per-project permission overrides: machine-local by design, and
+# untracked in every repo it lands in.
+**/.claude/settings.local.json
