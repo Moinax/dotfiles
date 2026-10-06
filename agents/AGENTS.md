@@ -59,3 +59,13 @@ Keep tool-specific rules in that tool's own configuration.
   a clickable chip that cannot open it — the click silently falls back to the editor
   and the preview never renders. `.scratch/` sits in my global gitignore
   (`~/.config/git/ignore`), so it stays out of `git status` and out of hunk.
+
+## Waiting on something in T3 Code
+
+- **Never wait on something with `Bash(run_in_background)`.** T3 Code files a
+  backgrounded shell as `kind: "command"`, which deliberately does not hold the
+  thread — it is the dev-server case — so the thread leaves Working and lands
+  back in my inbox looking like it needs me, then wakes on its own later. Use
+  `watch_pull_request` for a pull request or its CI, and the `Monitor` tool for
+  anything else; both register as `kind: "monitor"` and keep the thread in
+  Working. `Monitor` expires at 30 min, re-arm it.
