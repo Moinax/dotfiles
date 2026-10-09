@@ -19,7 +19,10 @@ stop_subscriber() {
     fi
 }
 
-trap 'exit 0' INT TERM
+# Waybar closes our stdout when it tears a bar down. Untrapped, SIGPIPE kills us
+# outright and the EXIT trap never runs, which is what left swaync-client
+# subscribers orphaned on systemd for days.
+trap 'exit 0' INT TERM PIPE
 trap stop_subscriber EXIT
 
 format_line() {
@@ -41,32 +44,29 @@ format_line() {
     printf '%s\n' "${line/"$matched"/"$replacement"}"
 }
 
-# swaync-client survives a SwayNC crash, but its subscription remains attached
-# to the old D-Bus owner. Track that daemon process and replace the client when
-# the owner disappears so Waybar receives the new daemon's initial count.
+# swaync-client survives a SwayNC restart, but its subscription stays attached to
+# the dead D-Bus owner and goes silent. Exit when that daemon disappears and let
+# the module's restart-interval respawn us against the new owner. Waybar owns the
+# supervision either way: a bar teardown kills this script, and nothing here can
+# resurrect it — that is how the bell used to freeze on a two-day-old count.
+daemon_pid=$(systemctl --user show --property MainPID --value \
+    swaync.service 2>/dev/null) || daemon_pid=0
+
+exec {stream_fd}< <(exec swaync-client -swb)
+subscriber_pid=$!
+
 while true; do
-    daemon_pid=$(systemctl --user show --property MainPID --value \
-        swaync.service 2>/dev/null) || daemon_pid=0
-
-    exec {stream_fd}< <(exec swaync-client -swb)
-    subscriber_pid=$!
-
-    while true; do
-        IFS= read -r -t 1 -u "$stream_fd" line
-        read_status=$?
-        if ((read_status == 0)); then
-            format_line "$line"
-        elif ((read_status == 1)); then
-            # EOF means the client itself died. A timeout is greater than 128.
-            break
-        elif ((daemon_pid == 0)); then
-            daemon_pid=$(systemctl --user show --property MainPID --value \
-                swaync.service 2>/dev/null) || daemon_pid=0
-        elif ! kill -0 "$daemon_pid" 2>/dev/null; then
-            break
-        fi
-    done
-
-    stop_subscriber
-    sleep 0.1
+    IFS= read -r -t 1 -u "$stream_fd" line
+    read_status=$?
+    if ((read_status == 0)); then
+        format_line "$line"
+    elif ((read_status == 1)); then
+        # EOF means the client itself died. A timeout is greater than 128.
+        exit 0
+    elif ((daemon_pid == 0)); then
+        daemon_pid=$(systemctl --user show --property MainPID --value \
+            swaync.service 2>/dev/null) || daemon_pid=0
+    elif ! kill -0 "$daemon_pid" 2>/dev/null; then
+        exit 0
+    fi
 done

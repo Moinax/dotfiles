@@ -257,6 +257,7 @@
   "custom/vibewatch-name": {
     "exec": "{{ $vw }} status --watch --part name",
     "return-type": "json",
+    "restart-interval": 1,
     "on-click": "{{ $vw }} toggle-panel",
     "format": "{}",
     "tooltip": false,
@@ -264,6 +265,7 @@
   "custom/vibewatch-state": {
     "exec": "{{ $vw }} status --watch --part state",
     "return-type": "json",
+    "restart-interval": 1,
     "on-click": "{{ $vw }} toggle-panel",
     "format": "{}",
     "tooltip": false,
@@ -271,6 +273,7 @@
   "custom/vibewatch-count": {
     "exec": "{{ $vw }} status --watch --part count",
     "return-type": "json",
+    "restart-interval": 1,
     "on-click": "{{ $vw }} toggle-panel",
     // The badge is empty whenever one agent is alive. waybar's own answer to
     // that is better than any CSS: it drops the widget instead of leaving its
@@ -285,6 +288,11 @@
   "custom/notification": {
     "exec": "~/.local/bin/waybar-notification.sh",
     "return-type": "json",
+    // Continuous scripts get no second chance: a bar teardown (a monitor coming
+    // back is enough) kills them and the module then shows its last value
+    // forever. Waybar is the only supervisor they have — same as dark-mode and
+    // caffeine above.
+    "restart-interval": 1,
     "tooltip": true,
     "on-click": "swaync-client -t",
     "on-click-right": "swaync-client -d",
