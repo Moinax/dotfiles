@@ -43,6 +43,9 @@ emit_status "$(portal_mode || theme_mode)"
 exec 3< <(gdbus monitor --session --dest org.freedesktop.portal.Desktop 2>/dev/null)
 MONITOR_PID=$!
 trap 'kill "$MONITOR_PID" 2>/dev/null' EXIT
+# And trap SIGPIPE, or the teardown that closes our stdout kills us before that
+# EXIT trap can run — which strands the monitor it is there to reap.
+trap 'exit 0' INT TERM PIPE
 
 # The guard has to stay: other settings carry a `uint32` payload too, and
 # scheme_mode reads the payload alone.

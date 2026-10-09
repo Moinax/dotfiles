@@ -3,27 +3,11 @@
 # Shows only the bell icon when count is 0, bell + count otherwise
 
 BELL=$'\U000f009a'
-subscriber_pid=
-stream_fd=
-
-stop_subscriber() {
-    if [[ -n $subscriber_pid ]]; then
-        kill "$subscriber_pid" 2>/dev/null || true
-        wait "$subscriber_pid" 2>/dev/null || true
-        subscriber_pid=
-    fi
-
-    if [[ -n $stream_fd ]]; then
-        exec {stream_fd}<&- 2>/dev/null || true
-        stream_fd=
-    fi
-}
 
 # Waybar closes our stdout when it tears a bar down. Untrapped, SIGPIPE kills us
-# outright and the EXIT trap never runs, which is what left swaync-client
+# outright and the EXIT trap below never runs, which is what left swaync-client
 # subscribers orphaned on systemd for days.
 trap 'exit 0' INT TERM PIPE
-trap stop_subscriber EXIT
 
 format_line() {
     local line=$1 count matched replacement
@@ -52,11 +36,15 @@ format_line() {
 daemon_pid=$(systemctl --user show --property MainPID --value \
     swaync.service 2>/dev/null) || daemon_pid=0
 
-exec {stream_fd}< <(exec swaync-client -swb)
-subscriber_pid=$!
+# Read through a process substitution rather than a pipe, for the trap — the
+# same reason waybar-dark-mode.sh does: a piped client would outlive us until
+# its next write hit the closed pipe, one stray subscriber per teardown.
+exec 3< <(exec swaync-client -swb)
+SUBSCRIBER_PID=$!
+trap 'kill "$SUBSCRIBER_PID" 2>/dev/null' EXIT
 
 while true; do
-    IFS= read -r -t 1 -u "$stream_fd" line
+    IFS= read -r -t 1 -u 3 line
     read_status=$?
     if ((read_status == 0)); then
         format_line "$line"
