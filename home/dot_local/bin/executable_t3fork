@@ -11,6 +11,12 @@
 #     -y, --yes         restart without asking (for unattended runs)
 #     -n, --no-restart  install only, leave the running app alone
 #   t3fork restart      restart T3 Code onto the installed AppImage as-is
+#   t3fork mobile       build the Android app from this checkout and install it
+#                       on the USB-connected phone, over whatever is there
+#     -p, --preview     build the side-by-side "T3 Code Preview" variant
+#     -c, --clean       regenerate android/ from scratch — slow, but the answer
+#                       to a build that fails on something stale
+#     -b, --build-only  build the APK, leave the phone alone
 #
 # Test changes with `vp run dev:desktop` in the repo before `install` —
 # that is the e2e loop; this script only ships what already works.
@@ -24,6 +30,12 @@ branch="${T3CODE_FORK_BRANCH:-moinax}"
 # one decision written twice; change the name and $target has to follow.
 app_name="T3 Code"
 target="$HOME/.local/share/AppImages/t3-code.AppImage"
+
+# Gradle 9 and AGP 9 both refuse anything older than a JDK 17 toolchain, and
+# $JAVA_HOME is unset in a login shell here — Arch's java-runtime-common puts
+# `java` on PATH and deliberately sets no JAVA_HOME. So name the JDK rather
+# than inherit whichever one a caller happens to export.
+java_home="${T3CODE_JAVA_HOME:-/usr/lib/jvm/java-17-openjdk}"
 
 [[ -d "$repo" ]] || { echo "t3fork: no repo at $repo" >&2; exit 1; }
 
@@ -70,6 +82,31 @@ resolve_dots() {
   for d in "$(command -v dots || true)" "$HOME/.local/bin/dots"; do
     if [[ -x "$d" ]]; then printf '%s\n' "$d"; return 0; fi
   done
+  return 1
+}
+
+# Resolve vp rather than trusting PATH, for the same reason as `dots` above: an
+# agent shell inside T3 Code replays a PATH snapshot older than either install
+# location, and that is the context this script is most often run from.
+#
+# Prefer the official standalone install. Unlike the npm package's bin/vp, it
+# delegates to this checkout's workspace-pinned vite-plus and therefore keeps
+# Vite/Vitest on one module graph. The ~/.vite-plus path is the legacy
+# monolithic layout; current installers use the XDG data directory.
+#
+# Written once because `mobile` needs the same `vp i` that `install` does — a
+# rebase can move the lockfile, and both build from the tree it describes.
+resolve_vp() {
+  local v
+  for v in \
+    "$HOME/.local/share/vite-plus/bin/vp" \
+    "$HOME/.vite-plus/bin/vp" \
+    "$(command -v vp || true)"
+  do
+    if [[ -x "$v" ]]; then printf '%s\n' "$v"; return 0; fi
+  done
+  echo "t3fork: vp not found — 'dots packages sync' installs it, or:" >&2
+  echo "  curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash" >&2
   return 1
 }
 
@@ -468,6 +505,95 @@ offer_push() {
   "$dots" t3-host fork || echo "t3fork: the droplet build failed — re-run: dots t3-host fork" >&2
 }
 
+# The Android SDK is not a distro package — `dots packages sync` installs it
+# through the android-sdk custom_install entry, which is also what keeps its
+# cmdline-tools current. Resolved to a path rather than read off PATH because
+# nothing here puts platform-tools on it: adb is addressed inside the SDK.
+android_sdk() {
+  local sdk="${ANDROID_HOME:-$HOME/Android/Sdk}"
+  if [[ -x "$sdk/platform-tools/adb" ]]; then printf '%s\n' "$sdk"; return 0; fi
+  echo "t3fork: no Android SDK at $sdk — 'dots packages sync' installs it" >&2
+  return 1
+}
+
+# One phone, authorised — or the sentence that says which of the four states it
+# is in. The message is the whole value here: every failure is something only
+# somebody holding the phone can clear, and "unauthorized" in particular looks
+# identical to a working device in `adb devices -l` output nobody reads.
+#
+# Echoes the serial, so every later adb call can be -s pinned rather than
+# trusting that the set of attached devices did not change mid-build.
+one_device() {
+  local adb="$1" lines state
+  "$adb" start-server >/dev/null 2>&1 || true
+  lines="$("$adb" devices | tail -n +2 | awk 'NF')"
+  if [[ -z "$lines" ]]; then
+    echo "t3fork: no device — plug the phone in and enable USB debugging:" >&2
+    echo "  Settings > Developer options > USB debugging" >&2
+    return 1
+  fi
+  if [[ "$(wc -l <<<"$lines")" -gt 1 ]]; then
+    echo "t3fork: more than one device attached — unplug the others:" >&2
+    sed 's/^/  /' <<<"$lines" >&2
+    return 1
+  fi
+  state="$(awk '{print $2}' <<<"$lines")"
+  case "$state" in
+    device)
+      awk '{print $1}' <<<"$lines"
+      return 0
+      ;;
+    unauthorized)
+      echo "t3fork: the phone has not authorised this computer." >&2
+      echo "t3fork: unlock it — \"Allow USB debugging?\" is waiting there — and" >&2
+      echo "        tick \"Always allow from this computer\" so this is the last time." >&2
+      ;;
+    *)
+      echo "t3fork: the phone reports \"$state\", not ready. Unlock it and re-plug it." >&2
+      ;;
+  esac
+  return 1
+}
+
+# One signing key, generated once, kept outside the checkout. Both halves of
+# that matter:
+#
+#   - Outside, because `expo prebuild --clean` wipes android/ wholesale, and a
+#     key that moves is a key that forces an uninstall — which on this app
+#     means re-pairing the phone with the desktop — on the very next install.
+#   - Ours, not the React Native template's debug.keystore that the generated
+#     release buildType is wired to. That private key ships in every RN repo on
+#     GitHub, so anything signed with it can be silently upgraded by anything
+#     else signed with it. This app holds a paired session to the desktop; the
+#     four lines are worth it.
+#
+# Sets $ks and $ks_pass for the caller.
+ensure_keystore() {
+  local dir="$HOME/.local/share/t3fork" pass_file
+  ks="$dir/t3code-mobile.keystore"
+  pass_file="$dir/t3code-mobile.pass"
+  if [[ -f "$ks" && -f "$pass_file" ]]; then
+    ks_pass="$(cat "$pass_file")"
+    return 0
+  fi
+  mkdir -p "$dir"
+  # Both halves or neither. A keystore whose password was lost can never sign
+  # again, and the only way out of that is a fresh key — i.e. exactly the
+  # uninstall this function exists to make unnecessary. So a half-written pair
+  # is cleared rather than half-trusted.
+  rm -f "$ks" "$pass_file"
+  ks_pass="$(openssl rand -base64 24)"
+  (umask 077 && printf '%s' "$ks_pass" >"$pass_file")
+  "$java_home/bin/keytool" -genkeypair -keystore "$ks" -alias t3fork \
+    -keyalg RSA -keysize 4096 -validity 36500 \
+    -storepass "$ks_pass" -keypass "$ks_pass" \
+    -dname "CN=t3fork, OU=$branch, O=local build" >/dev/null
+  chmod 600 "$ks"
+  echo "t3fork: generated a signing key at $ks"
+  echo "t3fork: back it up along with the password beside it — losing either one"
+  echo "        costs an uninstall, and with it the phone's pairing, to reinstall."
+}
+
 case "${1:-}" in
   update)
     # Ahead of the fetch, so the answer comes before several seconds of network.
@@ -539,28 +665,7 @@ case "${1:-}" in
       esac
     done
 
-    # Resolve vp rather than trusting PATH. The point of this script is to be
-    # runnable from inside T3 Code, and an agent shell there replays a snapshot
-    # captured before either install location was ever on PATH — so `command -v
-    # vp` fails in the one context that matters most. Both locations are stable,
-    # so ask PATH first and fall back to them in turn.
-    #
-    # Prefer the official standalone install. Unlike the npm package's bin/vp,
-    # it delegates to this checkout's workspace-pinned vite-plus and therefore
-    # keeps Vite/Vitest on one module graph. The ~/.vite-plus path is the legacy
-    # monolithic layout; current installers use the XDG data directory.
-    for vp in \
-      "$HOME/.local/share/vite-plus/bin/vp" \
-      "$HOME/.vite-plus/bin/vp" \
-      "$(command -v vp || true)"
-    do
-      if [[ -x "$vp" ]]; then break; fi
-    done
-    [[ -x "$vp" ]] || {
-      echo "t3fork: vp not found — 'dots packages sync' installs it, or:" >&2
-      echo "  curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash" >&2
-      exit 1
-    }
+    vp="$(resolve_vp)" || exit 1
     "$vp" i
 
     # Version carries the commit so two builds are never confused for each
@@ -641,6 +746,214 @@ case "${1:-}" in
     if [[ "$restart" == yes ]]; then
       restart_app
     fi
+    ;;
+
+  mobile)
+    # Same reason as `install`: mid-rebase HEAD is a partially replayed tree,
+    # and an APK built from it would be stamped with the branch name all the
+    # same — this script's variable, not anything git was asked.
+    refuse_if_rebasing "a rebase is in progress — refusing to build a half-rebased tree. Finish it:"
+
+    variant=production
+    clean=""
+    do_install=yes
+    for flag in "${@:2}"; do
+      case "$flag" in
+        -p|--preview) variant=preview ;;
+        -c|--clean) clean=--clean ;;
+        -b|--build-only) do_install=no ;;
+        *) echo "t3fork: unknown flag $flag" >&2; exit 1 ;;
+      esac
+    done
+
+    [[ -x "$java_home/bin/javac" ]] || {
+      echo "t3fork: no JDK at $java_home — 'dots packages sync' installs jdk17-openjdk" >&2
+      exit 1
+    }
+    sdk="$(android_sdk)" || exit 1
+    adb="$sdk/platform-tools/adb"
+
+    # The phone is read *before* the build, not after it. A native build here is
+    # twenty minutes of NDK work, and every way this can fail on the device side
+    # is something only the person holding it can clear — so finding out at the
+    # end is twenty minutes spent to learn something that cost one second at the
+    # start. --build-only is the case that genuinely has no phone to look at.
+    serial=""
+    if [[ "$do_install" == yes ]]; then
+      serial="$(one_device "$adb")" || exit 1
+    fi
+
+    # The package name is not guessed anywhere below: it is what adb installs
+    # over, and on the mismatch path it is the argument to `adb uninstall`.
+    # app.config.ts is where these are declared; this is the one mirror of it.
+    case "$variant" in
+      production) pkg=com.t3tools.t3code ;;
+      preview)    pkg=com.t3tools.t3code.preview ;;
+    esac
+
+    vp="$(resolve_vp)" || exit 1
+    "$vp" i
+
+    # `--clean` is not the default, deliberately, even though apps/mobile's own
+    # npm scripts pass it. It deletes android/ entire, and with it .cxx and
+    # app/build — the NDK and CMake output for reanimated, nitro-modules and
+    # shiki, which is the twenty minutes. Regenerating in place keeps those and
+    # turns a JS-only change into a two-minute rebuild, which is the whole point
+    # of this being a command you run often. The gradle failure path below names
+    # `--clean` as the first thing to try, so staleness costs one re-run.
+    echo "t3fork: generating android/ for the $variant variant"
+    ( cd apps/mobile \
+      && APP_VARIANT="$variant" EXPO_NO_GIT_STATUS=1 \
+         node_modules/.bin/expo prebuild $clean --platform android --no-install )
+
+    # Read back rather than computed: app.config.ts holds the version and
+    # apps/mobile/package.json reads 0.0.0, so the only honest source is what
+    # prebuild just wrote into the gradle file we are about to build.
+    base="$(sed -n 's/.*versionName "\(.*\)".*/\1/p' apps/mobile/android/app/build.gradle | head -1)"
+    version="${base:-0.0.0}-$branch.$(git rev-parse --short HEAD)"
+
+    # Stamp the commit into the APK by editing the file prebuild just wrote,
+    # which is safe precisely because prebuild rewrites it every run — so this
+    # never stacks, and `--clean` is not needed to undo it.
+    #
+    # Not `-Pandroid.injected.version.name`, which is the property Android
+    # Studio uses and the obvious thing to reach for: the AGP here accepts it,
+    # changes nothing, and the build succeeds — the APK came out `2.0.0` with
+    # no warning anywhere. Reading the version back out of the APK below is what
+    # caught that, and is the reason that line reports the manifest rather than
+    # what we asked for.
+    [[ -n "$base" ]] && sed -i "s/versionName \"$base\"/versionName \"$version\"/" \
+      apps/mobile/android/app/build.gradle
+
+    # versionCode, same way and for a harder reason: prebuild writes 1, every
+    # time, and Android refuses a downgrade *before* it looks at anything else —
+    # the store build is at 74, so `adb install` failed on
+    # INSTALL_FAILED_VERSION_DOWNGRADE and never got as far as the signature.
+    # It also has to keep clearing it, or our own next build is a downgrade
+    # against our own last one.
+    #
+    # The commit count is that number: it only grows, because what grows it is
+    # upstream. A rebase that drops one of our own patches dips it by one, which
+    # matters only if it dips below what is already on the phone — four digits
+    # above the store's two, so not in practice, and the install path below says
+    # what to do if it ever does.
+    sed -i "s/versionCode 1$/versionCode $(git rev-list --count HEAD)/" \
+      apps/mobile/android/app/build.gradle
+
+    ensure_keystore
+
+    # Native code is the whole cost of this build: reanimated, nitro-modules and
+    # shiki-engine compile for all four ABIs the project declares, and a phone
+    # runs one. So ask the phone and build its ABI alone.
+    #
+    # `reactNativeArchitectures` is React Native's own lever, and the
+    # gradle.properties prebuild writes documents it on the line above its
+    # default. NOT `android.injected.build.abi`, which is the one Android Studio
+    # sets and the obvious thing to reach for: on AGP 9 it takes the build down
+    # an IDE-deploy path that assembles no APK at all — BUILD SUCCESSFUL, an
+    # empty outputs/apk/release, and the previous build's APK deleted on the way
+    # through. The glob below is what reported that rather than installing a
+    # stale APK, which is the reason it is a glob.
+    #
+    # Only with a phone to ask, and only if it answers: --build-only has none,
+    # and an APK narrowed to one ABI is not what somebody asking for an APK
+    # rather than an install wants. An unauthorised phone cannot answer either,
+    # but one_device has already refused by here, so a silent failure can only
+    # mean a device that does not report the property — fall back to all four.
+    abi_arg=()
+    if [[ -n "$serial" ]]; then
+      abi="$("$adb" -s "$serial" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n')"
+      if [[ -n "$abi" ]]; then
+        abi_arg=("-PreactNativeArchitectures=$abi")
+        echo "t3fork: asking Gradle for $abi only — the phone's ABI"
+      fi
+    fi
+
+    # AGP's injected-signing properties, the ones Android Studio's "Generate
+    # Signed APK" uses, so the generated release buildType — wired to the
+    # template's debug keystore — is overridden without patching a file
+    # prebuild owns and would regenerate.
+    #
+    # The password goes on the command line, where /proc exposes it to this user
+    # for the length of the build. Not a boundary worth code: anyone who can
+    # read this process's cmdline can read $ks and the password file beside it.
+    # Cleared rather than predicted: whatever single APK is left afterwards is
+    # this build's. AGP renames the output on its own as soon as anything
+    # touches the ABI set, and a hardcoded `app-release.apk` then either misses
+    # the build or — worse — matches the one before it.
+    out_dir="apps/mobile/android/app/build/outputs/apk/release"
+    rm -f "$out_dir"/*.apk
+
+    echo "t3fork: building $version"
+    ( cd apps/mobile/android \
+      && JAVA_HOME="$java_home" ANDROID_HOME="$sdk" ./gradlew assembleRelease \
+           -Pandroid.injected.signing.store.file="$ks" \
+           -Pandroid.injected.signing.store.password="$ks_pass" \
+           -Pandroid.injected.signing.key.alias=t3fork \
+           -Pandroid.injected.signing.key.password="$ks_pass" \
+           "${abi_arg[@]}" ) || {
+      echo >&2
+      echo "t3fork: the Android build failed. Two things it is usually not the code:" >&2
+      echo >&2
+      echo "  - something left over from an earlier run — regenerate and retry:" >&2
+      echo "      t3fork mobile --clean" >&2
+      echo "  - an SDK component the checkout moved to. Nothing pins those (the" >&2
+      echo "    Expo config declares them, so a pin here would rot), and Gradle" >&2
+      echo "    names the one it wanted in the message above:" >&2
+      echo "      $sdk/cmdline-tools/latest/bin/android sdk install --sdk=$sdk <package>" >&2
+      exit 1
+    }
+
+    apk="$(echo "$out_dir"/*.apk)"
+    [[ -f "$apk" ]] || { echo "t3fork: build produced no APK in $out_dir" >&2; exit 1; }
+
+    # What the APK says about itself, not what we asked for. The injected
+    # version property is honoured by the AGP we build with today and nothing
+    # here would notice if a later one dropped it — so report the manifest.
+    aapt2="$(echo "$sdk"/build-tools/*/aapt2 | tr ' ' '\n' | tail -1)"
+    if [[ -x "$aapt2" ]]; then
+      badging="$("$aapt2" dump badging "$apk" 2>/dev/null)"
+      stamped="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging" | head -1)"
+      abis="$(sed -n 's/^native-code: //p' <<<"$badging" | tr -d \"\')"
+      echo "t3fork: built ${stamped:-?} for ${abis:-no native code} -> $apk"
+    else
+      echo "t3fork: built $apk"
+    fi
+
+    [[ "$do_install" == yes ]] || exit 0
+
+    echo "t3fork: installing $pkg on $serial"
+    # Not `set -e`'d: adb exits non-zero on the signature mismatch below, which
+    # is the one failure this command knows how to walk somebody through.
+    out="$("$adb" -s "$serial" install -r "$apk" 2>&1)" || true
+    printf '%s\n' "$out"
+
+    # Two different refusals, one remedy, so one branch. Over the store build
+    # both apply at once and the downgrade is the one that fires first, which is
+    # why matching only the signature left this on the generic failure path with
+    # nothing offered.
+    if grep -qi "INSTALL_FAILED_UPDATE_INCOMPATIBLE\|signatures do not match\|INSTALL_FAILED_VERSION_DOWNGRADE" <<<"$out"; then
+      echo
+      echo "t3fork: $pkg is installed already and cannot be upgraded in place —"
+      echo "        adb's reason is above, and it is one of two: a different"
+      echo "        signing key (the store build; Android cannot upgrade across"
+      echo "        keys) or a higher version code than this build carries."
+      echo "t3fork: either way the only way in is to uninstall it, and that"
+      echo "        erases its data — the phone will have to be paired with the"
+      echo "        desktop again."
+      echo "t3fork: against the store build this costs that once. Every later"
+      echo "        build is signed by the same key and installs straight over."
+      if ! ask_yes "Uninstall $pkg and install this build?"; then
+        echo "t3fork: left the phone alone. The APK is at $apk"
+        exit 0
+      fi
+      "$adb" -s "$serial" uninstall "$pkg"
+      "$adb" -s "$serial" install "$apk"
+    elif ! grep -q "Success" <<<"$out"; then
+      echo "t3fork: install failed — adb's reason is above" >&2
+      exit 1
+    fi
+    echo "t3fork: $pkg on $serial is now $version"
     ;;
 
   restart)

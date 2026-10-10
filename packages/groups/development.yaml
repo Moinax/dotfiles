@@ -67,6 +67,9 @@ descriptions:
   codeburn-desktop: CodeBurn's Electron dashboard (AppImage, desktop only)
   bun: Fast all-in-one JavaScript runtime, bundler, and package manager
   direnv: Per-directory environment variables (auto-loads .env)
+  jdk17-openjdk: OpenJDK 17 — the toolchain Gradle 9 and AGP 9 require for `t3fork mobile`
+  android-udev: udev rules so adb can reach a plugged-in phone without root
+  android-sdk: Android SDK command-line tools and adb (`t3fork mobile` builds the T3 Code fork's APK with them)
 
 desktop_only:
   - cursor-bin
@@ -208,6 +211,60 @@ custom_install:
     # Tracked as an external app, so 'dots update' reports it from the apps
     # updater rather than re-running the install command.
     updated_by: app
+  # Android SDK — what `t3fork mobile` builds the T3 Code fork's phone app with.
+  # Declared for the same reason vite-plus above is: without it a machine ends up
+  # with the fork checked out and no way to build half of it.
+  #
+  # Only the *stable* half is installed here: the command-line tools, which carry
+  # the `android` CLI and self-update through it, and platform-tools for adb.
+  # The platform, build-tools, NDK and CMake are deliberately NOT pinned — the
+  # Expo config in the checkout is what declares those versions, so a pin here
+  # would rot into a 2 GB download of the wrong NDK. AGP downloads what the
+  # project asks for on its own (`android.builder.sdkDownload`, on by default),
+  # and the `yes |` below is what makes that possible: accepting the licence
+  # writes $SDK/licenses/android-sdk-license, which is the file AGP checks
+  # before it will fetch anything unattended.
+  #
+  # No `binary:` — nothing here goes on PATH (t3fork addresses adb inside the
+  # SDK), so there is no command for the updater to probe; `check:` plus
+  # `version:` cover it, the carve-out .claude/rules/package-metadata.md names.
+  - name: android-sdk
+    check: '[ -x "$HOME/Android/Sdk/platform-tools/adb" ]'
+    requires: curl
+    # bsdtar unpacks the zip; the JDK is what the SDK manager itself runs on, and
+    # `android` resolves no java of its own.
+    requires_packages:
+      arch: [libarchive, jdk17-openjdk]
+    # The build number is a bootstrap, not a pin: the first thing it does is
+    # install `cmdline-tools;latest`, which is the copy everything afterwards
+    # uses. So it only has to be *a* version Google still serves, and it is
+    # replaced within the same command rather than tracked.
+    #
+    # Chained on && throughout, same hazard the codiff entry notes: install
+    # commands are eval'd inside an `if` condition where `set -e` is suppressed,
+    # so an unguarded sequence reports success off its trailing cleanup.
+    install: |
+      SDK="$HOME/Android/Sdk" \
+        && tmp="$(mktemp -d)" \
+        && curl -fsSL -o "$tmp/ct.zip" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip \
+        && bsdtar -xf "$tmp/ct.zip" -C "$tmp" \
+        && mkdir -p "$SDK/cmdline-tools" \
+        && rm -rf "$SDK/cmdline-tools/bootstrap" \
+        && mv "$tmp/cmdline-tools" "$SDK/cmdline-tools/bootstrap" \
+        && rm -rf "$tmp" \
+        && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
+        && yes | "$SDK/cmdline-tools/bootstrap/bin/sdkmanager" --sdk_root="$SDK" --install "cmdline-tools;latest" >/dev/null \
+        && [ -x "$SDK/cmdline-tools/latest/bin/android" ] \
+        && yes | "$SDK/cmdline-tools/latest/bin/android" sdk install --sdk="$SDK" platform-tools \
+        && [ -x "$SDK/platform-tools/adb" ]
+    # Nothing for `dots update` to do, and saying so beats a row that reads as
+    # up to date forever: with no GitHub release to compare against, an entry
+    # with an `update:` command and no `source:` resolves an empty upstream and
+    # version_is_outdated returns false on it, every time. What actually keeps
+    # this current is the Gradle build pulling the components the checkout asks
+    # for. The command-line tools themselves move rarely, by hand:
+    #   ~/Android/Sdk/cmdline-tools/latest/bin/android sdk update
+    updated_by: none
   - name: gh-dash
     check: gh extension list 2>/dev/null | grep -q dlvhdr/gh-dash
     install: gh extension install dlvhdr/gh-dash
@@ -276,3 +333,12 @@ packages:
     # JS runtime & per-project env
     - bun
     - direnv
+
+    # Android, for `t3fork mobile` — the T3 Code fork's phone app. The SDK
+    # itself is the android-sdk custom_install entry above; these two are the
+    # parts a distro package owns: the JDK Gradle runs on, and the udev rules
+    # that let adb see a plugged-in phone. android-udev tags the device
+    # `uaccess`, so logind grants the seat user an ACL and no adbusers group
+    # membership — and therefore no re-login — is needed.
+    - jdk17-openjdk
+    - android-udev

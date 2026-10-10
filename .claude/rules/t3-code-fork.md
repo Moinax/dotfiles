@@ -6,6 +6,7 @@ paths:
   - tests/test_t3fork_sync.sh
   - home/dot_local/bin/executable_t3-code-launch.sh
   - tools/manage-external-apps.py
+  - packages/groups/development.yaml
 ---
 
 # The fork is untracked by `dots apps`, on purpose
@@ -126,3 +127,114 @@ it costs a degraded report line, never the run the user asked for.
 Both the `upstream` remote and the key live in the fork's `.git/config`, which
 a restore used to drop on the floor — see the sidecar manifests under
 `dots backup` (`backup-projects.md`), which is what now carries them back.
+
+# `t3fork mobile` — the phone half
+
+Same checkout, same branch, a second artifact: `expo prebuild` into
+`apps/mobile/android` (gitignored, generated every run), then `gradlew
+assembleRelease`, then `adb install`. Android only — an iOS build needs Xcode,
+which is not a thing this machine has.
+
+**The signing key is ours, and it lives outside the checkout.** Expo's generated
+release buildType is wired to `signingConfigs.debug`, i.e. the React Native
+template's `debug.keystore` — a private key that ships in every RN repo on
+GitHub, so anything signed with it can be silently upgraded by anything else
+signed with it. This app holds a paired session to the desktop. `ensure_keystore`
+generates one at `~/.local/share/t3fork/t3code-mobile.keystore` with its password
+beside it, and overrides the build through AGP's `android.injected.signing.*`
+properties rather than patching a file `prebuild` owns and would regenerate.
+Outside the checkout because `--clean` deletes `android/` wholesale, and **a key
+that moves is an uninstall on the next install** — see below for what that costs.
+Back up both halves: losing either is unrecoverable in the only sense that
+matters, which is that the phone has to be wiped of the app to take a new key.
+
+**Replacing the store build costs its data, exactly once.** Android cannot
+upgrade across signing keys, so the first install over the Play Store
+`com.t3tools.t3code` fails `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and the only way
+in is `adb uninstall` — which erases the pairing with the desktop. The script
+detects that specific failure, says what it will destroy, and asks. Every later
+build carries the same key and installs straight over. `--preview` builds
+`com.t3tools.t3code.preview` instead, which sits beside the store app and needs
+no uninstall; that is the escape hatch, not the default.
+
+**The phone is read before the build, not after.** The build is twenty minutes of
+NDK work and every device-side failure — debugging off, `unauthorized`, two
+phones plugged in — is something only somebody holding the phone can clear, so
+finding out at the end spends twenty minutes to learn something that cost a
+second at the start. `unauthorized` is the one that matters: it looks like a
+present device to anything that only checks whether `adb devices` listed
+something, and it means an "Allow USB debugging?" dialog is sitting on a locked
+screen.
+
+**`android-udev` is what makes adb reach the phone, and it needs no re-login.**
+Its rules tag the device `uaccess`, so logind grants the seat user an ACL —
+membership in the `adbusers` group it also creates is not required, which is the
+one thing every guide gets wrong about it.
+
+**`--clean` is deliberately not the default**, though `apps/mobile`'s own npm
+scripts all pass it. It deletes `android/` entire, and with it `.cxx` and
+`app/build` — the NDK and CMake output for reanimated, nitro-modules and
+shiki-engine, which *is* the twenty minutes. Regenerating in place turns a
+JS-only change into a short rebuild, which is the whole point of this being a
+command you run after every `t3fork update`. The gradle failure path names
+`--clean` as the first thing to try, so staleness costs one re-run rather than a
+mystery.
+
+**No SDK component is pinned in the dotfiles, on purpose.** `packages/groups/development.yaml`'s `android-sdk`
+entry installs the command-line tools and `platform-tools` and stops there. The
+platform, build-tools, NDK and CMake versions are declared by the checkout's
+Expo config (`expo-modules-autolinking`'s `ExpoRootProjectPlugin` holds the
+defaults), so a pin here would rot into a 2 GB download of the wrong NDK. AGP
+fetches what the project asks for — which is why the install accepts the licence
+with `yes |`: that writes `$SDK/licenses/android-sdk-license`, the file AGP
+checks before it will download anything unattended.
+
+**Three AGP properties that look right and are not.** All three were reached
+for, all three cost a build, and none of them failed loudly:
+
+- `android.injected.version.name` / `.version.code` — the ones Android Studio
+  sets. Accepted, ignored, `BUILD SUCCESSFUL`, APK stamped `2.0.0`. What works
+  is a `sed` on the `versionName`/`versionCode` lines of the `app/build.gradle`
+  that `prebuild` just wrote — safe precisely because prebuild rewrites that
+  file every run, so the edit never stacks and `--clean` is not needed to undo
+  it.
+- `android.injected.build.abi` — same provenance, and on AGP 9 it takes the
+  build down an IDE-deploy path that **assembles no APK at all**: BUILD
+  SUCCESSFUL, an empty `outputs/apk/release`, and the previous build's APK
+  deleted on the way through. React Native's own
+  `-PreactNativeArchitectures=<abi>` is the lever, documented in the
+  `gradle.properties` prebuild writes, one line above its default.
+
+Which is why the APK is **read back** rather than trusted: the "built …" line
+reports the `versionName` and ABI list out of `aapt2 dump badging`, not what was
+asked for, and the path is a glob over a cleared output directory rather than a
+predicted `app-release.apk`. Every one of the three was caught by one of those
+two habits.
+
+**`versionCode` has to clear what is already installed, and keep clearing it.**
+Prebuild writes `1`, every time, and Android refuses a downgrade *before* it
+looks at the signature — so the first install over the store build (code 74)
+failed `INSTALL_FAILED_VERSION_DOWNGRADE` and never reached the signature
+mismatch the script was watching for. Both refusals share one remedy, the
+uninstall, so they share one branch; matching only the signature left the
+downgrade on the generic failure path with nothing offered. The number stamped
+in is `git rev-list --count HEAD`, which only grows because what grows it is
+upstream.
+
+**`react-native-shiki-engine` cannot be built on a host that has oniguruma**
+without `patches/react-native-shiki-engine@0.3.12.patch`. Its CMakeLists passes
+the Android prebuilt's directory as `PATHS`, which find_library searches *last*,
+after the system paths — and `NO_CMAKE_FIND_ROOT_PATH` beside it lifts the
+sysroot confinement that would have hidden `/usr/lib`. So the host's x86-64
+`libonig.so` wins and the link dies on "incompatible with aarch64linux".
+oniguruma is a dependency of jq, bat, git-delta and yazi here, so it is not
+going anywhere; upstream never sees this because EAS images do not have it. The
+patch adds `NO_DEFAULT_PATH`. It will stop applying the day the package moves,
+which is the good failure — a pnpm patch that no longer applies says so.
+
+**The new `android` CLI answers a bad package name with "Ignoring" and exit 0.**
+`android sdk install ndk@27.1.12297006` prints `No url for ndk. Ignoring.`,
+installs nothing, and succeeds; the path form `ndk/27.1.12297006` is the one that
+works. So never trust its exit status — the install entry ends on `[ -x
+"$SDK/platform-tools/adb" ]` for exactly this reason, and anything added beside
+it needs its own test that the component landed.
