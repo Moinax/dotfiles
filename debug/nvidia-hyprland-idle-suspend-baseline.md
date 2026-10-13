@@ -1,6 +1,6 @@
 # NVIDIA / Hyprland Idle + Suspend Baseline
 
-Last updated: 2026-06-23
+Last updated: 2026-10-13
 
 This note documents the intended baseline after removing several trial fixes
 around black monitors after DPMS-off or suspend. Use it as context before making
@@ -63,11 +63,26 @@ listener {
 
 listener {
     timeout = 1800
-    on-timeout = systemctl suspend
+    on-timeout = pgrep -fx "python3 .*/wayland-idle-inhibitor\.py" || systemctl suspend
 }
 ```
 
 Rationale:
+
+- **Caffeine mode does not survive the lock screen, so the suspend listener is
+  gated on the inhibitor process.** Hyprland stops honouring the idle inhibitor
+  once hyprlock holds the session: the compositor starts reporting idle again and
+  every listener rearms with the inhibitor still up. Measured on 2026-10-13 — the
+  evening ran nine and a half hours without a single `Idled: rule`, then a manual
+  lock at 03:33:29 and all four rules fired from 03:34:40, ending in a suspend
+  nobody asked for. Only this listener is gated: locking and blanking an untouched
+  machine are what caffeine is least in the way of, suspending it mid-run is the
+  one that loses work. Keyed on the process and not on waybar's state file,
+  because the process *is* the inhibition — a dead inhibitor with a stale `on` in
+  the state file should suspend. `-x` is what stops the `sh -c` wrapper hypridle
+  spawns from matching its own pattern; verified by firing the rule under a
+  throwaway `hypridle -c` plus `hyprctl dispatch 'hl.dsp.force_idle(5)'`, which is
+  also the only way to see what hyprlang hands to `sh` without waiting 30 minutes.
 
 - `hyprlock` is the Hypr ecosystem locker and matches the Hyprland docs.
 - `loginctl lock-session` lets logind/hypridle coordinate the lock path.
