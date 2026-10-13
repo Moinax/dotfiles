@@ -16,7 +16,8 @@ Phases: system update (`cachy-update`) → new groups → custom-install prerequ
 → package delta → declared services → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
 `run_post_apply` → login wallpaper → encrypted DNS → regional formats → reclaim
-tuning → prune old Codex releases → re-stamp the profile → report fork drift →
+tuning → NVIDIA suspend VRAM path → prune old Codex releases → re-stamp the
+profile → report fork drift →
 report a waiting backup.
 
 ### The system update runs first, and refusing it is an answer

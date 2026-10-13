@@ -40,6 +40,7 @@ source "$SCRIPT_DIR/lib/dns-encrypted.sh"
 source "$SCRIPT_DIR/lib/regional-formats.sh"
 source "$SCRIPT_DIR/lib/login-wallpaper.sh"
 source "$SCRIPT_DIR/lib/zram-tuning.sh"
+source "$SCRIPT_DIR/lib/nvidia-vram-suspend.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
 
 # The prompt-heaviest script in the repo, and the last one still without this:
@@ -1804,6 +1805,17 @@ setup_zram_tuning() {
     apply_zram_tuning || return 0
 }
 
+# The installer's framing over install/lib/nvidia-vram-suspend.sh (`dots update`'s
+# is reconcile_nvidia_vram_suspend in tools/sync-machine.sh). Not gated on the
+# install purpose: a headless box with an NVIDIA card suspends the same way. The
+# lib skips a machine with no NVIDIA driver loaded by itself.
+setup_nvidia_vram_suspend() {
+    print_header "NVIDIA Suspend VRAM Path"
+    # A failure is already tracked as a warning by apply_nvidia_vram_suspend, and
+    # must not abort the install over a modprobe option.
+    apply_nvidia_vram_suspend || return 0
+}
+
 # The installer's framing over install/lib/login-wallpaper.sh — the lib holds the
 # mechanism, each caller frames it (dots update's framing is
 # reconcile_login_wallpaper in tools/sync-machine.sh). Unconditional, since setup
@@ -2078,6 +2090,7 @@ main() {
     setup_encrypted_dns
     setup_regional_formats
     setup_zram_tuning
+    setup_nvidia_vram_suspend
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_login_wallpaper
         setup_plymouth

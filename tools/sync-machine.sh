@@ -29,6 +29,7 @@ source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
 source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
+source "$DOTFILES_DIR/install/lib/nvidia-vram-suspend.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
 source "$DOTFILES_DIR/install/lib/regional-formats.sh"
 source "$DOTFILES_DIR/install/lib/zram-tuning.sh"
@@ -806,6 +807,38 @@ reconcile_zram_tuning() {
     apply_zram_tuning || return 0
 }
 
+# The one modprobe option that keeps a suspend from dumping video memory into a
+# tmpfs — see install/lib/nvidia-vram-suspend.sh, which both this and `dots setup`
+# call.
+#
+# Here for the reason spelled out at reconcile_login_wallpaper: setup is not
+# re-run, so a machine that merely pulled this would keep saving VRAM to /tmp
+# forever. The trigger is machine state — the content of that file, never
+# CHANGED_FILES — which is also what makes changing the path in the lib reach a
+# machine already carrying the previous one.
+#
+# Worth the sudo prompt even though the symptom is rare: this box froze solid
+# entering S3 on 2026-10-13, in nvidia-sleep.sh and before the kernel ever
+# reached the sleep state, and a machine that only ever suspends when its idle
+# timer survives caffeine mode gets one chance a night to find out.
+reconcile_nvidia_vram_suspend() {
+    nvidia_vram_suspend_needs_setup || return 0
+
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the NVIDIA suspend VRAM path"
+        return 0
+    fi
+
+    # No confirmation in front of this, for the reason spelled out at
+    # reconcile_login_wallpaper: sudo already asks a question with a way out in
+    # it. The initramfs rebuild it carries is the slow part, not a risky one.
+    print_header "NVIDIA Suspend VRAM Path"
+    print_info "Suspend still saves video memory to a tmpfs — pointing it at a real filesystem (needs sudo)"
+    apply_nvidia_vram_suspend || return 0
+}
+
 # ── The lock and login screens ──────────────────────────────────────────────
 
 # The two privileged steps behind /var/lib/wallpaper/current — see
@@ -1201,6 +1234,7 @@ do_sync() {
     reconcile_encrypted_dns
     reconcile_regional_formats
     reconcile_zram_tuning
+    reconcile_nvidia_vram_suspend
     reconcile_codex_releases
 
     # record_synced_state declines on its own while a package shortfall is

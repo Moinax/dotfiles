@@ -147,7 +147,40 @@ Keep:
 - `NVreg_PreserveVideoMemoryAllocations=1`
 - `nvidia-drm.modeset=1`
 - NVIDIA package default `NVreg_UseKernelSuspendNotifiers=1`
-- NVIDIA package default `NVreg_TemporaryFilePath=/var/tmp`
+- `NVreg_TemporaryFilePath=/var/tmp`
+
+The last two lines of that list used to read "NVIDIA package default" both. For
+`NVreg_TemporaryFilePath` that was never true: **no package sets it**, and unset
+it is `/tmp` — a 32 GiB tmpfs here, so the video memory the driver saves on the
+way into S3 never leaves RAM. `NVreg_PreserveVideoMemoryAllocations=1` was not a
+package default either; the only file setting it was
+`/usr/lib/modprobe.d/gsr-nvidia.conf`, from **gpu-screen-recorder**, so
+uninstalling a screen recorder would have taken VRAM preservation with it.
+
+Both are now written by `install/lib/nvidia-vram-suspend.sh`, called by
+`dots setup` (`setup_nvidia_vram_suspend`) and by `dots update`
+(`reconcile_nvidia_vram_suspend`, keyed on the content of
+`/etc/modprobe.d/nvidia-vram-suspend.conf`). The lib also rebuilds the
+initramfs, which is not optional: `nvidia.ko` is loaded from it on this machine
+and the `modconf` hook bakes a *copy* of `/etc/modprobe.d` into the image, so
+writing the file alone changes nothing at boot while looking like it worked.
+
+**The rebuild command is `limine-mkinitcpio`.** `limine-mkinitcpio-hook` ships
+`/etc/pacman.d/hooks/90-mkinitcpio-install.hook`, which overrides the stock
+mkinitcpio one: the images this box boots are
+`/boot/<machine-id>/<pkgbase>/{vmlinuz,initramfs}`, `/etc/mkinitcpio.d` holds no
+presets for `mkinitcpio -P` to walk, and `/boot` is the ESP (root-only, `fmask=0077`).
+
+`kernel-install add-all` is a dead end here, paid for on 2026-10-13: it builds a
+correct image into systemd's own *kernel-version*-keyed layout
+(`/boot/<machine-id>/<kver>/{linux,initrd}` plus `/boot/loader/entries/*.conf`),
+leaves what limine boots untouched, and costs 240 MB of ESP. Worse, undoing it
+with `kernel-install remove <kver>` runs the `50-depmod.install` plugin, which
+**deletes `modules.dep` and the rest of the depmod output for that kernel** —
+after which every mkinitcpio build fails with `module not found: nvidia` and a
+reboot would reach a root that can load no module. Recovery is
+`sudo depmod -a <kver>` per kernel; verify with
+`modinfo -k <kver> nvidia` and a count of `modules.*` files (14 per kernel here).
 
 Do not install custom compositor `SIGSTOP` / `SIGCONT` suspend services.
 
@@ -186,6 +219,49 @@ Why:
 - The sleep-mode and notifier overrides made the baseline machine-specific.
 
 ## Observed Failure Clues
+
+### 2026-10-13: frozen entering S3, in the NVIDIA suspend hook
+
+Two nights in a row (11→12 and 12→13 October). The journal only reaches back to
+12 Oct 08:52 — CachyOS caps it at 50 MB in
+`/usr/lib/systemd/journald.conf.d/00-journal-size.conf` — so only the second
+night is on record. Its boot ends on:
+
+```
+systemd[1]: Reached target Sleep.
+systemd[1]: Starting NVIDIA system suspend actions...
+suspend[3177302]: nvidia-suspend.service
+```
+
+and nothing after; the next boot is cold. Missing are both the end of
+`nvidia-suspend.service` and systemd's `Starting System Suspend...`, while
+journald was still writing normally at that point — so the machine hung inside
+`nvidia-sleep.sh suspend` (`chvt 63`, then `echo suspend > /proc/driver/nvidia/suspend`)
+and **never entered S3 at all**. Screens off since 03:40:10, power on: it looks
+like a failed S3 from the outside.
+
+What preceded it, and the likely trigger: **DP-3 dropped and re-acquired its
+DisplayPort link twice**, at 03:34:40 and 03:42:30 (`removed iface 74` / `75`,
+re-added 3-4s later, waybar SIGABRT-ing on the second one). That is the shape of
+the documented 615-branch regressions — a DP power-cycle wedges `nvidia-modeset`
+on the RM lock, and the suspend hook then blocks on it forever:
+<https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1392>,
+<https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1371>,
+<https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1394>,
+<https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1380>. The reporter of
+#1392 says it did not happen on 610.57.04; this box moved to 615.71.09 around
+15 Sep and to 615.78.08 on 12 Oct, and both nights froze, so it is not specific
+to the newer of the two.
+
+Why it surfaced only now: the machine almost never suspends, because caffeine
+mode is usually on. The two nights it tried are the two nights it froze.
+
+Changed in response, one thing at a time: the VRAM save path (see the NVIDIA
+section above) and the caffeine gate on the suspend listener. **Still untested
+and still the next experiments if it freezes again:** DP-3 at `3440x1440@120`,
+then `@59.96`, then a downgrade to 610.57.04.
+
+### Earlier
 
 Useful historical observations:
 
