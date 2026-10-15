@@ -28,7 +28,10 @@ inhibitor="$test_home/.local/bin/wayland-idle-inhibitor.py"
 mkdir -p "$test_home/.local/bin" "$test_home/.local/lib" "$runtime_dir" "$test_bin"
 
 cleanup() {
-    pkill -f "$inhibitor" 2>/dev/null || true
+    # One pattern for everything the run can leave behind — the fixture
+    # inhibitor and the real one below both live under $fixtures. A leaked idle
+    # inhibitor is the expensive kind of leak: the session stops locking.
+    pkill -f "$fixtures" 2>/dev/null || true
     rm -rf "$fixtures"
 }
 trap cleanup EXIT
@@ -64,12 +67,18 @@ fi
 check "installed PyWayland API loads" "loaded" "$import_result"
 
 echo "successful startup"
-printf '%s\n' \
-    '#!/bin/bash' \
-    'touch "$CAFFEINE_READY_FILE"' \
-    "trap 'exit 0' TERM INT" \
-    'while :; do sleep 1; done' \
-    > "$inhibitor"
+# The inhibitor owns the state file: writing "on" is the readiness signal the
+# toggle waits for, and writing "off" on the way out is what keeps the waybar
+# icon from claiming caffeine after the inhibition is gone.
+cat > "$inhibitor" <<'FIXTURE'
+#!/bin/bash
+trap 'echo off > "$CAFFEINE_STATE_FILE"; exit 0' TERM INT
+echo on > "$CAFFEINE_STATE_FILE"
+# `sleep 1 & wait`, not `sleep 1`: bash defers a trap until the foreground
+# command returns, so a plain sleep would answer SIGTERM up to a second late —
+# the toggle gives it exactly one second before calling the stop a failure.
+while :; do sleep 1 & wait; done
+FIXTURE
 chmod +x "$inhibitor"
 
 run_toggle
@@ -86,16 +95,82 @@ check "second toggle removes PID file" "no" \
 pgrep -f "$inhibitor" >/dev/null && running=yes || running=no
 check "second toggle stops inhibitor" "no" "$running"
 
+echo "stale on from a killed inhibitor"
+# The state file is the readiness handshake now, so an "on" left by an inhibitor
+# that was SIGKILLed must not satisfy it — this is the only check that fails if
+# the toggle stops clearing the file before launching.
+cat > "$inhibitor" <<'FIXTURE'
+#!/bin/bash
+trap 'exit 0' TERM INT
+while :; do sleep 1 & wait; done
+FIXTURE
+chmod +x "$inhibitor"
+echo on > "$runtime_dir/caffeine-state"
+
+run_toggle >/dev/null 2>&1 && status=0 || status=$?
+check "stale on does not pass the handshake" "1" "$status"
+check "stale on ends off" "off" "$(cat "$runtime_dir/caffeine-state")"
+check "stale on leaves no PID file" "no" \
+    "$([ -e "$runtime_dir/caffeine-inhibitor.pid" ] && echo yes || echo no)"
+
 echo "failed startup"
-printf '%s\n' '#!/bin/bash' 'echo "simulated import failure" >&2' 'exit 1' \
+# Writes "on" before failing: without it the state assertion below is vacuous,
+# since the toggle already cleared the file before the launch.
+printf '%s\n' '#!/bin/bash' 'echo on > "$CAFFEINE_STATE_FILE"' \
+    'echo "simulated import failure" >&2' 'exit 1' \
     > "$inhibitor"
 chmod +x "$inhibitor"
 
 run_toggle >/dev/null 2>&1 && status=0 || status=$?
 check "startup failure is returned" "1" "$status"
 check "failed startup leaves state off" "off" "$(cat "$runtime_dir/caffeine-state")"
-check "failure reaches notification" "-u critical Caffeine simulated import failure" \
+# The notification is backgrounded (-A makes notify-send wait for the click), so
+# it can land just after the toggle exits.
+for _ in {1..50}; do
+    case "$(tail -n 1 "$fixtures/notifications")" in
+        *"simulated import failure") break ;;
+    esac
+    sleep 0.02
+done
+check "failure reaches notification" \
+    "-u critical -A default=Open -c x-open -h string:x-open-path:$runtime_dir/caffeine-inhibitor.log Caffeine simulated import failure" \
     "$(tail -n 1 "$fixtures/notifications")"
+
+echo "state file ownership, real inhibitor"
+# Nothing else proves the contract the toggle now relies on, and it only holds
+# against a live compositor — the run inhibits idle for the second it lasts.
+# From a copy named like the installed script, because both the toggle and
+# hypridle's suspend gate match on `.../wayland-idle-inhibitor.py`: a leak
+# running under the `executable_` source name would inhibit idle while being
+# invisible to every control that can stop it.
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    real_inhibitor="$fixtures/wayland-idle-inhibitor.py"
+    cp "$PYTHON_INHIBITOR" "$real_inhibitor"
+    real_state="$fixtures/real-state"
+    echo off > "$real_state"
+    CAFFEINE_STATE_FILE="$real_state" \
+        python3 "$real_inhibitor" > "$fixtures/real.log" 2>&1 &
+    real_pid=$!
+    for _ in {1..100}; do
+        [ "$(cat "$real_state")" = on ] && break
+        kill -0 "$real_pid" 2>/dev/null || break
+        sleep 0.05
+    done
+    check "live inhibitor writes on" "on" "$(cat "$real_state")"
+
+    # Bounded on the contract, then SIGKILL: an inhibitor that cannot answer
+    # SIGTERM is the bug under test, and a bare `wait` would hang the suite on it.
+    kill "$real_pid" 2>/dev/null
+    for _ in {1..20}; do
+        [ "$(cat "$real_state")" = off ] && break
+        sleep 0.05
+    done
+    kill -9 "$real_pid" 2>/dev/null
+    wait "$real_pid" 2>/dev/null
+    check "dying inhibitor writes off" "off" "$(cat "$real_state")"
+else
+    echo "  skip (no WAYLAND_DISPLAY)"
+fi
 
 echo
 if [ "$failures" -eq 0 ]; then
