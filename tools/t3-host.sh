@@ -436,11 +436,13 @@ cmd_fork() {
 # "Claude Code"/"Codex" sign-ins, and "Pair your desktop and your phone".
 # 20 KB compressed, measured — which is why this needs no storage of its own.
 #
-# `~/.t3/userdata/state.sqlite` is deliberately absent. It holds sessions and
-# history — that is data, and .claude/rules/t3-host.md says no unique *data* lives on this
-# host. A credential snapshot that quietly grew into a data backup would reverse
-# that decision by accident. It also cannot be copied honestly while t3code is
-# running, since its WAL is open.
+# The `~/.t3/userdata` state databases are deliberately absent — `statev2.sqlite`
+# today, `state.sqlite` before orchestration v2, and whatever the next one is
+# called, since this is an allowlist and a renamed file stays out by default.
+# They hold sessions and history — that is data, and .claude/rules/t3-host.md
+# says no unique *data* lives on this host. A credential snapshot that quietly
+# grew into a data backup would reverse that decision by accident. They also
+# cannot be copied honestly while t3code is running, since their WAL is open.
 #
 # The one knowing exception is `.claude.json`, which mixes `oauthAccount` with a
 # `projects` history: the login can live in either that file or

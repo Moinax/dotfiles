@@ -23,9 +23,11 @@ the repair, not a reinstall.
 - **Credentials are snapshotted; data never is.** The host's own SSH keypair,
   forge tokens, agent OAuth logins and Tailscale identity are unique to it and on
   no forge — `dots t3-host snapshot` saves exactly those (~20 KB, age-encrypted)
-  and buys back the browser wizard, not the disk. `~/.t3/userdata/state.sqlite`
-  is deliberately excluded: a snapshot that grew to cover data would reverse the
-  decision by accident.
+  and buys back the browser wizard, not the disk. The `~/.t3/userdata` state
+  databases are deliberately excluded — named generically because the file moved
+  once already (`state.sqlite` → `statev2.sqlite`) and `STATE_PATHS` is an
+  allowlist, so the next rename stays out on its own: a snapshot that grew to
+  cover data would reverse the decision by accident.
 - **Agents effectively have root** (the `docker` group). Acceptable because the
   host holds no unique data and every credential on it is revocable alone —
   which is why `~/.ssh` is never copied there.
