@@ -690,10 +690,11 @@ case "${1:-}" in
     # again, with our patches nowhere in it.
     #
     # --name is not cosmetic. Left off, the importer takes the name embedded in
-    # the build, which electron-builder stamps from productName — "T3 Code
-    # (Alpha)" — slugging to t3-code-alpha and installing a *second* app beside
-    # this one. That is the split above, recreated by the command meant to close
-    # it.
+    # the build, which electron-builder stamps from productName — upstream's
+    # stage label, "T3 Code (Beta)" today and "T3 Code (Alpha)" before it —
+    # slugging to t3-code-beta and installing a *second* app beside this one.
+    # That is the split above, recreated by the command meant to close it, and
+    # the label moves on upstream's schedule rather than ours.
     #
     # Resolved like vp above, and for the same reason: an agent shell inside T3
     # Code replays a PATH snapshot older than ~/.local/bin.

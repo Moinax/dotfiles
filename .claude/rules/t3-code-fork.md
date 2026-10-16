@@ -43,9 +43,11 @@ Nothing reported it — `t3fork restart` execs the target directly.
 
 Two rules fall out:
 
-- **The `--name` is load-bearing.** electron-builder stamps `productName`,
-  `T3 Code (Alpha)`, which slugs straight back to `t3-code-alpha` and reinstalls
-  the split.
+- **The `--name` is load-bearing.** electron-builder stamps `productName`, which
+  carries upstream's stage label — `T3 Code (Beta)` since 2026-10-15, `T3 Code
+  (Alpha)` before it — and slugs straight back to `t3-code-beta` and reinstalls
+  the split. The label moves with upstream's releases; the `--name` is what keeps
+  the slug from moving with it.
 - **There must only ever be one T3 Code in `dots apps list`.** A second row is the
   bug, not a fallback.
 
