@@ -4,7 +4,6 @@ paths:
   - home/dot_local/bin/executable_t3fork
   - tools/t3-host.sh
   - tests/test_t3fork_sync.sh
-  - home/dot_local/bin/executable_t3-code-launch.sh
   - tools/manage-external-apps.py
   - packages/groups/development.yaml
 ---

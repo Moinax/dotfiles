@@ -2,9 +2,9 @@
 # term — put the terminal in front, starting it if it is down.
 #
 # One kitty window, one zellij session, tabs inside it: calling this focuses it
-# rather than opening a second one, the same contract `t3-code-launch.sh` gives
-# T3 Code. That is what makes zellij worth attaching to at all — a session you
-# open a fresh copy of every time is just a shell with extra chrome.
+# rather than opening a second one. That is what makes zellij worth attaching to
+# at all — a session you open a fresh copy of every time is just a shell with
+# extra chrome.
 #
 # The window is told to call itself "zellij" so it can be found again; every
 # other kitty (btop from waybar, `kitty -e ...`) keeps the default class and is
