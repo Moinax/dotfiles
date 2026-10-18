@@ -61,12 +61,19 @@ case "$1" in
             echo "Daemon status: NeedsLogin"
         fi
         ;;
-    up)   touch "$STATE_DIR/nb" ;;
+    # The gate is what the switching block below uses to hold a switch open the
+    # way a browser SSO login does. Nothing creates $STATE_DIR/block until then,
+    # so every earlier test sees a plain `up`.
+    up)   while [ -f "$STATE_DIR/block" ]; do sleep 0.05; done; touch "$STATE_DIR/nb" ;;
     down) rm -f "$STATE_DIR/nb" ;;
 esac
 STUB
 printf '#!/bin/bash\nexit 0\n' > "$test_bin/pkill"
-chmod +x "$test_bin/tailscale" "$test_bin/netbird" "$test_bin/pkill"
+# Unstubbed, the failure paths below would fire real desktop notifications — and
+# logged, it is the only thing that can assert on them: a detached switch reports
+# a failure here and nowhere else.
+printf '#!/bin/bash\necho "notify-send $*" >> "$CALL_LOG"\nexit 0\n' > "$test_bin/notify-send"
+chmod +x "$test_bin/tailscale" "$test_bin/netbird" "$test_bin/pkill" "$test_bin/notify-send"
 
 state="$fixtures/state"
 mkdir -p "$state"
@@ -74,8 +81,10 @@ run() {
     : > "$fixtures/calls"
     HOME="$test_home" PATH="$test_bin:$PATH" \
         STATE_DIR="$state" CALL_LOG="$fixtures/calls" \
+        XDG_RUNTIME_DIR="$fixtures" \
         bash "$@"
 }
+marker="$fixtures/vpn-switching"
 calls() { tr '\n' '|' < "$fixtures/calls" | sed 's/|$//'; }
 
 echo "list — the four-field contract"
@@ -151,6 +160,50 @@ touch "$state/ts"; check "both up is a conflict" "conflict" "$(class_of)"
 mv "$test_home/.local/bin/toggle-vpn.sh" "$test_home/.local/bin/toggle-vpn.sh.bak"
 check "unreadable state is not 'disconnected'" "unknown" "$(class_of)"
 mv "$test_home/.local/bin/toggle-vpn.sh.bak" "$test_home/.local/bin/toggle-vpn.sh"
+
+echo "switching — the bar carries the progress, and only while a switch is live"
+rm -f "$state"/* "$marker"
+# $STATE_DIR/block holds the stub's `up` open the way an expired token holds the
+# real one: the point of the marker is that the shield says "switching" for
+# exactly as long as that login takes.
+touch "$state/block"
+run "$TOGGLE" set netbird >/dev/null 2>&1 &
+switch_pid=$!
+for _ in $(seq 40); do [ -f "$marker" ] && break; sleep 0.05; done
+check "a switch in flight reports switching" "switching" "$(class_of)"
+rm -f "$state/block"
+wait "$switch_pid"
+check "the marker is gone once the switch returns" "0" \
+    "$([ -f "$marker" ] && echo 1 || echo 0)"
+check "and the bar reports the tunnel it brought up" "netbird" "$(class_of)"
+
+# A marker left by a switch that was killed outright: no trap ran, so only the
+# pid inside it can tell the bar that nobody is switching any more. The pid has
+# to be one that is really gone — pid_max is 4194304 here, so a hardcoded 999999
+# is a pid the machine can hand out, and the check would pass for the wrong
+# reason the day it does.
+( : ) & dead_pid=$!; wait "$dead_pid"
+echo "$dead_pid" > "$marker"
+check "a marker whose process is gone is not switching" "netbird" "$(class_of)"
+rm -f "$marker"
+
+echo "unknown id — a usage error must not look like a switch"
+rm -f "$state"/* "$marker"
+run "$TOGGLE" set bogus >/dev/null 2>/dev/null
+check "no marker, no waybar signal, no notification" "0 " \
+    "$([ -f "$marker" ] && echo -n 1 || echo -n 0; echo -n ' '; calls)"
+
+echo "failure — the notification is the only report a detached switch has"
+rm -f "$state"/* "$marker"
+printf '#!/bin/bash\necho "netbird $*" >> "$CALL_LOG"\n[ "$1" = status ] && { echo "Daemon status: NeedsLogin"; exit 0; }\necho "needs login" >&2\nexit 1\n' \
+    > "$test_bin/netbird"
+chmod +x "$test_bin/netbird"
+run "$TOGGLE" set netbird >/dev/null 2>/dev/null
+check "a failed switch notifies, with the daemon's own stderr" \
+    "notify-send -u critical VPN: Connecting netbird failed needs login" \
+    "$(grep '^notify-send' "$fixtures/calls")"
+check "and the marker does not survive the failure" "0" \
+    "$([ -f "$marker" ] && echo 1 || echo 0)"
 
 echo ""
 if [ "$failures" -eq 0 ]; then

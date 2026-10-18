@@ -1,4 +1,4 @@
-import { capture, captureLines } from "./shell";
+import { capture, captureLines, spawnDetached } from "./shell";
 
 /**
  * The desktop surfaces the launcher reads: audio sinks and open windows.
@@ -153,6 +153,8 @@ export async function setKeyboardLayout(name: string): Promise<void> {
   await capture(`${HOME}/.config/hypr/scripts/toggle-keyboard-layout.sh`, ["set", name], { timeout: 30_000 });
 }
 
+const TOGGLE_VPN = `${HOME}/.local/bin/toggle-vpn.sh`;
+
 export type Vpn = { id: string; label: string; detail: string; connected: boolean };
 
 /**
@@ -164,25 +166,38 @@ export type Vpn = { id: string; label: string; detail: string; connected: boolea
  * where the waybar module, which calls the same `list`, could not see it.
  */
 export async function vpns(): Promise<Vpn[]> {
-  const lines = await captureLines(`${HOME}/.local/bin/toggle-vpn.sh`, ["list"]);
+  const lines = await captureLines(TOGGLE_VPN, ["list"]);
   return lines.flatMap((line) => {
     const [id, connected, label, detail] = line.split("\t");
     return id ? [{ id, label: label || id, detail: detail ?? "", connected: connected === "1" }] : [];
   });
 }
 
+/*
+ * The three writes below are detached, and none of them is awaited to
+ * completion.
+ *
+ * They used to run through `capture` under a progress Toast, which kept the
+ * launcher on screen for the whole switch — and `netbird up` with an expired
+ * token opens a browser for the SSO login, so the window sat squarely over the
+ * page the switch was waiting on and had to be dismissed by hand. The script
+ * reports progress on the waybar shield instead (a pid marker it owns), and
+ * failures through notify-send carrying its stderr, so there is nothing left
+ * here worth waiting for.
+ */
+
 /** Connect one VPN; the script disconnects the other first. */
-export async function setVpn(id: string): Promise<void> {
-  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["set", id], { timeout: 60_000 });
+export function setVpn(id: string): Promise<void> {
+  return spawnDetached(TOGGLE_VPN, ["set", id]);
 }
 
 /** Disconnect one VPN, leaving the other alone — the conflict state has both up. */
-export async function downVpn(id: string): Promise<void> {
-  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["down", id], { timeout: 60_000 });
+export function downVpn(id: string): Promise<void> {
+  return spawnDetached(TOGGLE_VPN, ["down", id]);
 }
 
-export async function disconnectVpns(): Promise<void> {
-  await capture(`${HOME}/.local/bin/toggle-vpn.sh`, ["off"], { timeout: 60_000 });
+export function disconnectVpns(): Promise<void> {
+  return spawnDetached(TOGGLE_VPN, ["off"]);
 }
 
 export type DesktopApp = { id: string; name: string; icon: string };

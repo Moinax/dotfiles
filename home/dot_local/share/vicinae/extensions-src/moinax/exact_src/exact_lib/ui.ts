@@ -79,6 +79,11 @@ export function actionRunner(refresh: () => Promise<void>, settleMs = 0) {
  * is still up when the command returns: on success it closes with a HUD, and on
  * failure it stays open with the error in a Toast and the list still on screen,
  * so the next attempt is one keypress away instead of a re-launch.
+ *
+ * That contract holds only for a `run` that waits. Hand it a detached spawn —
+ * the VPN switch does — and it resolves the moment the child exists, so the
+ * only failure it can still report is the spawn itself; the command's own
+ * failure has to reach the user by some other route.
  */
 export function closeAfter(run: () => Promise<unknown>, hud: string): () => Promise<void> {
   return async () => {

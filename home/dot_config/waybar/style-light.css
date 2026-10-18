@@ -122,6 +122,7 @@ window#waybar.empty #window {
 }
 #custom-vpn.tailscale,
 #custom-vpn.netbird,
+#custom-vpn.switching,
 #custom-vpn.conflict,
 #custom-vpn.unknown {
   background: @accent;
@@ -136,6 +137,27 @@ window#waybar.empty #window {
 #custom-vpn.conflict,
 #custom-vpn.unknown {
   background: @alert;
+}
+/* A switch in flight. Same accent pill as a connected tunnel — the glyph and
+   the pulse say "wait", rather than a third colour nothing else uses.
+   The alpha is what breathes, not `opacity` (GTK parses an opacity animation
+   and then renders the end state, sitting there dimmed) and not `shade()`
+   (darker reads as a pulse over the dark wallpaper and as a contrast loss
+   under the light one — fading the pill works the same way in both). */
+#custom-vpn.switching {
+  animation-name: vpn-pulse;
+  animation-duration: 0.9s;
+  animation-timing-function: ease-in-out;
+  /* Not `infinite`: the pill is up for as long as a switch takes, and an SSO
+     login takes as long as the user does — an unbounded animation keeps the
+     bar's frame clock, and the compositor recompositing a translucent surface,
+     busy for all of it. Forty alternations is ~36s of pulse; past that the
+     glyph and the pill still say "switching", they just stop costing frames. */
+  animation-iteration-count: 40;
+  animation-direction: alternate;
+}
+@keyframes vpn-pulse {
+  to { background-color: alpha(@accent, 0.3); }
 }
 #custom-headset-battery.good { color: #40a02b; }
 #custom-headset-battery.warning { color: #df8e1d; }
