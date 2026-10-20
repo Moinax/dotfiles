@@ -161,12 +161,27 @@ back_up_installed_build() {
   local pid
   [[ -f "$target" ]] || return 0
   pid="$(t3code_root_pids | head -n 1)"
-  if [[ -n "$pid" && "$target" -nt "/proc/$pid" ]]; then
+  # Two ways to tell the installed build was never started: it is newer than the
+  # running process, or — with the app closed, where that comparison says
+  # nothing — the updater still holds a prepared record, which it writes when it
+  # installs and only drops once that build has been restarted onto.
+  if [[ -n "$pid" && "$target" -nt "/proc/$pid" ]] ||
+    [[ -z "$pid" && -f "$HOME/.local/state/t3fork/prepared.json" ]]; then
     echo "t3fork: keeping the existing rollback build — what is installed was never started"
     return 0
   fi
   cp -f "$target" "$target.previous"
   rm -f "$target.previous.json"
+}
+
+# Both records describe the AppImage that was just replaced. Left behind, the
+# sidebar reports the build that took its place as needing attention: a stale
+# record of a build that no longer exists, read as a problem with the new one.
+# Skipped while the unit runs, the one case where status.json is a live job's
+# progress rather than a leftover.
+clear_updater_records() {
+  systemctl --user is-active --quiet t3fork-update.service && return 0
+  rm -f "$HOME/.local/state/t3fork/status.json" "$HOME/.local/state/t3fork/prepared.json"
 }
 
 cd "$repo"
@@ -789,15 +804,9 @@ case "${1:-}" in
 
     # The in-app fork updater recognises the build it prepared by $target's size
     # and mtime, so the install above — a *newer* build, by hand — reads to it as
-    # "the installed AppImage changed or is missing" and parks the sidebar on
-    # "Fork update needs attention" until some later in-app run overwrites it.
-    # A stale record of a build that no longer exists, reported as a problem with
-    # the one that replaced it. Dropping it leaves the updater idle, which is
-    # what it is. Skipped while its unit runs: that is the one case where
-    # status.json is a live job's progress rather than a leftover.
-    if ! systemctl --user is-active --quiet t3fork-update.service; then
-      rm -f "$HOME/.local/state/t3fork/status.json" "$HOME/.local/state/t3fork/prepared.json"
-    fi
+    # "the installed AppImage changed or is missing". Dropping its records leaves
+    # the updater idle, which is what it is.
+    clear_updater_records
 
     # Asking needs someone to answer: run from an agent or a hook there is no
     # terminal, and a `read` there would either block forever or read the
@@ -1065,12 +1074,8 @@ case "${1:-}" in
     # Read the name before the file that holds it is removed.
     rolled="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$backup.json" 2>/dev/null || true)"
     mv -f "$backup" "$target"
-    # The prepared record describes the build just replaced, and status.json its
-    # run. Both now point at something that is not installed any more, which is
-    # exactly the state the sidebar reports as needing attention.
-    rm -f "$backup.json" \
-      "$HOME/.local/state/t3fork/prepared.json" \
-      "$HOME/.local/state/t3fork/status.json"
+    rm -f "$backup.json"
+    clear_updater_records
     echo "t3fork: rolled back to ${rolled:-the previous build} -> $target"
     if [[ "$restart" == no ]]; then
       echo "t3fork: not restarting (-n); the running app keeps its own build until you do"

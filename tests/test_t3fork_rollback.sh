@@ -88,17 +88,27 @@ echo
 echo "== an install by hand keeps the build it replaces =="
 # `back_up_installed_build` is sourced rather than driven through `install`,
 # which would need a full electron-builder run to reach it.
+# Two assertions the probe itself cannot make: that the extraction found
+# something, and that `install` still calls what is being tested. The call sits
+# mid-way through an unrelated comment block, which is where an edit drops it.
+body="$(sed -n '/^back_up_installed_build()/,/^}/p' "$T3FORK")"
+check "the helper is still there to extract" "yes" "$([ -n "$body" ] && echo yes || echo no)"
+check "and the install path still calls it" "yes" \
+    "$(grep -qE '^[[:space:]]*back_up_installed_build$' "$T3FORK" && echo yes || echo no)"
+
 probe="$stage/probe.sh"
 cat >"$probe" <<'PROBE'
 target="$1"
 t3code_root_pids() { printf '%s\n' "${FAKE_PID:-}"; }
-eval "$(sed -n '/^back_up_installed_build()/,/^}/p' "$2")"
+body="$(sed -n '/^back_up_installed_build()/,/^}/p' "$2")"
+[ -n "$body" ] || { echo "probe: nothing extracted" >&2; exit 1; }
+eval "$body"
 back_up_installed_build
 PROBE
 
 printf 'installed\n' >"$target"
 rm -f "$target.previous" "$target.previous.json"
-FAKE_PID="" bash "$probe" "$target" "$T3FORK" >/dev/null
+FAKE_PID="" HOME="$home" bash "$probe" "$target" "$T3FORK" >/dev/null
 check "backs up the installed build" "installed" "$(cat "$target.previous")"
 
 # A build newer than the running process was installed and never started. PID 1
@@ -107,7 +117,7 @@ check "backs up the installed build" "installed" "$(cat "$target.previous")"
 # minutes or hours after the app started, and the test should not hinge on that.
 printf 'never started\n' >"$target"
 printf 'the one that ran\n' >"$target.previous"
-FAKE_PID=1 bash "$probe" "$target" "$T3FORK" >/dev/null
+FAKE_PID=1 HOME="$home" bash "$probe" "$target" "$T3FORK" >/dev/null
 check "keeps the backup when what is installed never ran" "the one that ran" "$(cat "$target.previous")"
 
 # And the stale name file goes, so the app says "the previous build" rather than
@@ -116,10 +126,22 @@ printf 'installed\n' >"$target"
 printf '{"version":"0.1.0-moinax.stale"}\n' >"$target.previous.json"
 # Older than the running process this time, so it is a build that did run.
 touch -d '1 hour ago' "$target"
-FAKE_PID="$$" bash "$probe" "$target" "$T3FORK" >/dev/null
+FAKE_PID="$$" HOME="$home" bash "$probe" "$target" "$T3FORK" >/dev/null
 check "drops the stale version name" "absent" \
     "$([ -e "$target.previous.json" ] && echo present || echo absent)"
 check "and backs up anyway" "installed" "$(cat "$target.previous")"
+
+# With the app closed the process comparison says nothing, so the prepared
+# record is what shows the installed build was put there and never started.
+printf 'never started\n' >"$target"
+printf 'the one that ran\n' >"$target.previous"
+printf '{"stage":"ready"}\n' >"$state/prepared.json"
+FAKE_PID="" HOME="$home" bash "$probe" "$target" "$T3FORK" >/dev/null
+check "keeps the backup when the app is closed over a prepared build" "the one that ran" \
+    "$(cat "$target.previous")"
+rm -f "$state/prepared.json"
+FAKE_PID="" HOME="$home" bash "$probe" "$target" "$T3FORK" >/dev/null
+check "and backs up once nothing is prepared" "never started" "$(cat "$target.previous")"
 
 echo
 if [ "$failures" -eq 0 ]; then
