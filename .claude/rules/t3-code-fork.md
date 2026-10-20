@@ -165,10 +165,21 @@ the two still have to stay in step, and both clear `prepared.json` and
 `status.json`, which otherwise describe a file that is no longer installed and
 park the sidebar on "needs attention".
 
-**Never auto-push.** `t3fork update` is the command the fork report *names*, so
-auto-pushing would turn a line of a routine maintenance report into rewriting a
-published branch nobody agreed to. Not pushing costs an origin that lags and the
-next run takes in; pushing wrongly rewrites a remote.
+**`t3fork update` never pushes on its own.** It is the command the fork report
+*names*, so auto-pushing there would turn a line of a routine maintenance report
+into rewriting a published branch nobody agreed to. It offers the push and waits.
+
+**An agent that rewrites the fork branch publishes it, though** — standing
+instruction, 2026-10-20, `--force-with-lease` pinned to the sha just observed,
+never the bare form. Squashing a fixup into a fork patch changes every sha after
+it, which leaves origin and local *diverged* rather than merely behind: eight
+commits each side, no ancestor either way. `prepareUpdate` rejects exactly that
+shape ("The local and published fork have diverged"), and its `published.json`
+escape hatch only covers a publication the runner itself performed. So a rewrite
+left unpushed does not merely lag — it stops the fork from updating at all,
+automatically and manually, until the two sides are reconciled. Verify with
+`git rev-list --count origin/<branch>..HEAD` and its mirror: two non-zero counts
+is the broken state.
 
 **The keys are written by every `t3fork` invocation, not just `update`.** They lived
 in the `update` branch first, which made them unreachable in practice — they exist
