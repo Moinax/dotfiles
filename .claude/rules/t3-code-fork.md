@@ -4,6 +4,7 @@ paths:
   - home/dot_local/bin/executable_t3fork
   - tools/t3-host.sh
   - tests/test_t3fork_sync.sh
+  - tests/test_t3fork_rollback.sh
   - tools/manage-external-apps.py
   - packages/groups/development.yaml
 ---
@@ -125,9 +126,12 @@ leave unpushed, run `update`. Publishing straight after the rewrite closes it
 too, and is what the rewrite was heading for anyway.
 
 **The fork follows upstream's newest built nightly, never the tip of `main`.**
-Upstream tags a nightly before CI builds it and a tag whose build fails never
-gets a release — `v0.1.1-nightly.20261020.3399` is one — so a release carrying an
-uploaded AppImage asset is the only thing that proves a commit was built, and
+Upstream's release job runs after the checks and all six desktop builds and
+creates the tag and the release together, so a nightly tag with no release is one
+whose release was *deleted* — GitHub keeps the tag — which is how a nightly found
+to be broken is withdrawn; `v0.1.1-nightly.20261020.3399` is one. A release
+carrying an uploaded AppImage asset is therefore what proves a commit was built
+and still stands, and
 its `target_commitish` is what both update paths rebase onto. Rebasing onto
 main's tip took commits no build had exercised: upstream broke the build, this
 machine had it before upstream had fixed it, and the next update existed only to
@@ -136,6 +140,23 @@ carry the fix. `scripts/fork-update.mjs` in the checkout owns the criterion;
 `dotfiles.forkTargetCommand` at it so the drift report counts to the same place
 (`sync-machine.md`). Never add a second copy of the rule — two answers to "which
 commit is current" is two commands undoing each other's rebase.
+
+**A prepared update does not hold the next nightly back; only a rollback copy
+does.** Preparing chains: hours can pass before a restart, and waiting for one
+would make every one of them an hour of nightlies not taken, for no gain — the
+build being replaced was never run. What that costs is the backup, so
+`installArtifact` writes `<AppImage>.previous` only when the installed build is
+the one running. Overwriting it on every install would, after two preparations,
+offer a rollback onto a build nothing ever started. A prepared *local* build is
+different and is never discarded: it was asked for by hand.
+
+**The rollback exists twice because its premise is an app that will not start.**
+`t3fork rollback` is shell, depends on nothing built, and only moves files; the
+in-app button goes through the runner's `rollback` action. That is not the
+duplicated-rule trap the nightly criterion is — it is `mv`, not a decision — but
+the two still have to stay in step, and both clear `prepared.json` and
+`status.json`, which otherwise describe a file that is no longer installed and
+park the sidebar on "needs attention".
 
 **Never auto-push.** `t3fork update` is the command the fork report *names*, so
 auto-pushing would turn a line of a routine maintenance report into rewriting a

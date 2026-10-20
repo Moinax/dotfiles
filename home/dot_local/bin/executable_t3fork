@@ -12,6 +12,9 @@
 #     -y, --yes         restart without asking (for unattended runs)
 #     -n, --no-restart  install only, leave the running app alone
 #   t3fork restart      restart T3 Code onto the installed AppImage as-is
+#   t3fork rollback     put the previous build back and restart onto it — the
+#                       way out when an update leaves the app unable to start
+#     -n, --no-restart  swap the AppImage only, leave the running app alone
 #   t3fork target       print the upstream nightly this fork follows, as
 #                       `<commit> <tag>` (used by `dots update`'s fork report)
 #   t3fork mobile       build the Android app from this checkout and install it
@@ -1005,6 +1008,51 @@ case "${1:-}" in
   restart)
     [[ -f "$target" ]] || { echo "t3fork: nothing installed at $target" >&2; exit 1; }
     restart_app
+    ;;
+
+  rollback)
+    # The in-app button does the same swap through the runner's `rollback`
+    # action (`scripts/fork-update.mjs`). This copy exists for the case that one
+    # cannot serve: an update that leaves T3 Code unable to start, where there
+    # is no window to click and nothing to ask the updater through. So it stays
+    # shell, depends on nothing built, and touches only files.
+    # Restarting is the default here, unlike `install`: a rollback is asked for
+    # when the app is unusable, so leaving the broken build running is never the
+    # thing wanted by not saying.
+    restart=yes
+    for flag in "${@:2}"; do
+      case "$flag" in
+        -n|--no-restart) restart=no ;;
+        -y|--yes) restart=yes ;;
+        *) echo "t3fork: unknown flag $flag" >&2; exit 1 ;;
+      esac
+    done
+
+    backup="$target.previous"
+    if [[ ! -f "$backup" ]]; then
+      echo "t3fork: no previous build at $backup" >&2
+      echo "t3fork: build one with 't3fork install', or reinstall from the fork" >&2
+      exit 1
+    fi
+    if systemctl --user is-active --quiet t3fork-update.service; then
+      echo "t3fork: an update is running — let it finish or cancel it first" >&2
+      exit 1
+    fi
+    # Read the name before the file that holds it is removed.
+    rolled="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$backup.json" 2>/dev/null || true)"
+    mv -f "$backup" "$target"
+    # The prepared record describes the build just replaced, and status.json its
+    # run. Both now point at something that is not installed any more, which is
+    # exactly the state the sidebar reports as needing attention.
+    rm -f "$backup.json" \
+      "$HOME/.local/state/t3fork/prepared.json" \
+      "$HOME/.local/state/t3fork/status.json"
+    echo "t3fork: rolled back to ${rolled:-the previous build} -> $target"
+    if [[ "$restart" == no ]]; then
+      echo "t3fork: not restarting (-n); the running app keeps its own build until you do"
+    else
+      restart_app
+    fi
     ;;
 
   target)
