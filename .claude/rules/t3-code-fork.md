@@ -150,6 +150,13 @@ the one running. Overwriting it on every install would, after two preparations,
 offer a rollback onto a build nothing ever started. A prepared *local* build is
 different and is never discarded: it was asked for by hand.
 
+**`t3fork install` keeps a rollback copy too, under the same rule.** Only a
+build this machine has *run* is worth rolling back onto, and the shell can tell:
+an installed AppImage newer than the running process was put there and never
+started, so the existing backup stays. It records no version — unlike the
+updater it does not know what it is replacing, and the app reads a nameless
+backup as "the previous build" rather than inventing one.
+
 **The rollback exists twice because its premise is an app that will not start.**
 `t3fork rollback` is shell, depends on nothing built, and only moves files; the
 in-app button goes through the runner's `rollback` action. That is not the

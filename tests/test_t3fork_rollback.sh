@@ -85,6 +85,43 @@ check "says so without a version" "yes" \
     "$(grep -qF "rolled back to the previous build" <<<"$out" && echo yes || echo no)"
 
 echo
+echo "== an install by hand keeps the build it replaces =="
+# `back_up_installed_build` is sourced rather than driven through `install`,
+# which would need a full electron-builder run to reach it.
+probe="$stage/probe.sh"
+cat >"$probe" <<'PROBE'
+target="$1"
+t3code_root_pids() { printf '%s\n' "${FAKE_PID:-}"; }
+eval "$(sed -n '/^back_up_installed_build()/,/^}/p' "$2")"
+back_up_installed_build
+PROBE
+
+printf 'installed\n' >"$target"
+rm -f "$target.previous" "$target.previous.json"
+FAKE_PID="" bash "$probe" "$target" "$T3FORK" >/dev/null
+check "backs up the installed build" "installed" "$(cat "$target.previous")"
+
+# A build newer than the running process was installed and never started. PID 1
+# stands in for the running app: bash compares `-nt` to the second, so a process
+# started in the same second as the write would read as older. Real installs are
+# minutes or hours after the app started, and the test should not hinge on that.
+printf 'never started\n' >"$target"
+printf 'the one that ran\n' >"$target.previous"
+FAKE_PID=1 bash "$probe" "$target" "$T3FORK" >/dev/null
+check "keeps the backup when what is installed never ran" "the one that ran" "$(cat "$target.previous")"
+
+# And the stale name file goes, so the app says "the previous build" rather than
+# naming a version it no longer holds.
+printf 'installed\n' >"$target"
+printf '{"version":"0.1.0-moinax.stale"}\n' >"$target.previous.json"
+# Older than the running process this time, so it is a build that did run.
+touch -d '1 hour ago' "$target"
+FAKE_PID="$$" bash "$probe" "$target" "$T3FORK" >/dev/null
+check "drops the stale version name" "absent" \
+    "$([ -e "$target.previous.json" ] && echo present || echo absent)"
+check "and backs up anyway" "installed" "$(cat "$target.previous")"
+
+echo
 if [ "$failures" -eq 0 ]; then
     echo "All rollback checks passed."
 else

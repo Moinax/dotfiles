@@ -147,6 +147,28 @@ restart_app() {
   kill -TERM $pids 2>/dev/null || true
 }
 
+# Keep the build being replaced as the one `t3fork rollback` restores — the
+# in-app updater does this in `installArtifact`, and an install by hand left no
+# way back at all. Same rule as there: only a build this machine has actually
+# *run* is worth rolling back onto. The installed AppImage being newer than the
+# running process is exactly the case where it is not — it was put there and
+# never started, so the existing backup stays.
+#
+# No version is recorded: unlike the updater, this path does not know what it is
+# replacing, and the app reads a nameless backup as "the previous build" rather
+# than inventing one.
+back_up_installed_build() {
+  local pid
+  [[ -f "$target" ]] || return 0
+  pid="$(t3code_root_pids | head -n 1)"
+  if [[ -n "$pid" && "$target" -nt "/proc/$pid" ]]; then
+    echo "t3fork: keeping the existing rollback build — what is installed was never started"
+    return 0
+  fi
+  cp -f "$target" "$target.previous"
+  rm -f "$target.previous.json"
+}
+
 cd "$repo"
 
 # Tell `dots update`'s fork check what this fork is, so its report names the
@@ -746,6 +768,8 @@ case "${1:-}" in
     #
     # Resolved like vp above, and for the same reason: an agent shell inside T3
     # Code replays a PATH snapshot older than ~/.local/bin.
+    back_up_installed_build
+
     for dots in \
       "$(command -v dots || true)" \
       "$HOME/.local/bin/dots"
