@@ -132,6 +132,20 @@ warning after a green "Machine in sync". Every failure path is a silent
 `continue`: offline, a vanished upstream, a repo mid-rebase — none is worth a
 warning on a sync that already succeeded, and the next run asks again.
 
+**A fork may follow something narrower than its upstream's tip**, and says so
+with `dotfiles.forkTargetCommand` in its own `.git/config`. t3code follows
+upstream's newest *built* nightly (`t3-code-fork.md`), so counting against main's
+tip reported a backlog its own updater would refuse to take, next to a command
+that would do nothing with it — 4 behind where the honest answer was 0. The key
+holds a *command*, not a commit: the answer moves on upstream's release schedule,
+and a commit cached in the config would freeze at whatever the last update saw,
+hiding the very drift this exists to show. `fork_drift` knows nothing about
+nightlies — it runs what the repo named, under a timeout, and uses the result
+only if it is a commit this checkout actually has. Everything else — an
+unreachable GitHub, an empty answer, a key left by a tool since removed — falls
+back to the upstream ref, because a fork missing from the report hides real drift
+and a plausible wrong number is worse than the upstream count.
+
 **It answers two questions, not one**, and the second is the only place that asks
 it: how far behind *upstream* the fork is, and how many commits `origin` has never
 seen. `t3fork` offers the push and never takes it, so declining leaves a fork

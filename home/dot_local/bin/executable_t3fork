@@ -12,6 +12,8 @@
 #     -y, --yes         restart without asking (for unattended runs)
 #     -n, --no-restart  install only, leave the running app alone
 #   t3fork restart      restart T3 Code onto the installed AppImage as-is
+#   t3fork target       print the upstream nightly this fork follows, as
+#                       `<commit> <tag>` (used by `dots update`'s fork report)
 #   t3fork mobile       build the Android app from this checkout and install it
 #                       on the USB-connected phone, over whatever is there
 #     -p, --preview     build the side-by-side "T3 Code Preview" variant
@@ -154,6 +156,27 @@ cd "$repo"
 register_fork_config() {
   git config dotfiles.forkUpdate "t3fork update && t3fork install"
   git config dotfiles.forkBranch "$branch"
+  # What `fork_drift` must count against. A command rather than a commit,
+  # because a commit written here would be the nightly as of the last update and
+  # would read as "up to date" for as long as nobody ran one — the drift it
+  # exists to show is exactly the drift it would then hide.
+  git config dotfiles.forkTargetCommand "t3fork target"
+}
+
+# The commit and tag of upstream's newest *built* nightly, as `<commit> <tag>`.
+#
+# The criterion is not reimplemented here. `scripts/fork-update.mjs` is the
+# updater the app itself runs and already owns it — a release that is a nightly
+# and carries an uploaded AppImage — so importing it is what keeps every path
+# onto this branch answering the same question the same way. A second copy is
+# how they would come to disagree about which commit is current, each one
+# undoing the other's rebase. Node is a given: it is what the repo builds with.
+resolve_target() {
+  node --input-type=module -e "
+    import { resolveNightly, defaults } from '$repo/scripts/fork-update.mjs';
+    const nightly = await resolveNightly(defaults().releases);
+    process.stdout.write(nightly.commit + ' ' + nightly.tag);
+  "
 }
 
 # Outside the case, and non-fatal, deliberately. Registering only in `update`
@@ -618,16 +641,7 @@ case "${1:-}" in
     # exercised — which is how a broken upstream build landed here, leaving a
     # second update to do nothing but carry its fix.
     #
-    # The criterion is not reimplemented here. `scripts/fork-update.mjs` is the
-    # updater the app ships and already owns it, so importing it is what keeps
-    # this command and the in-app one from disagreeing about which commit is
-    # current — a disagreement whose symptom is each of them undoing the other's
-    # rebase. Node is a given: it is what the repo builds with.
-    if ! target="$(node --input-type=module -e "
-      import { resolveNightly, defaults } from '$repo/scripts/fork-update.mjs';
-      const nightly = await resolveNightly(defaults().releases);
-      process.stdout.write(nightly.commit + ' ' + nightly.tag);
-    ")"; then
+    if ! target="$(resolve_target)"; then
       echo >&2
       echo "t3fork: could not resolve upstream's newest built nightly (see above)." >&2
       echo "t3fork: nothing here has changed. Re-run when GitHub is reachable:" >&2
@@ -991,6 +1005,14 @@ case "${1:-}" in
   restart)
     [[ -f "$target" ]] || { echo "t3fork: nothing installed at $target" >&2; exit 1; }
     restart_app
+    ;;
+
+  target)
+    # For `dots update`'s fork report, which counts against this rather than
+    # against upstream's tip. Prints `<commit> <tag>` and nothing else, so the
+    # caller can read the commit with a shell expansion and validate it.
+    resolve_target
+    echo
     ;;
 
   *)

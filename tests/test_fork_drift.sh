@@ -125,6 +125,30 @@ row="$(drift)"
 check "behind is one" "1" "$(printf '%s' "$row" | cut -f3)"
 check "still unpushed" "yes" "$(printf '%s' "$row" | cut -f4)"
 
+echo "a fork that declares a narrower target is counted against it"
+# t3code follows upstream's newest *built* nightly, not main's tip: counting
+# against the tip reports a backlog the update would refuse to take. The repo
+# names the command; fork_drift knows nothing about nightlies.
+make_fork bounded
+git -C "$stage/bounded-seed" commit -q --allow-empty -m U3
+git -C "$stage/bounded-seed" commit -q --allow-empty -m U4
+git -C "$stage/bounded-seed" push -q origin HEAD:main
+git -C "$stage/projects/bounded" fetch -q upstream main
+# U3 is built, U4 is not: the honest answer is 1 behind, not 2.
+built=$(git -C "$stage/bounded-seed" rev-parse HEAD~1)
+git -C "$stage/projects/bounded" config dotfiles.forkTargetCommand "echo $built nightly-tag"
+check "counted to the declared target" "1" "$(drift | awk -F'\t' '$1 ~ /bounded/ {print $3}')"
+
+echo "a target command that cannot answer falls back to upstream"
+# An unreachable GitHub, a nightly on another branch, or a key left behind by a
+# tool since removed. Dropping the fork from the report would hide real drift,
+# and a plausible wrong number is worse than the upstream count.
+for bad in "exit 1" "echo not-a-sha" "echo 0000000000000000000000000000000000000000" "echo"; do
+    git -C "$stage/projects/bounded" config dotfiles.forkTargetCommand "$bad"
+    check "fallback for '$bad'" "2" "$(drift | awk -F'\t' '$1 ~ /bounded/ {print $3}')"
+done
+git -C "$stage/projects/bounded" config --unset dotfiles.forkTargetCommand
+
 echo "a detached HEAD is not compared against origin/HEAD"
 make_fork detached
 git -C "$stage/projects/detached" config --unset dotfiles.forkBranch

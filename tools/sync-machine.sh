@@ -1028,6 +1028,35 @@ fork_drift() {
         done
         [ -n "$ref" ] || continue
 
+        # A fork may follow something narrower than its upstream's tip, and say
+        # so with `dotfiles.forkTargetCommand`. t3code follows upstream's newest
+        # *built* nightly: main's tip carries commits no build has exercised, so
+        # counting against it reports a backlog the update would refuse to take
+        # and names a command that would do nothing with it.
+        #
+        # A command, not a commit, because the answer moves on upstream's
+        # schedule rather than on ours — a commit cached in the config would
+        # freeze at whatever the last update saw. It runs with the walk's own
+        # timeout and its output is checked for being a commit this checkout
+        # actually has: an unreachable GitHub, a repo whose nightly sits on some
+        # other branch, or a key left behind by a tool that has since been
+        # removed, all fall back to the upstream ref rather than dropping the
+        # fork from the report. Nothing here is run that the repo's own config
+        # did not name, and this walk only ever visits checkouts under the
+        # projects root.
+        local target_command target_commit
+        target_command=$(git -C "$repo" config --get dotfiles.forkTargetCommand) || target_command=""
+        if [ -n "$target_command" ]; then
+            target_commit=$(cd "$repo" && timeout 30 sh -c "$target_command" 2>/dev/null | awk '{print $1}') || target_commit=""
+            case "$target_commit" in
+                *[!0-9a-f]* | "") target_commit="" ;;
+            esac
+            if [ -n "$target_commit" ] \
+               && git -C "$repo" rev-parse --verify --quiet "$target_commit^{commit}" >/dev/null 2>&1; then
+                ref="$target_commit"
+            fi
+        fi
+
         behind=$(git -C "$repo" rev-list --count "$tip..$ref" 2>/dev/null) || continue
 
         # Is this branch published as it stands? The one question nothing else

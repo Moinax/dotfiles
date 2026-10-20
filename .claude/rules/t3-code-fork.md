@@ -113,6 +113,30 @@ host a day behind with the desktop looking healthy throughout. `dots update`'s f
 report carries the other half: it now counts commits absent from `origin` off the
 tracking ref, no fetch, because this machine is the only thing that pushes there.
 
+**A local rewrite nobody has pushed makes `sync_with_origin` choose origin.**
+Squashing, reordering or amending the series here gives every commit a new
+patch-id, so `git cherry` reports origin's commits as foreign — the shape that
+means "another machine has work we lack". The rebase bases are the discriminator
+and they are *equal* at that point, because no rebase has happened yet, so the
+tie falls through to the old rule and origin wins: the next `t3fork update`
+offers to reset the rewrite away. Rewriting and *then* rebasing is what makes
+this machine the later base and the winner; the sequence to avoid is rewrite,
+leave unpushed, run `update`. Publishing straight after the rewrite closes it
+too, and is what the rewrite was heading for anyway.
+
+**The fork follows upstream's newest built nightly, never the tip of `main`.**
+Upstream tags a nightly before CI builds it and a tag whose build fails never
+gets a release — `v0.1.1-nightly.20261020.3399` is one — so a release carrying an
+uploaded AppImage asset is the only thing that proves a commit was built, and
+its `target_commitish` is what both update paths rebase onto. Rebasing onto
+main's tip took commits no build had exercised: upstream broke the build, this
+machine had it before upstream had fixed it, and the next update existed only to
+carry the fix. `scripts/fork-update.mjs` in the checkout owns the criterion;
+`t3fork target` prints its answer, and `register_fork_config` points
+`dotfiles.forkTargetCommand` at it so the drift report counts to the same place
+(`sync-machine.md`). Never add a second copy of the rule — two answers to "which
+commit is current" is two commands undoing each other's rebase.
+
 **Never auto-push.** `t3fork update` is the command the fork report *names*, so
 auto-pushing would turn a line of a routine maintenance report into rewriting a
 published branch nobody agreed to. Not pushing costs an origin that lags and the
