@@ -4,8 +4,9 @@
 # T3 Code — `dots apps` deliberately tracks no source for it, so nothing else
 # ever writes that AppImage.
 #
-#   t3fork update       take in origin, rebase the fork branch onto upstream,
-#                       then offer to publish it (force-with-lease, asks first)
+#   t3fork update       take in origin, rebase the fork branch onto upstream's
+#                       newest built nightly, then offer to publish it
+#                       (force-with-lease, asks first)
 #   t3fork install      build a Linux AppImage, install it as the launcher's
 #                       T3 Code, then offer to restart onto it
 #     -y, --yes         restart without asking (for unattended runs)
@@ -610,6 +611,36 @@ case "${1:-}" in
     # comparison against a stale ref, which is how the wrong side wins.
     git fetch upstream main
     sync_with_origin
+
+    # Rebase onto upstream's newest *built* nightly rather than the tip of main.
+    # Upstream tags a nightly before CI builds it and a tag whose build fails
+    # never gets a release, so main's tip routinely carries commits no build has
+    # exercised — which is how a broken upstream build landed here, leaving a
+    # second update to do nothing but carry its fix.
+    #
+    # The criterion is not reimplemented here. `scripts/fork-update.mjs` is the
+    # updater the app ships and already owns it, so importing it is what keeps
+    # this command and the in-app one from disagreeing about which commit is
+    # current — a disagreement whose symptom is each of them undoing the other's
+    # rebase. Node is a given: it is what the repo builds with.
+    if ! target="$(node --input-type=module -e "
+      import { resolveNightly, defaults } from '$repo/scripts/fork-update.mjs';
+      const nightly = await resolveNightly(defaults().releases);
+      process.stdout.write(nightly.commit + ' ' + nightly.tag);
+    ")"; then
+      echo >&2
+      echo "t3fork: could not resolve upstream's newest built nightly (see above)." >&2
+      echo "t3fork: nothing here has changed. Re-run when GitHub is reachable:" >&2
+      echo "  t3fork update" >&2
+      exit 1
+    fi
+    target_commit="${target%% *}"
+    target_tag="${target#* }"
+    echo "t3fork: following $target_tag ($(printf '%.10s' "$target_commit"))"
+    # Fetch the commit itself: the tag is not enough to rely on, and --no-tags
+    # keeps upstream's hundreds of nightly tags out of this checkout.
+    git fetch --no-tags upstream "$target_commit"
+
     # A rebase keeps the fork as "upstream plus N patches", which is what makes
     # the next one cheap. Never merge: a merge buries our commits in history and
     # every later conflict has to be re-solved.
@@ -620,7 +651,7 @@ case "${1:-}" in
     # every cycle, over a file the tool itself had touched. Autostash restores it
     # afterwards, so nothing is lost — and unlike the dotfiles' own pull, there is
     # no review in progress here for it to stash out from under.
-    if ! git rebase --autostash upstream/main; then
+    if ! git rebase --autostash "$target_commit"; then
       echo
       # A rebase that stopped on a conflict and one git refused to start are not
       # the same state, and only the first can be continued. Saying "conflicts"
