@@ -157,6 +157,21 @@ started, so the existing backup stays. It records no version — unlike the
 updater it does not know what it is replacing, and the app reads a nameless
 backup as "the previous build" rather than inventing one.
 
+**`t3fork install` tells the updater what it installed, rather than erasing its
+records.** Clearing them was the only other option available: the app recognises
+a prepared build by the installed AppImage's size and mtime, so a newer file put
+there by hand reads to it as "the installed AppImage changed or is missing" — an
+error about the build that had just succeeded. But the record is also what the
+sidebar's **Local build ready · Restart** pill is made of, and what the change
+list on the fork page reads, so clearing it meant a hand build announced itself
+nowhere and the restart had to be remembered. The record is written by
+`record-installed` in the runner, never by the shell: size, mtime and sha256 are
+a contract with the running app, and a second writer of them is a second answer
+to "is a build waiting". Two consequences, both of them the existing rule for a
+prepared local build rather than new: the automatic upstream update refuses to
+prepare over it until the restart happens, and a second hand install keeps the
+rollback copy rather than pointing it at a build nothing ever ran.
+
 **The rollback exists twice because its premise is an app that will not start.**
 `t3fork rollback` is shell, depends on nothing built, and only moves files; the
 in-app button goes through the runner's `rollback` action. That is not the

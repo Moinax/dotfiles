@@ -184,6 +184,32 @@ clear_updater_records() {
   rm -f "$HOME/.local/state/t3fork/status.json" "$HOME/.local/state/t3fork/prepared.json"
 }
 
+# A build installed here is a prepared local build, and the app has a pill for
+# exactly that: "Local build ready", with a Restart beside it and the list of
+# what the build brings. It reads the updater's record, so an install that
+# cleared the records instead — the only thing this could do before — left that
+# pill with nothing to say and the restart to be remembered by hand.
+#
+# The record is written by the runner rather than here. Its shape is a contract
+# with the running app (size, mtime and digest are what prove the AppImage on
+# disk is still the one described), and a second writer of it is a second answer
+# to "is a build waiting". Falling back to clearing keeps this working against a
+# checkout whose runner predates the action.
+#
+# The env scrub is the usual one: run from an agent pane inside T3 Code, node
+# inherits the AppImage's loader path and dies on undefined symbols.
+record_installed_build() {
+  systemctl --user is-active --quiet t3fork-update.service && return 0
+  if env -u ELECTRON_RUN_AS_NODE -u LD_LIBRARY_PATH node \
+    "$repo/scripts/fork-update.mjs" record-installed "$version" "$(git rev-parse HEAD)" \
+    >/dev/null; then
+    echo "t3fork: the app offers the restart onto $version in its sidebar"
+  else
+    echo "t3fork: could not record the build for the app — restart with 't3fork restart'" >&2
+    clear_updater_records
+  fi
+}
+
 cd "$repo"
 
 # Tell `dots update`'s fork check what this fork is, so its report names the
@@ -804,9 +830,9 @@ case "${1:-}" in
 
     # The in-app fork updater recognises the build it prepared by $target's size
     # and mtime, so the install above — a *newer* build, by hand — reads to it as
-    # "the installed AppImage changed or is missing". Dropping its records leaves
-    # the updater idle, which is what it is.
-    clear_updater_records
+    # "the installed AppImage changed or is missing" unless it is told what just
+    # landed. Telling it is what puts the restart in the sidebar.
+    record_installed_build
 
     # Asking needs someone to answer: run from an agent or a hook there is no
     # terminal, and a `read` there would either block forever or read the
