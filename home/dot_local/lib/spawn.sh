@@ -26,10 +26,20 @@
 # this by starting from the user manager's environment rather than ours, but the
 # setsid fallback would inherit it — so both branches clear it rather than one
 # relying on a property of the other.
+#
+# The AppImage runtime's own variables go with it, for the same reason and with
+# a sharper failure: a caller running inside a mounted AppImage has
+# `LD_LIBRARY_PATH` pointing into `/tmp/.mount_*`, which that AppImage unmounts
+# when it exits. Relaunching T3 Code onto a new build from a pane of the old one
+# is exactly that case — the replacement would look for its libraries in a
+# directory that is being deleted. `APPDIR` and `APPIMAGE` mislead the new
+# runtime about where it is mounted from.
 spawn_detached() {
     if command -v systemd-run >/dev/null 2>&1; then
         systemd-run --user --collect --quiet --same-dir \
-            -- env -u ELECTRON_RUN_AS_NODE "$@" >/dev/null 2>&1 && return
+            -- env -u ELECTRON_RUN_AS_NODE -u LD_LIBRARY_PATH -u APPDIR -u APPIMAGE \
+            "$@" >/dev/null 2>&1 && return
     fi
-    setsid -f env -u ELECTRON_RUN_AS_NODE "$@" >/dev/null 2>&1 </dev/null
+    setsid -f env -u ELECTRON_RUN_AS_NODE -u LD_LIBRARY_PATH -u APPDIR -u APPIMAGE \
+        "$@" >/dev/null 2>&1 </dev/null
 }
