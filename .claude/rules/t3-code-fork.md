@@ -169,7 +169,9 @@ nowhere and the restart had to be remembered. The record is written by
 a contract with the running app, and a second writer of them is a second answer
 to "is a build waiting". Two consequences, both of them the existing rule for a
 prepared local build rather than new: the automatic upstream update refuses to
-prepare over it until the restart happens, and a second hand install keeps the
+prepare over it until the restart happens — `shouldPrepareNightly` reads "still
+waiting" as a prepared version that differs from the running one, because the
+record outlives the restart that takes it — and a second hand install keeps the
 rollback copy rather than pointing it at a build nothing ever ran.
 
 **The rollback exists twice because its premise is an app that will not start.**
