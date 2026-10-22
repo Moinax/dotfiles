@@ -16,10 +16,17 @@
 
 set -e
 
+# grab leg: hyprshot calls us back ($0) with the saved file once written.
+# `-m active` grabs the focused output/window straight away; the click-to-select
+# of a bare `-m output`/`-m window` runs slurp, which takes the pointer and the
+# keyboard, so whatever was hovered or focused in the captured window is gone
+# before the shutter. Only region still selects, which is the point of it.
 case "${1-}" in
-    output|window|region)
-        # grab leg: hyprshot calls us back ($0) with the saved file once written
-        exec hyprshot -m "$1" -s -o ~/Pictures/Screenshots -- "$0"
+    output|window)
+        exec hyprshot -m active -m "$1" -s -o ~/Pictures/Screenshots -- "$0"
+        ;;
+    region)
+        exec hyprshot -m region -s -o ~/Pictures/Screenshots -- "$0"
         ;;
 esac
 

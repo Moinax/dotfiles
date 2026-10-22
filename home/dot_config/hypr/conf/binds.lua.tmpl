@@ -215,8 +215,11 @@ hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --sil
 hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/wallpaper?toggle=true'"))                  -- Wallpaper picker (grid preview)
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
-hl.bind("PRINT",                hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))    -- Screenshot a monitor
-hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh window")) -- Screenshot a window
+-- Window on the bare key: it is the one-handed grab, and the Fn of a QMK
+-- keyboard never reaches the compositor, so mod + PRINT cannot be reached
+-- one-handed from the right side of the board.
+hl.bind("PRINT",                hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh window"))    -- Screenshot the focused window, no click
+hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output")) -- Screenshot the focused monitor, no click
 hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh region")) -- Screenshot a region
 
 -- ── 13. Screen recordings ────────────────────────────────────────
