@@ -31,7 +31,7 @@ descriptions:
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
   awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
-  hyprpicker: Color picker for Hyprland
+  hyprpicker: Color picker for Hyprland (also freezes the screen under a region screenshot)
   polkit-kde-agent: Polkit authentication agent (KDE)
   hyprshot: Screenshot tool for Hyprland
   wf-recorder: Wayland screen recorder

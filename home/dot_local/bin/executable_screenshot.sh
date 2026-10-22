@@ -20,13 +20,16 @@ set -e
 # `-m active` grabs the focused output/window straight away; the click-to-select
 # of a bare `-m output`/`-m window` runs slurp, which takes the pointer and the
 # keyboard, so whatever was hovered or focused in the captured window is gone
-# before the shutter. Only region still selects, which is the point of it.
+# before the shutter. Only region still selects, which is the point of it --
+# and `-z` freezes the screen under that selection (it shells out to
+# hyprpicker, which the hyprland group installs), so the region is carved out
+# of the frame as it was when the key was pressed, hover and all.
 case "${1-}" in
     output|window)
         exec hyprshot -m active -m "$1" -s -o ~/Pictures/Screenshots -- "$0"
         ;;
     region)
-        exec hyprshot -m region -s -o ~/Pictures/Screenshots -- "$0"
+        exec hyprshot -m region -z -s -o ~/Pictures/Screenshots -- "$0"
         ;;
 esac
 
