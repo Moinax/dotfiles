@@ -74,6 +74,67 @@ for _, w in ipairs(hl.get_windows({ class = "firefox" })) do
     place_bitwarden_firefox(w)
 end
 
+-- ── Steam and Proton ──────────────────────────────────────────────
+-- Center the floating ones instead of letting the client place them.
+--
+-- An X11 client maps with a requested geometry that Hyprland honours — the same
+-- mechanism the btop rule above documents — and these ask for corners, bottom
+-- left most often, then sometimes drift further out on a three-monitor layout.
+--
+-- One match covers the lot: a Proton game and every Wine helper it spawns carry
+-- the `steam_app_<id>` class, systray and launcher dialogs included. `steam`
+-- adds Steam's own popups.
+--
+-- `center` alone, deliberately. No `float`: a window the layout would tile keeps
+-- tiling, the rule is inert on it (verified — a tiled window under this rule
+-- stays a plain tile). No `move` either: it takes precedence over `center`, so
+-- the two together would pin every window to one fixed spot instead.
+hl.window_rule({
+    match  = { class = "^(steam|steam_app_[0-9]+)$" },
+    center = true,
+})
+
+-- ── Off-screen rescue ─────────────────────────────────────────────
+-- A window that maps outside every monitor, brought back to the middle of its
+-- own. The Crew Motorfest is what this was written for: it asked for -2640,1010
+-- on a layout whose XWayland root spans -1440..6000 by -500..940, so the window
+-- was not merely on the wrong screen, it was outside the desktop. It rendered
+-- and played audio there, unreachable.
+--
+-- Deliberately not a per-class rule. The game's launcher scatters dialogs of its
+-- own — a shutdown prompt landed at -2427,1123 — and a `steam_app_<id>` rule
+-- caught the main window while missing that one. The geometry is the signal, so
+-- that is what this matches on, and it covers Epic, Wine and anything else that
+-- reads a multi-monitor layout wrong.
+--
+-- Only a window intersecting *no* monitor is touched: hanging off an edge is
+-- deliberate often enough, and such a window is still grabbable. Tiled windows
+-- cannot be off-screen — the layout owns their geometry — so the floating check
+-- is what keeps this from firing on ordinary windows.
+local function on_any_monitor(w)
+    for _, m in ipairs(hl.get_monitors()) do
+        if w.at.x < m.x + m.width and w.at.x + w.size.x > m.x
+            and w.at.y < m.y + m.height and w.at.y + w.size.y > m.y then
+            return true
+        end
+    end
+    return false
+end
+
+local function rescue_offscreen(w)
+    if w == nil or not w.floating or w.at == nil or w.size == nil then return end
+    if on_any_monitor(w) then return end
+    hl.dispatch(hl.dsp.window.center({ window = w }))
+end
+
+hl.on("window.open", rescue_offscreen)
+
+-- Sweeping on load makes a config reload the manual rescue as well, for a
+-- window that was already lost when this runs.
+for _, w in ipairs(hl.get_windows()) do
+    rescue_offscreen(w)
+end
+
 -- Opacity toggles driven by binds (see binds.lua). These rules are named so the
 -- global rule below can reliably take precedence over them while it is enabled.
 hl.window_rule({
