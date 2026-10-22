@@ -1,84 +1,115 @@
 #!/bin/bash
 
-# Screenshot wrapper around hyprshot.
+# Screenshots. Every mode here is grim over a geometry; the only question is
+# where that geometry comes from.
 #
-# hyprshot's builtin notification carries no action, so clicking it does
-# nothing. It also backgrounds the whole grab (`begin_grab & checkRunning`),
-# returning before the PNG is fully written — notifying right after it exits
-# raced the write, and swaync dropped the notification entirely when its image
-# loader hit the truncated file. hyprshot's `-- command` hook runs only after
-# the file is complete, so the grab leg has hyprshot call this script back
-# with the finished file, and the callback leg sends the notification.
+#   pick    freeze the screen and let the pointer answer -- click a window,
+#           drag a region, click the bar or a gap for the whole screen. A
+#           second press of the key takes the whole screen outright.
+#   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
-# The click itself is handled by swaync's scripts hook and notify-open (the
-# x-open category), not by notify-send --action's exit status — that only
-# works while the popup is on screen; see notify-open.
+# hyprshot used to do the grabbing and is gone: it has no mode like `pick`, its
+# own freeze is killed by a reaper that races its grim, and it computes a
+# monitor's box from the mode rather than the logical size, which is wrong on a
+# rotated screen. What is left of it here is two calls to grim.
+#
+# The notification is clickable, and that click is handled by swaync's scripts
+# hook and notify-open (the x-open category), not by notify-send --action's
+# exit status -- that only works while the popup is on screen; see notify-open.
 
 set -e
 
-# grab leg: hyprshot calls us back ($0) with the saved file once written.
-# `-m active` grabs the focused output/window straight away; the click-to-select
-# of a bare `-m output`/`-m window` runs slurp, which takes the pointer and the
-# keyboard, so whatever was hovered or focused in the captured window is gone
-# before the shutter. Only region still selects, which is the point of it --
-# and `-z` freezes the screen under that selection (it shells out to
-# hyprpicker, which the hyprland group installs), so the region is carved out
-# of the frame as it was when the key was pressed, hover and all.
+shot_dir=~/Pictures/Screenshots
+want_full=${XDG_RUNTIME_DIR:-/tmp}/screenshot-pick-full
+
+# Logical boxes of the monitors "$1" selects. An odd transform is a 90/270
+# rotation, which swaps the two dimensions of the mode.
+monitor_boxes() {
+    hyprctl -j monitors | jq -r "$1"'
+        | (if (.transform % 2) == 1 then [.height, .width] else [.width, .height] end) as $m
+        | "\(.x),\(.y) \(($m[0] / .scale) | round)x\(($m[1] / .scale) | round)"'
+}
+
+# Everything on screen: the windows, then the screens themselves. slurp keeps
+# the smallest box containing the cursor, so a window wins wherever it covers
+# one, and the bar and the gaps fall through to the whole screen.
+visible_boxes() {
+    local shown
+    # a special workspace draws over the active one, so its windows are on
+    # screen too; specialWorkspace.id is 0 when none is up
+    shown=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id] + [.[].specialWorkspace.id]')
+    hyprctl -j clients | jq -r --argjson shown "$shown" '
+        .[]
+        | select(.mapped and (.hidden | not))
+        | select(.workspace.id as $id | $shown | index($id))
+        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+    monitor_boxes '.[]'
+}
+
+# slurp's own rule, for the times we have to answer in its place.
+smallest_box_at() {
+    awk -v x="$1" -v y="$2" '
+        { split($1, o, ","); split($2, s, "x")
+          if (x >= o[1] && x < o[1] + s[1] && y >= o[2] && y < o[2] + s[2]) {
+              area = s[1] * s[2]
+              if (best == "" || area < best) { best = area; sel = $1 " " $2 }
+          } }
+        END { print sel }'
+}
+
 case "${1-}" in
-    output|window)
-        exec hyprshot -m active -m "$1" -s -o ~/Pictures/Screenshots -- "$0"
-        ;;
-    region)
-        exec hyprshot -m region -z -s -o ~/Pictures/Screenshots -- "$0"
-        ;;
     pick)
-        # One frozen grab that is all three at once. slurp keeps the smallest
-        # box containing the cursor, so the window boxes win over the -o output
-        # boxes wherever they overlap; and without -r a click still takes the
-        # highlighted box while a drag stays a free region. Hover a window and
-        # click to get it, drag to carve a region, click a gap or the wallpaper
-        # to fall through to the whole output.
-        #
-        # Not hyprshot: it has no such mode, and its own -z dies the moment
-        # slurp exits -- its reaper races grim, so what it writes is the live
-        # screen. Here hyprpicker holds the frozen frame until grim has read it,
-        # which is the whole point of freezing.
-        hyprpicker -r -z &
+        # A second press while the pick is up means "the whole screen". The
+        # running instance is the one holding the freeze, so it has to do the
+        # grab; killing its slurp is how we tell it to stop asking. Ours is the
+        # only slurp any of this starts.
+        if pgrep -x slurp >/dev/null; then
+            : > "$want_full"
+            pkill -x slurp
+            exit 0
+        fi
+        rm -f "$want_full"
+
+        hyprpicker -r -z >/dev/null 2>&1 &
         picker=$!
-        # Nothing else clears a frozen screen, so never leave it up on an error.
-        trap 'kill "$picker" 2>/dev/null || true' EXIT
+        # Nothing but this clears a frozen screen, so never leave one up.
+        trap 'kill "$picker" 2>/dev/null || true; rm -f "$want_full"' EXIT
         sleep 0.2
 
-        # A special workspace shows over the active one, so its window is on
-        # screen and needs a box too; specialWorkspace.id is 0 when none is up.
-        active_ws=$(hyprctl -j monitors |
-            jq -c '[.[].activeWorkspace.id] + [.[].specialWorkspace.id]')
-        boxes=$(hyprctl -j clients | jq -r --argjson ws "$active_ws" '
-            .[]
-            | select(.mapped and (.hidden | not))
-            | select(.workspace.id as $id | $ws | index($id))
-            | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
-
-        geometry=$(slurp -o <<< "$boxes") || exit 0  # Esc or right click
-
-        path=~/Pictures/Screenshots/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')
-        grim -g "$geometry" "$path"
-        kill "$picker" 2>/dev/null || true
-        wl-copy --type image/png < "$path"
-
-        # hand the file to the notification leg below
-        set -- "$path"
+        boxes=$(visible_boxes)
+        if geometry=$(slurp <<< "$boxes"); then
+            # A click that drifts a single pixel while the button is down comes
+            # back as a 1x1 region -- one near-black pixel, saved as a
+            # screenshot of nothing. Below a few pixels it was meant as a click,
+            # so resolve it the way slurp would have had it not been dragged.
+            read -r origin size <<< "$geometry"
+            if [ "${size%x*}" -lt 8 ] || [ "${size#*x}" -lt 8 ]; then
+                geometry=$(smallest_box_at "${origin%,*}" "${origin#*,}" <<< "$boxes")
+            fi
+        elif [ -e "$want_full" ]; then
+            geometry=$(monitor_boxes 'first(.[] | select(.focused))')
+        else
+            exit 0  # Esc, or a right click
+        fi
+        ;;
+    output)
+        geometry=$(monitor_boxes 'first(.[] | select(.focused))')
+        ;;
+    *)
+        echo "usage: ${0##*/} pick|output" >&2
+        exit 2
         ;;
 esac
 
-# callback leg, invoked by hyprshot: $1 is the completed screenshot.
-path="${1:?usage: screenshot.sh output|window|region}"
-[ -f "$path" ] || exit 0
+mkdir -p "$shot_dir"
+path="$shot_dir/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
+grim -g "$geometry" "$path"
+wl-copy --type image/png < "$path"
 
 # -A default makes the notification clickable; -c x-open plus the hint route
 # the click to notify-open. notify-send would wait for the popup to expire, so
-# background it — the action outcome is swaync's business, not ours.
-notify-send -a Hyprshot -i "$path" -t 8000 \
+# background it -- the action outcome is swaync's business, not ours.
+notify-send -a Screenshot -i "$path" -t 8000 \
     -A default=Open \
     -c x-open \
     -h "string:x-open-path:$path" \

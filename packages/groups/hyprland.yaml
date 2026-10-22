@@ -31,9 +31,11 @@ descriptions:
   hypridle: Idle daemon for Hyprland
   hyprlock: Screen locker for Hyprland
   awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
-  hyprpicker: Color picker for Hyprland (also freezes the screen under a region screenshot)
+  hyprpicker: Color picker for Hyprland (also freezes the screen under a screenshot)
+  grim: Wayland screen grabber (the shutter behind screenshot.sh)
+  slurp: Wayland region/box selector (screenshot.sh and screen-record.sh)
+  libnotify: notify-send, the client side of the notifications
   polkit-kde-agent: Polkit authentication agent (KDE)
-  hyprshot: Screenshot tool for Hyprland
   wf-recorder: Wayland screen recorder
   swayosd: On-screen display for volume, brightness and caps-lock
   python-pywayland: Python Wayland bindings (idle inhibitor for caffeine mode)
@@ -66,7 +68,13 @@ packages:
     - awww  # provides swww/swww-daemon — animated wallpaper daemon
     - hyprpicker
     - polkit-kde-agent
-    - hyprshot
+
+    # Screenshots and recordings. grim, slurp and libnotify came in as
+    # hyprshot's dependencies until screenshot.sh stopped using it; the scripts
+    # call them directly, so they are declared directly.
+    - grim
+    - slurp
+    - libnotify
     - wf-recorder
     - uwsm
     - v4l-utils  # edid-decode: detect PQ/HDR from each connected display's EDID

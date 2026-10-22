@@ -216,13 +216,10 @@ hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
 -- The bare key freezes the screen and lets the pointer say what to take:
--- click a window, drag a region, click a gap for the whole output. The mod
--- variants skip the freeze and the click for the two grabs worth aiming at
--- with the keyboard alone -- the Fn of a QMK keyboard never reaches the
--- compositor, so they are the ones no right hand can reach on its own.
-hl.bind("PRINT",                hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))      -- Screenshot: freeze, then click a window / drag a region
-hl.bind(mod .. " + PRINT",         hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh window")) -- Screenshot the focused window, no click
-hl.bind(mod .. " + SHIFT + PRINT", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output")) -- Screenshot the focused monitor, no click
+-- click a window, drag a region, press it again for the whole screen. The
+-- mod variant is the same whole screen without the freeze or the click.
+hl.bind("PRINT",            hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))     -- Screenshot: freeze, then click a window / drag a region / press again for the screen
+hl.bind(mod .. " + PRINT",  hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))   -- Screenshot the focused screen, no click
 
 -- ── 13. Screen recordings ────────────────────────────────────────
 -- A second press on any start chord stops and saves the current recording;
