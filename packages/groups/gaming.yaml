@@ -22,6 +22,7 @@ descriptions:
   steam: Valve game distribution platform
   mangohud: FPS and performance overlay
   gamemode: Game performance optimization daemon
+  gamescope: Nested micro-compositor — gives a game a single virtual display
   heroic-games-launcher-bin: Launcher for Epic, GOG, and Amazon Prime games (AUR)
   xpadneo-dkms: Advanced Linux driver for Xbox One/Series wireless controllers — Bluetooth + rumble (AUR)
   piper-git: GUI to configure gaming mice — DPI, button remapping, LEDs, onboard profiles (AUR)
@@ -35,6 +36,18 @@ packages:
     - steam
     - mangohud  # Optional: FPS overlay
     - gamemode  # Optional: Game performance optimization
+    - gamescope  # Optional: one virtual display for a game that misreads the desktop
+    # NOTE: not a performance tool — what it buys here is isolation. A game that
+    # enumerates this three-monitor layout wrong (ultrawide at 0,0, two 1440p
+    # screens at negative offsets) can map its window outside the XWayland root
+    # entirely and render where nothing reaches it; The Crew Motorfest asked for
+    # -2640,1010. Inside gamescope there is one screen at the origin and nothing
+    # left to get wrong. Launch options: `gamescope -W 3440 -H 1440 -f -- %command%`.
+    # Never add `-e`/`--steam` to those: it defers the focus decision to the Deck
+    # gaming-mode session protocol, which a per-game instance launched from
+    # desktop Steam never gets, so gamescope lists the window in
+    # GAMESCOPE_FOCUSABLE_WINDOWS, leaves GAMESCOPE_FOCUSED_WINDOW empty, and
+    # composites nothing — the game runs and plays audio with no window at all.
     - heroic-games-launcher-bin  # AUR — Epic/GOG/Amazon Prime games
     - xpadneo-dkms  # AUR — Xbox One/Series controller driver (Bluetooth + rumble)
     # NOTE: xpadneo-dkms needs kernel headers to build its DKMS module, but we
