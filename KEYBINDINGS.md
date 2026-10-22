@@ -132,7 +132,7 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Screenshot, pick what | `Print` | screenshot.sh; freezes the screen, then click a window, drag a region, or press `Print` again for the whole screen |
+| Screenshot, pick what | `Print` | screenshot.sh; freezes the screen, then click a window, drag a region, or click the bar or a gap for the whole screen |
 | Screenshot focused screen | `Mod+Print` | screenshot.sh; immediate, no freeze, no click |
 
 ## 12. Screen recordings

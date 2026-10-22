@@ -4,8 +4,7 @@
 # where that geometry comes from.
 #
 #   pick    freeze the screen and let the pointer answer -- click a window,
-#           drag a region, click the bar or a gap for the whole screen. A
-#           second press of the key takes the whole screen outright.
+#           drag a region, click the bar or a gap for the whole screen.
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
 # hyprshot used to do the grabbing and is gone: it has no mode like `pick`, its
@@ -20,7 +19,6 @@
 set -e
 
 shot_dir=~/Pictures/Screenshots
-want_full=${XDG_RUNTIME_DIR:-/tmp}/screenshot-pick-full
 
 # Logical boxes of the monitors "$1" selects. An odd transform is a 90/270
 # rotation, which swaps the two dimensions of the mode.
@@ -59,37 +57,21 @@ smallest_box_at() {
 
 case "${1-}" in
     pick)
-        # A second press while the pick is up means "the whole screen". The
-        # running instance is the one holding the freeze, so it has to do the
-        # grab; killing its slurp is how we tell it to stop asking. Ours is the
-        # only slurp any of this starts.
-        if pgrep -x slurp >/dev/null; then
-            : > "$want_full"
-            pkill -x slurp
-            exit 0
-        fi
-        rm -f "$want_full"
-
         hyprpicker -r -z >/dev/null 2>&1 &
         picker=$!
         # Nothing but this clears a frozen screen, so never leave one up.
-        trap 'kill "$picker" 2>/dev/null || true; rm -f "$want_full"' EXIT
+        trap 'kill "$picker" 2>/dev/null || true' EXIT
         sleep 0.2
 
         boxes=$(visible_boxes)
-        if geometry=$(slurp <<< "$boxes"); then
-            # A click that drifts a single pixel while the button is down comes
-            # back as a 1x1 region -- one near-black pixel, saved as a
-            # screenshot of nothing. Below a few pixels it was meant as a click,
-            # so resolve it the way slurp would have had it not been dragged.
-            read -r origin size <<< "$geometry"
-            if [ "${size%x*}" -lt 8 ] || [ "${size#*x}" -lt 8 ]; then
-                geometry=$(smallest_box_at "${origin%,*}" "${origin#*,}" <<< "$boxes")
-            fi
-        elif [ -e "$want_full" ]; then
-            geometry=$(monitor_boxes 'first(.[] | select(.focused))')
-        else
-            exit 0  # Esc, or a right click
+        geometry=$(slurp <<< "$boxes") || exit 0  # Esc, or a right click
+        # A click that drifts a single pixel while the button is down comes
+        # back as a 1x1 region -- one near-black pixel, saved as a screenshot
+        # of nothing. Below a few pixels it was meant as a click, so resolve it
+        # the way slurp would have had it not been dragged.
+        read -r origin size <<< "$geometry"
+        if [ "${size%x*}" -lt 8 ] || [ "${size#*x}" -lt 8 ]; then
+            geometry=$(smallest_box_at "${origin%,*}" "${origin#*,}" <<< "$boxes")
         fi
         ;;
     output)
