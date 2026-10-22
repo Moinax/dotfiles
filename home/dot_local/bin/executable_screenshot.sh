@@ -49,7 +49,10 @@ case "${1-}" in
         trap 'kill "$picker" 2>/dev/null || true' EXIT
         sleep 0.2
 
-        active_ws=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id]')
+        # A special workspace shows over the active one, so its window is on
+        # screen and needs a box too; specialWorkspace.id is 0 when none is up.
+        active_ws=$(hyprctl -j monitors |
+            jq -c '[.[].activeWorkspace.id] + [.[].specialWorkspace.id]')
         boxes=$(hyprctl -j clients | jq -r --argjson ws "$active_ws" '
             .[]
             | select(.mapped and (.hidden | not))
