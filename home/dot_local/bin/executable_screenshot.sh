@@ -31,6 +31,41 @@ case "${1-}" in
     region)
         exec hyprshot -m region -z -s -o ~/Pictures/Screenshots -- "$0"
         ;;
+    pick)
+        # One frozen grab that is all three at once. slurp keeps the smallest
+        # box containing the cursor, so the window boxes win over the -o output
+        # boxes wherever they overlap; and without -r a click still takes the
+        # highlighted box while a drag stays a free region. Hover a window and
+        # click to get it, drag to carve a region, click a gap or the wallpaper
+        # to fall through to the whole output.
+        #
+        # Not hyprshot: it has no such mode, and its own -z dies the moment
+        # slurp exits -- its reaper races grim, so what it writes is the live
+        # screen. Here hyprpicker holds the frozen frame until grim has read it,
+        # which is the whole point of freezing.
+        hyprpicker -r -z &
+        picker=$!
+        # Nothing else clears a frozen screen, so never leave it up on an error.
+        trap 'kill "$picker" 2>/dev/null || true' EXIT
+        sleep 0.2
+
+        active_ws=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id]')
+        boxes=$(hyprctl -j clients | jq -r --argjson ws "$active_ws" '
+            .[]
+            | select(.mapped and (.hidden | not))
+            | select(.workspace.id as $id | $ws | index($id))
+            | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
+
+        geometry=$(slurp -o <<< "$boxes") || exit 0  # Esc or right click
+
+        path=~/Pictures/Screenshots/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')
+        grim -g "$geometry" "$path"
+        kill "$picker" 2>/dev/null || true
+        wl-copy --type image/png < "$path"
+
+        # hand the file to the notification leg below
+        set -- "$path"
+        ;;
 esac
 
 # callback leg, invoked by hyprshot: $1 is the completed screenshot.

@@ -132,9 +132,9 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Screenshot focused window | `Print` | screenshot.sh (hyprshot `-m active`); immediate, keeps hover/focus; click the notification to open |
-| Screenshot focused monitor | `Mod+Print` | screenshot.sh (hyprshot `-m active`); immediate, keeps hover/focus; click the notification to open |
-| Screenshot region | `Mod+Shift+Print` | screenshot.sh (hyprshot); click the notification to open |
+| Screenshot, pick what | `Print` | screenshot.sh; freezes the screen, then click a window, drag a region, or click a gap for the whole output |
+| Screenshot focused window | `Mod+Print` | screenshot.sh (hyprshot `-m active`); immediate, no click, keeps hover/focus |
+| Screenshot focused monitor | `Mod+Shift+Print` | screenshot.sh (hyprshot `-m active`); immediate, no click, keeps hover/focus |
 
 ## 12. Screen recordings
 
