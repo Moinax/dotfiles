@@ -19,6 +19,7 @@ LICENSE
 # Ignore Hyprland configs if not selected
 {{- if not .install_hyprland }}
 .config/hypr/hyprland.lua
+.config/hypr/xdph.conf
 .config/hypr/hypridle.conf
 .config/hypr/hyprlock.conf
 .config/hypr/conf
