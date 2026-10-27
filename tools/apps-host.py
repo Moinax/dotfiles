@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host private Finance/Daylight and public Twitch Grid. No destructive host command."""
+"""Host private Finance/Daylight and public Twitch Grid and Rubik's cube. No destructive host command."""
 import argparse
 import hashlib
 import io
@@ -21,7 +21,7 @@ SCRATCH = REPO / '.scratch' / 'apps-host'
 NAME = 'apps-host'
 ROOT = '/opt/personal-apps'
 APPS = ('finance', 'daylight')
-DEPLOY_APPS = (*APPS, 'twitch-grid')
+DEPLOY_APPS = (*APPS, 'twitch-grid', 'rubixcube')
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10']
 BACKUPS = Path.home() / 'Backups' / NAME
 BACKUP_CONFIG = Path.home() / '.config' / NAME
@@ -32,8 +32,8 @@ COMMANDS = {
     'configure': 'Configure private HTTPS and the authorized owner',
     'prepare-domains': 'Prepare custom HTTPS on staging ports and verify provider callbacks',
     'activate-domains': 'Activate private app domains after public policy links have been updated',
-    'prepare-public': 'Prepare the isolated public Twitch Grid services without switching DNS',
-    'activate-public': 'Open public HTTP/HTTPS and switch only twitch.moinax.com after health checks',
+    'prepare-public': 'Prepare the isolated public services (Twitch Grid, Rubik\'s cube) without switching DNS',
+    'activate-public': 'Open public HTTP/HTTPS and switch only the public app domains after health checks',
     'firewall': 'Close public ingress after verifying private SSH',
     'deploy': 'Build and deploy an app (without an argument: Finance and Daylight)',
     'migrate': 'Import local data once and disable local services',
@@ -245,6 +245,8 @@ def source_dir(app):
 
 
 PUBLIC_FILES = ('public.sh', 'PublicCaddyfile', 'twitch-grid.service', 'apps-public-proxy.service')
+# Paths checked on the host before ingress and DNS change for each public domain.
+PUBLIC_SITES = {'twitch.moinax.com': ('/', '/config.json', '/healthz'), 'rubixcube.moinax.com': ('/',)}
 
 
 def prepare_public():
@@ -289,17 +291,22 @@ def activate_public():
     if len(zones) != 1:
         raise RuntimeError('Expected one moinax.com zone.')
     base = '/zones/' + zones[0]['id'] + '/dns_records'
-    records = cloudflare(base + '?name=twitch.moinax.com')
-    desired = {'type': 'A', 'name': 'twitch.moinax.com', 'content': ip, 'proxied': False, 'ttl': 120}
-    if len(records) > 1 or (records and records[0]['type'] not in ('A', 'CNAME')):
-        raise RuntimeError('Conflicting Twitch DNS records; inspect before continuing.')
-    # With no explicit record, Twitch currently inherits the wildcard. Leave it intact.
-    previous = records[0] if records else None
-    curl = ['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
-            '--resolve', f'twitch.moinax.com:443:{ip}']
-    # Test the certificate and app locally on the server before allowing inbound traffic.
-    for path in ('/', '/config.json', '/healthz'):
-        remote(target(), *curl, 'https://twitch.moinax.com' + path)
+    previous = {}
+    # Check every name before any mutation, so a conflict cannot leave one changed.
+    for name in PUBLIC_SITES:
+        records = cloudflare(base + '?' + urllib.parse.urlencode({'name': name}))
+        if len(records) > 1 or (records and records[0]['type'] not in ('A', 'CNAME')):
+            raise RuntimeError(f'Conflicting {name} DNS records; inspect before continuing.')
+        # With no explicit record, the name inherits the wildcard. Leave it intact.
+        previous[name] = records[0] if records else None
+
+    def curl(name):
+        return ['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
+                '--resolve', f'{name}:443:{ip}']
+    # Test the certificates and apps locally on the server before allowing inbound traffic.
+    for name, paths in PUBLIC_SITES.items():
+        for path in paths:
+            remote(target(), *curl(name), f'https://{name}{path}')
     for app in APPS:
         run(['curl', '--fail', '--silent', '--show-error', '--max-time', '20', '--output', '/dev/null',
              f'https://{app}.moinax.com/'])
@@ -318,29 +325,35 @@ def activate_public():
              '--inbound-rules', 'protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0',
              '--format', 'Name,Status'])
     # A newly attached firewall may take a few seconds to propagate.
-    run([*curl, '--retry', '5', '--retry-all-errors', '--retry-delay', '2', 'https://twitch.moinax.com/healthz'])
+    for name, paths in PUBLIC_SITES.items():
+        run([*curl(name), '--retry', '5', '--retry-all-errors', '--retry-delay', '2', f'https://{name}{paths[-1]}'])
     for app in APPS:
         result = run(['curl', '--silent', '--max-time', '10', '--output', '/dev/null',
                       '--write-out', '%{http_code}', '--resolve', f'{app}.moinax.com:443:{ip}',
                       f'https://{app}.moinax.com/'], capture=True, check=False)
         if result.returncode == 0 and result.stdout.strip() not in (b'404', b'421'):
             raise RuntimeError(f'{app} unexpectedly answers on the public address.')
-    if previous and all(previous.get(k) == v for k, v in desired.items()):
-        print('Twitch Grid public DNS already active.')
-        return
-    rollback = {'name': desired['name'], 'record': {
-        k: previous[k] for k in ('type', 'name', 'content', 'proxied', 'ttl')} if previous else None}
-    remote(target(), 'bash', '-c',
-           'umask 077; test -f /etc/personal-apps/twitch-dns-rollback.json || cat > /etc/personal-apps/twitch-dns-rollback.json',
-           input=json.dumps(rollback).encode())
-    cloudflare(base + '/' + previous['id'] if previous else base, desired,
-               method='PUT' if previous else 'POST')
-    print('twitch.moinax.com now points to apps-host; the previous DNS record is saved on the host.')
+    for name, record in previous.items():
+        desired = {'type': 'A', 'name': name, 'content': ip, 'proxied': False, 'ttl': 120}
+        if record and all(record.get(k) == v for k, v in desired.items()):
+            print(f'{name}: public DNS already active.')
+            continue
+        rollback = {'name': name, 'record': {
+            k: record[k] for k in ('type', 'name', 'content', 'proxied', 'ttl')} if record else None}
+        path = f'/etc/personal-apps/{name.split(".")[0]}-dns-rollback.json'
+        remote(target(), 'bash', '-c', f'umask 077; test -f {path} || cat > {path}',
+               input=json.dumps(rollback).encode())
+        cloudflare(base + '/' + record['id'] if record else base, desired,
+                   method='PUT' if record else 'POST')
+        print(f'{name} now points to apps-host; the previous DNS record is saved on the host.')
 
 
 def package(app):
     source = source_dir(app)
     command = ['pnpm', 'run', 'build']
+    if app == 'rubixcube':
+        # Applies the patched cubejs dependency; the build fails on lockfile drift.
+        run(['pnpm', 'install', '--frozen-lockfile'], cwd=source)
     run(command, cwd=source)
     archive = SCRATCH / f'{app}.tar.gz'
     # An explicit runtime allowlist includes working-tree fixes without credentials or local data.
@@ -350,6 +363,8 @@ def package(app):
         names += ['shared']
     elif app == 'twitch-grid':
         names = ['package.json', 'pnpm-lock.yaml', 'dist', 'api', 'production.cjs']
+    elif app == 'rubixcube':
+        names = ['package.json', 'pnpm-lock.yaml', 'dist']
     manifest = {'app': app, 'git_head': output(['git', '-C', source, 'rev-parse', 'HEAD']),
                 'dirty': bool(output(['git', '-C', source, 'status', '--porcelain'])),
                 'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}

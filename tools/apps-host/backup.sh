@@ -26,10 +26,11 @@ for app in finance daylight; do
     cp "/opt/personal-apps/$app/current/source.tar.gz" "$stage/releases/$app.tar.gz"
     readlink "/opt/personal-apps/$app/current" > "$stage/releases/$app.txt"
 done
-if [[ -f /opt/personal-apps/twitch-grid/current/source.tar.gz ]]; then
-    cp /opt/personal-apps/twitch-grid/current/source.tar.gz "$stage/releases/twitch-grid.tar.gz"
-    readlink /opt/personal-apps/twitch-grid/current > "$stage/releases/twitch-grid.txt"
-fi
+for app in twitch-grid rubixcube; do
+    [[ -f /opt/personal-apps/$app/current/source.tar.gz ]] || continue
+    cp "/opt/personal-apps/$app/current/source.tar.gz" "$stage/releases/$app.tar.gz"
+    readlink "/opt/personal-apps/$app/current" > "$stage/releases/$app.txt"
+done
 archive="/var/lib/apps-backup/$(date -u +%Y%m%dT%H%M%SZ).tar.gz.age"
 tar -czf - -C "$stage" . | age -R /etc/personal-apps/backup-recipient.pub -o "$archive.partial"
 mv "$archive.partial" "$archive"

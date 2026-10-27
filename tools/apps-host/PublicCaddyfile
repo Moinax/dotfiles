@@ -37,7 +37,24 @@ https://twitch.moinax.com {
 	}
 }
 
-http://twitch.moinax.com {
+https://rubixcube.moinax.com {
 	bind {$APPS_PUBLIC_IPV4}
-	redir https://twitch.moinax.com{uri} 308
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+	header {
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Content-Type-Options nosniff
+	}
+	# Static only: no API, no client-side routes.
+	root * /opt/personal-apps/rubixcube/current/dist
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=3600"
+	file_server
+}
+
+http://twitch.moinax.com, http://rubixcube.moinax.com {
+	bind {$APPS_PUBLIC_IPV4}
+	redir https://{host}{uri} 308
 }

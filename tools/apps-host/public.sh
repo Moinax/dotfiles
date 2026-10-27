@@ -7,11 +7,11 @@ ADMIN=/opt/personal-apps/admin
 for account in twitch-grid apps-public; do
     id "$account" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$account"
 done
-install -d /opt/personal-apps/twitch-grid/releases
+install -d /opt/personal-apps/twitch-grid/releases /opt/personal-apps/rubixcube/releases
 install -d -m 750 -o root -g apps-public /etc/apps-public-proxy
 install -m 644 "$ADMIN/PublicCaddyfile" /etc/apps-public-proxy/Caddyfile
 install -m 644 "$ADMIN/twitch-grid.service" "$ADMIN/apps-public-proxy.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable twitch-grid apps-public-proxy
 # DNS validation obtains the certificate before any DNS cutover or public ingress.
-systemctl restart apps-public-proxy
+systemctl reload-or-restart apps-public-proxy

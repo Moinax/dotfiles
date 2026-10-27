@@ -1,5 +1,5 @@
 ---
-description: Persistent private Finance/Daylight and public Twitch Grid hosting, separate from T3.
+description: Persistent private Finance/Daylight and public Twitch Grid and Rubik's cube hosting, separate from T3.
 paths:
   - tools/apps-host.py
   - tools/apps-host/**
@@ -21,6 +21,11 @@ paths:
   routes into this proxy. Both public services have dedicated users and cannot
   read Finance or Daylight data. Public TCP 80/443 are allowed by the separate
   `apps-host-public-web` firewall; public SSH and other ports remain closed.
+- The Rubik's cube app is public on `rubixcube.moinax.com`: static `dist` only,
+  served by the same `apps-public-proxy` from `/opt/personal-apps/rubixcube`, with
+  no service, user or server-side data. HTTPS is mandatory (camera access). Deploy
+  it explicitly with `dots hosting deploy rubixcube`; `prepare-public` installs its
+  route and `activate-public` adds its explicit unproxied A record.
 - Public Finance information stays on `finance-info.moinax.com` through Vercel.
   Update provider policy links before making `finance.moinax.com` private. Never
   change the Cloudflare wildcard or proxy the private A records through Cloudflare.
