@@ -1,0 +1,36 @@
+#!/bin/sh
+# pw-record wrapper.
+#
+# Why: since PipeWire 1.6.10 (2026-10-23), `pw-record … -` writes an AU
+# container to stdout instead of raw PCM — a 24-byte ".snd" header followed by
+# big-endian samples. The container is inferred from the output name, and `-`
+# matches no extension, so libsndfile's streamable default wins.
+#
+# hyprvoice reads that stream as headerless little-endian s16. The byte-swapped
+# samples turn speech into full-scale noise (measured: a real dictation read as
+# LE peaks at 32768 on every second, the same bytes read as BE are ordinary
+# speech around 200), Whisper scores it as an empty clip, and the dictation
+# comes back as YouTube subtitle filler — "Merci d'avoir regardé cette vidéo !",
+# "Sous-titres par C.A.". Last working dictation 2026-10-17, i.e. before the
+# upgrade. hyprvoice passes no `--raw` of its own and has no config knob for it,
+# hence a wrapper rather than a setting.
+#
+# hyprvoice-widget.py already passes `--raw` itself, which is why its level
+# meter kept following the voice while the daemon went deaf — the one symptom
+# that makes this look like a transcription bug rather than a capture one.
+#
+# Only added for stdout: a real file output has an extension to infer a
+# container from, and forcing raw there would strip the header the caller asked
+# for.
+
+last=
+for arg in "$@"; do
+    case $arg in
+        --raw | -a) exec /usr/bin/pw-record "$@" ;;
+    esac
+    last=$arg
+done
+
+[ "$last" = - ] && set -- --raw "$@"
+
+exec /usr/bin/pw-record "$@"
