@@ -240,7 +240,14 @@ hl.bind(mod .. " + CTRL + R",  hl.dsp.exec_cmd(record .. "cancel"))        -- Ca
 hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume raise"),   { locked = true })
 hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("swayosd-client --output-volume lower"),   { locked = true })
 hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("swayosd-client --output-volume mute-toggle"), { locked = true })
-hl.bind("XF86AudioMicMute",      hl.dsp.exec_cmd("swayosd-client --input-volume mute-toggle"),  { locked = true })
+-- No XF86AudioMicMute bind, deliberately. The G Pro X mute button is enforced
+-- by the dongle in RF and is invisible to the OS (no input event at all: the
+-- headset's consumer-control device only reports KEY_VOLUMEUP/DOWN). A second
+-- mute on the PipeWire source therefore desyncs from it, and the headset button
+-- cannot clear a software mute it never set -- the mic stays dead and the button
+-- looks broken. `swayosd-client --input-volume mute-toggle` was a silent no-op
+-- here for months, which hid the conflict until it started working again
+-- (2026-10-27). One mute only, and it is the physical one.
 hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("swayosd-client --brightness raise"), { repeating = true, locked = true })
 hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lower"), { repeating = true, locked = true })
 

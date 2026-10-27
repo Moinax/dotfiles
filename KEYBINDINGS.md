@@ -152,7 +152,7 @@
 |---|---|---|
 | Volume up / down | `XF86AudioRaiseVolume` / `XF86AudioLowerVolume` | swayosd-client OSD |
 | Mute toggle | `XF86AudioMute` | swayosd-client OSD |
-| Mic mute | `XF86AudioMicMute` | swayosd-client OSD |
+| Mic mute | headset button only | dongle-side, not bound — see the note in `binds.lua.tmpl` |
 | Brightness up / down | `XF86MonBrightnessUp` / `XF86MonBrightnessDown` | swayosd-client OSD |
 
 ## 14. Session & System
