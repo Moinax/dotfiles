@@ -134,6 +134,7 @@
 |---|---|---|
 | Screenshot, pick what | `Print` | screenshot.sh; freezes the screen, then click a window, drag a region, or click the bar or a gap for the whole screen |
 | Screenshot focused screen | `Mod+Print` | screenshot.sh; immediate, no freeze, no click |
+| Both, with Shift held | `Shift+Print`, `Mod+Shift+Print` | Same actions; declared so the shutter still fires while Shift holds a UI state open |
 
 ## 12. Screen recordings
 

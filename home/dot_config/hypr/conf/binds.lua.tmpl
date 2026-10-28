@@ -218,8 +218,14 @@ hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax
 -- The bare key freezes the screen and lets the pointer say what to take:
 -- click a window, drag a region, click the bar or a gap for the whole screen.
 -- The mod variant is that whole screen without the freeze or the click.
-hl.bind("PRINT",            hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))     -- Screenshot: freeze, then click a window / drag a region
-hl.bind(mod .. " + PRINT",  hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))   -- Screenshot the focused screen, no click
+-- The SHIFT twins are not extra shortcuts: a bind matches on an exact modmask,
+-- so with SHIFT held the bare key matches nothing and the shutter is simply
+-- dead — which is the one time it is needed, when the shot is of a state the
+-- Shift key is holding open.
+hl.bind("PRINT",                    hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))     -- Screenshot: freeze, then click a window / drag a region
+hl.bind("SHIFT + PRINT",            hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))     -- Same, while SHIFT is held
+hl.bind(mod .. " + PRINT",          hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))   -- Screenshot the focused screen, no click
+hl.bind(mod .. " + SHIFT + PRINT",  hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))   -- Same, while SHIFT is held
 
 -- ── 13. Screen recordings ────────────────────────────────────────
 -- A second press on any start chord stops and saves the current recording;
