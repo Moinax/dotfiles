@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Toggle a wf-recorder capture selected with slurp.
+# Toggle a wf-recorder capture. What to record is selected by screenshot.sh,
+# the same two ways as a screenshot: `output` is the focused screen, `pick`
+# lets the pointer choose a window, a region or a whole screen.
 #
 # Any start chord stops and keeps an existing recording. `cancel` stops it and
 # removes the file. State lives in XDG_RUNTIME_DIR: it cannot become a stale
@@ -51,30 +53,6 @@ finish() {
     fi
 }
 
-select_geometry() {
-    case "$1" in
-        output)
-            slurp -o -f '%x,%y %wx%h'
-            ;;
-        region)
-            slurp -d
-            ;;
-        window)
-            local visible_ids boxes
-            visible_ids="$(hyprctl monitors -j | jq -c \
-                '[.[] | .activeWorkspace.id, .specialWorkspace.id | select(. != 0)] | unique')" || return 1
-            boxes="$(hyprctl clients -j | jq -r --argjson visible "$visible_ids" \
-                '.[] | select(.workspace.id as $id | $visible | index($id)) |
-                 "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')" || return 1
-            [ -n "$boxes" ] || return 1
-            slurp -r <<< "$boxes"
-            ;;
-        *)
-            return 2
-            ;;
-    esac
-}
-
 case "${1:-}" in
     cancel)
         finish cancel
@@ -85,8 +63,8 @@ case "${1:-}" in
             exit
         fi
         rm -f -- "$state"
-        mode="${2:-}"
-        geometry="$(select_geometry "$mode")" || exit 0 # Escape cancels selection.
+        geometry="$(~/.local/bin/screenshot.sh geometry "${2:-}")" || exit 1
+        [ -n "$geometry" ] || exit 0 # Escape cancels selection.
         mkdir -p -- "$recordings"
         output_file="$recordings/$(date +'%Y-%m-%d-%H%M%S_recording.mp4')"
         setsid wf-recorder -g "$geometry" -f "$output_file" \
@@ -100,10 +78,10 @@ case "${1:-}" in
         printf '%s\t%s\n' "$recorder_pid" "$output_file" > "$state"
         # Progress state, not history: display it without retaining it in SwayNC.
         notify-send -e -u low -t 2500 "Screen recording started" \
-            "Press any recording shortcut again to save, or Mod+Ctrl+R to cancel."
+            "Press any recording shortcut again to save, or Mod+Shift+R to cancel."
         ;;
     *)
-        printf 'usage: %s toggle <output|window|region> | cancel\n' "$0" >&2
+        printf 'usage: %s toggle <output|pick> | cancel\n' "$0" >&2
         exit 2
         ;;
 esac

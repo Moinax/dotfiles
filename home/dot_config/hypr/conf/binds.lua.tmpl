@@ -224,13 +224,13 @@ hl.bind(mod .. " + PRINT",          hl.dsp.exec_cmd(home .. "/.local/bin/screens
 hl.bind(mod .. " + SHIFT + PRINT",  hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick --freeze")) -- Same, with the screen frozen first
 
 -- ── 13. Screen recordings ────────────────────────────────────────
--- A second press on any start chord stops and saves the current recording;
--- Ctrl is the destructive twin, stopping it and removing the unfinished file.
+-- Same selection as the screenshots: the bare chord takes the focused screen,
+-- ALT lets the pointer pick a window, a region or a whole screen. A second
+-- press on either stops and saves; SHIFT stops and deletes the unfinished file.
 local record = home .. "/.local/bin/screen-record.sh "
-hl.bind(mod .. " + R",         hl.dsp.exec_cmd(record .. "toggle output")) -- Record a monitor / stop and save
-hl.bind(mod .. " + ALT + R",   hl.dsp.exec_cmd(record .. "toggle window")) -- Record a window / stop and save
-hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(record .. "toggle region")) -- Record a region / stop and save
-hl.bind(mod .. " + CTRL + R",  hl.dsp.exec_cmd(record .. "cancel"))        -- Cancel recording and delete it
+hl.bind(mod .. " + R",         hl.dsp.exec_cmd(record .. "toggle output")) -- Record the focused screen / stop and save
+hl.bind(mod .. " + ALT + R",   hl.dsp.exec_cmd(record .. "toggle pick"))   -- Record: click a window / drag a region / stop and save
+hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(record .. "cancel"))        -- Cancel recording and delete it
 
 -- ── 14. Media & Volume ───────────────────────────────────────────
 -- `locked = true` on all six: Hyprland dispatches only flagged binds while a

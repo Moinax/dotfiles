@@ -8,6 +8,9 @@
 #           first, for a state that would change while you aim.
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
+# Prefixed with `geometry`, either mode prints the box instead of shooting it;
+# screen-record.sh selects what to record that way.
+#
 # hyprshot used to do the grabbing and is gone: it has no mode like `pick`, its
 # own freeze is killed by a reaper that races its grim, and it computes a
 # monitor's box from the mode rather than the logical size, which is wrong on a
@@ -56,6 +59,12 @@ smallest_box_at() {
         END { print sel }'
 }
 
+print_only=
+if [ "${1-}" = geometry ]; then
+    print_only=1
+    shift
+fi
+
 case "${1-}" in
     pick)
         if [ "${2-}" = --freeze ]; then
@@ -81,10 +90,15 @@ case "${1-}" in
         geometry=$(monitor_boxes 'first(.[] | select(.focused))')
         ;;
     *)
-        echo "usage: ${0##*/} pick [--freeze]|output" >&2
+        echo "usage: ${0##*/} [geometry] pick [--freeze]|output" >&2
         exit 2
         ;;
 esac
+
+if [ -n "$print_only" ]; then
+    echo "$geometry"
+    exit 0
+fi
 
 mkdir -p "$shot_dir"
 path="$shot_dir/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"

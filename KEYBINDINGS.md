@@ -141,10 +141,9 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Record monitor | `Mod+R` | Select a monitor; press any recording shortcut again to stop and save |
-| Record window | `Mod+Alt+R` | Select a visible window, including a scratchpad window |
-| Record region | `Mod+Shift+R` | Select a free-form region |
-| Cancel recording | `Mod+Ctrl+R` | Stops and deletes the unfinished video; Escape cancels the initial selection |
+| Record focused screen | `Mod+R` | Immediate, no click; press any recording shortcut again to stop and save |
+| Record, pick what | `Mod+Alt+R` | Click a window, drag a region, or click the bar or a gap for the whole screen |
+| Cancel recording | `Mod+Shift+R` | Stops and deletes the unfinished video; Escape cancels the initial selection |
 
 ## 13. Media & Volume
 
