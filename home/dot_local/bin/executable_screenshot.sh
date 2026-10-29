@@ -3,8 +3,9 @@
 # Screenshots. Every mode here is grim over a geometry; the only question is
 # where that geometry comes from.
 #
-#   pick    freeze the screen and let the pointer answer -- click a window,
-#           drag a region, click the bar or a gap for the whole screen.
+#   pick    let the pointer answer -- click a window, drag a region, click
+#           the bar or a gap for the whole screen. --freeze freezes the screen
+#           first, for a state that would change while you aim.
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
 # hyprshot used to do the grabbing and is gone: it has no mode like `pick`, its
@@ -57,11 +58,13 @@ smallest_box_at() {
 
 case "${1-}" in
     pick)
-        hyprpicker -r -z >/dev/null 2>&1 &
-        picker=$!
-        # Nothing but this clears a frozen screen, so never leave one up.
-        trap 'kill "$picker" 2>/dev/null || true' EXIT
-        sleep 0.2
+        if [ "${2-}" = --freeze ]; then
+            hyprpicker -r -z >/dev/null 2>&1 &
+            picker=$!
+            # Nothing but this clears a frozen screen, so never leave one up.
+            trap 'kill "$picker" 2>/dev/null || true' EXIT
+            sleep 0.2
+        fi
 
         boxes=$(visible_boxes)
         geometry=$(slurp <<< "$boxes") || exit 0  # Esc, or a right click
@@ -78,7 +81,7 @@ case "${1-}" in
         geometry=$(monitor_boxes 'first(.[] | select(.focused))')
         ;;
     *)
-        echo "usage: ${0##*/} pick|output" >&2
+        echo "usage: ${0##*/} pick [--freeze]|output" >&2
         exit 2
         ;;
 esac
