@@ -1,4 +1,17 @@
 -- See https://wiki.hypr.land/Configuring/Basics/Variables/ for more
+
+-- Blur variant picked from vicinae (Mod+Alt+W, scripts/blur-variant.sh), which
+-- validates the name before writing it; kawase is Hyprland's plain blur.
+local home = assert(os.getenv("HOME"), "HOME not set")
+local state_home = os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")
+local blur_variant = "kawase"
+
+local state = io.open(state_home .. "/hypr/blur-variant", "r")
+if state then
+    blur_variant = state:read("l") or blur_variant
+    state:close()
+end
+
 hl.config({
     decoration = {
         rounding         = 10,
@@ -8,6 +21,7 @@ hl.config({
             enabled = true,
             size    = 3,
             passes  = 3,
+            variant = blur_variant,
         },
         shadow = {
             enabled      = true,

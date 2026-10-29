@@ -213,6 +213,7 @@ hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --sil
 -- The infrequent reload actions live in Vicinae's Reload command rather than
 -- occupying global chords. Search "reload" from the launcher to reach them.
 hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/wallpaper?toggle=true'"))                  -- Wallpaper picker (grid preview)
+hl.bind(mod .. " + ALT + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/blur?toggle=true'"))                 -- Blur variant picker
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
 -- The bare key takes the focused screen, no click. The mod variant lets the

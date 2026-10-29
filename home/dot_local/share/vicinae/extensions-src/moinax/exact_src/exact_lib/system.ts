@@ -153,6 +153,27 @@ export async function setKeyboardLayout(name: string): Promise<void> {
   await capture(`${HOME}/.config/hypr/scripts/toggle-keyboard-layout.sh`, ["set", name], { timeout: 30_000 });
 }
 
+export type BlurVariant = { name: string; isActive: boolean };
+
+const BLUR_VARIANT = `${HOME}/.config/hypr/scripts/blur-variant.sh`;
+
+/**
+ * Blur variants, from blur-variant.sh. The script reads the names out of
+ * Hyprland's option map and validates `set` against it, so neither the list
+ * nor the check is copied here.
+ */
+export async function blurVariants(): Promise<BlurVariant[]> {
+  const lines = await captureLines(BLUR_VARIANT, ["list"]);
+  return lines.flatMap((line) => {
+    const [name, active] = line.split("\t");
+    return name ? [{ name, isActive: active === "1" }] : [];
+  });
+}
+
+export async function setBlurVariant(name: string): Promise<void> {
+  await capture(BLUR_VARIANT, ["set", name]);
+}
+
 const TOGGLE_VPN = `${HOME}/.local/bin/toggle-vpn.sh`;
 
 export type Vpn = { id: string; label: string; detail: string; connected: boolean };
