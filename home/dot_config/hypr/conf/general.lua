@@ -28,20 +28,20 @@ hl.config({
         -- solid fill — the title band has no background of its own, so with the
         -- stock thin indicator the text composites straight onto the wallpaper
         -- and inactive titles are unreadable over anything busy. Overlapping
-        -- the two exactly is what puts a backdrop behind the text:
-        -- indicator_height == height and indicator_gap == -height. Any other
-        -- combination leaves the title off-centre in the fill. `blur` hangs off
-        -- that same indicator rect (never the title band), so it does nothing at
-        -- all until the two overlap. Left off regardless: a blur pass per tab,
-        -- across every tab of every group on ~15 workspaces, to soften a
-        -- backdrop the tab already covers ~88% of.
+        -- the two is what puts a backdrop behind the text. 0.57 enforces
+        -- indicator_gap >= 0, so the old indicator_gap = -height overlap is gone;
+        -- instead the title band shrinks to 2px and text_offset drags the text
+        -- down into the indicator. The text is centred on the band's centre
+        -- minus text_offset, whatever the band's height, so centring it on the
+        -- indicator needs text_offset = -(indicator_height + height) / 2 = -14
+        -- (min -20, so indicator_height + height must stay <= 40 and even).
+        -- `blur` hangs off that same indicator rect (never the title band), so
+        -- it does nothing at all until the two overlap. Left off regardless: a
+        -- blur pass per tab, across every tab of every group on ~15 workspaces,
+        -- to soften a backdrop the tab already covers ~88% of.
         -- Reserved height = gaps_out * (2 + keep_upper_gap)
         --                 + indicator_height + indicator_gap + height
-        --                 = 3 * 2 + 26 - 26 + 26 = 32px here.
-        -- The negative indicator_gap is below the option's registered min of 0.
-        -- That bound is advisory today, but a release that starts clamping it
-        -- would silently flatten the fill back to an underline and take the
-        -- text legibility with it, without any config error to point at.
+        --                 = 3 * 2 + 26 + 0 + 2 = 34px here.
         -- The other fill is `gradients = true`, the only way to get a gradient
         -- tab, but it costs ~155 MiB of GPU memory for good: Hyprland renders
         -- four full-monitor-sized gradient textures (active, inactive, locked
@@ -74,9 +74,9 @@ hl.config({
         -- left inactive titles unreadable over a busy wallpaper and hid the
         -- rounding against a light one.
         groupbar = {
-            height            = 26,
+            height            = 2,
             indicator_height  = 26,
-            indicator_gap     = -26,
+            indicator_gap     = 0,
             gaps_in           = 4,
             gaps_out          = 3,
             keep_upper_gap    = false,
@@ -92,7 +92,7 @@ hl.config({
             text_color           = tab.text,
             text_color_inactive  = tab.text_dim,
             text_padding         = 8,
-            text_offset          = 0,
+            text_offset          = -14,
         },
     },
 })
