@@ -397,10 +397,12 @@ package_delta() {
 
     # New = declared now, not declared then, not already on the machine.
     local -A seen=()
+    local -a declared_distro=()
     while IFS=$'\t' read -r pkg group_file; do
         [ -z "$pkg" ] && continue
         [ -n "${seen[$pkg]:-}" ] && continue
         seen["$pkg"]=1
+        [ -n "$group_file" ] || declared_distro+=("$pkg")
         [ -n "${was[$pkg]:-}" ] && continue
         if [ -n "$group_file" ]; then
             is_custom_install_installed "$group_file" "$pkg" && continue
@@ -426,6 +428,15 @@ package_delta() {
     while IFS= read -r pkg; do
         [ -n "$pkg" ] && explicit["$pkg"]=1
     done < <(list_explicit_packages)
+
+    # -Rs takes every dependency nothing else needs, judged by install reason
+    # alone, so a package the yaml declares that first arrived as somebody's
+    # dependency leaves with it. grim and slurp did, in the run that dropped
+    # hyprshot. Named so the removal marks them explicit first.
+    for pkg in "${declared_distro[@]}"; do
+        real="${real_of[${pkg#*/}]:-}"
+        [ -n "$real" ] && [ -z "${explicit[$real]:-}" ] && printf 'adopt\t%s\t\n' "$real"
+    done
 
     for pkg in "${maybe_dropped[@]}"; do
         group_file="${was_file[$pkg]}"
@@ -554,18 +565,19 @@ sync_packages() {
     # so an argument-less callee can read a caller's arrays — but it is a
     # contract living only in a comment, and renaming an array here would leave
     # the other half silently reading nothing.
-    local add_rows="" drop_rows=""
+    local add_rows="" drop_rows="" adopt_rows=""
     local op pkg detail
     while IFS=$'\t' read -r op pkg detail; do
         [ -n "$pkg" ] || continue
         case "$op" in
             add)  add_rows+="${pkg}"$'\t'"${detail}"$'\n' ;;
             drop) drop_rows+="${pkg}"$'\t'"${detail}"$'\n' ;;
+            adopt) adopt_rows+="${pkg}"$'\n' ;;
         esac
     done <<< "$found"
 
     install_new_packages "$add_rows"
-    remove_dropped_packages "$drop_rows"
+    remove_dropped_packages "$drop_rows" "$adopt_rows"
 }
 
 # The "add" half: what the repo gained and this machine does not have. Takes the
@@ -628,7 +640,9 @@ install_new_packages() {
 # The "drop" half: packages the repo declared at the anchor, declares no longer,
 # and this machine still has. Takes the scan's `drop` rows verbatim —
 # "pkg<TAB>kind", kind being `custom` for an entry installed by a bespoke
-# command and empty for a distro package.
+# command and empty for a distro package. The second argument lists declared
+# packages installed as a dependency: any the cascade would take are marked
+# explicit before the removal runs.
 #
 # **A declined removal does not mark a shortfall, and that asymmetry is the
 # point.** The flag means "this machine is missing something the repo asks for",
@@ -688,11 +702,17 @@ remove_dropped_packages() {
     # What -Rs would cascade to on top of the named packages. Shown separately
     # because it is the part the user did not ask for and cannot predict, and a
     # removal is the one thing here that cannot be undone by re-running.
-    local -A named=()
-    local -a extra=()
+    # A declared package in that cascade is kept instead, by marking it
+    # explicit — only those, the other adopt rows are nobody's business here.
+    local -A named=() declared=()
+    local -a extra=() adopt=()
     for p in "${dropped[@]}"; do named["$p"]=1; done
     while IFS= read -r p; do
-        [ -n "$p" ] && [ -z "${named[$p]:-}" ] && extra+=("$p")
+        [ -n "$p" ] && declared["$p"]=1
+    done <<< "${2-}"
+    while IFS= read -r p; do
+        [ -n "$p" ] && [ -z "${named[$p]:-}" ] || continue
+        if [ -n "${declared[$p]:-}" ]; then adopt+=("$p"); else extra+=("$p"); fi
     done <<< "$plan"
 
     print_info "Dropped from the dotfiles since ${BASE_COMMIT:0:8} (${#dropped[@]}):"
@@ -704,10 +724,23 @@ remove_dropped_packages() {
         print_info "Plus ${#extra[@]} $noun nothing else needs:"
         printf '  %s\n' "${extra[@]}"
     fi
+    if [ ${#adopt[@]} -gt 0 ]; then
+        echo ""
+        print_info "Kept, the dotfiles declare them (marked explicitly installed):"
+        printf '  %s\n' "${adopt[@]}"
+    fi
     echo ""
     if ! confirm_or_abort "Remove them?"; then
         print_info "Kept — the anchor moves on, so this is not asked again"
         return 0
+    fi
+
+    if [ ${#adopt[@]} -gt 0 ]; then
+        # Removing anyway would take them with the cascade.
+        if ! sudo pacman -D --asexplicit "${adopt[@]}" >/dev/null; then
+            print_warning "Could not mark ${adopt[*]} as explicitly installed — nothing removed"
+            return 0
+        fi
     fi
 
     # Guarded for the same reason the install above is: a failing removal must

@@ -276,7 +276,7 @@ dropped package left the yaml under is settled before `list_explicit_packages`
 runs, too: that is pure array work, so a run where the repo only *gained*
 packages — much the commoner case — never spawns the install-reason query.
 
-Four things guard the removal, because it is the one phase here that cannot be
+Five things guard the removal, because it is the one phase here that cannot be
 undone by re-running:
 
 - **A dropped `custom_install` entry is reported, never removed.** It was
@@ -300,6 +300,14 @@ undone by re-running:
 - **The preview shows the cascade.** `-Rs` drags in dependencies nothing else
   needs — and those are listed separately,
   because they are the part the user did not ask for and cannot predict.
+- **A declared package never rides the cascade.** pacman judges "nothing else
+  needs it" by install reason alone, so a package the yaml declares that first
+  arrived as somebody's dependency was swept up with it — dropping hyprshot
+  took grim and slurp, which screenshot.sh had just started naming directly.
+  `package_delta` emits those as `adopt` rows (only when something is being
+  dropped); the ones actually in the cascade are listed as kept in the preview
+  and marked `--asexplicit` before the removal, which removes nothing if that
+  fails. The rest keep their install reason.
 
 **A declined removal does not `mark_sync_shortfall`, and that asymmetry is
 deliberate.** The flag means "this machine is missing something the repo asks
