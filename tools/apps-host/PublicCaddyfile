@@ -10,6 +10,12 @@
 	}
 }
 
+# Go takes MIME types from shared-mime-info's globs2 when present, which lacks .webmanifest.
+(static-types) {
+	@webmanifest path *.webmanifest
+	header @webmanifest Content-Type application/manifest+json
+}
+
 https://twitch.moinax.com {
 	bind {$APPS_PUBLIC_IPV4}
 	tls {
@@ -20,6 +26,7 @@ https://twitch.moinax.com {
 		Referrer-Policy strict-origin-when-cross-origin
 		X-Content-Type-Options nosniff
 	}
+	import static-types
 	@api path /api/* /healthz
 	handle @api {
 		reverse_proxy 127.0.0.1:8766 {
@@ -47,6 +54,7 @@ https://rubixcube.moinax.com {
 		Referrer-Policy strict-origin-when-cross-origin
 		X-Content-Type-Options nosniff
 	}
+	import static-types
 	# Static only: no API, no client-side routes.
 	root * /opt/personal-apps/rubixcube/current/dist
 	@assets path /assets/*
@@ -66,6 +74,7 @@ https://ibilaw.moinax.com {
 		X-Content-Type-Options nosniff
 		X-Robots-Tag "noindex, nofollow"
 	}
+	import static-types
 	# Static only, like rubixcube. Vite hashes asset names; the rest is revalidated on each visit.
 	root * /opt/personal-apps/halloween/current/dist
 	@assets path /assets/*

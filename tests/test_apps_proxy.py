@@ -131,13 +131,13 @@ class ProxyTests(unittest.TestCase):
 
 @unittest.skipUnless(CADDY.exists(), 'Run tools/apps-host/build-proxy.py first')
 class PublicProxyTests(unittest.TestCase):
-    """Serve the real public config with a fixture dist; only the Ibilaw site is exercised."""
+    """Serve the real public config with a fixture dist for the static sites."""
 
     @classmethod
     def setUpClass(cls):
         cls.work = tempfile.TemporaryDirectory(dir=ROOT / '.scratch', prefix='public-proxy-test-')
         cls.path = Path(cls.work.name)
-        for name in ('index.html', 'card-front.jpg', 'assets/index-abc123.js'):
+        for name in ('index.html', 'card-front.jpg', 'manifest.webmanifest', 'assets/index-abc123.js'):
             (cls.path / 'dist' / name).parent.mkdir(parents=True, exist_ok=True)
             (cls.path / 'dist' / name).write_text('fixture')
         cls.port = free_port()
@@ -146,7 +146,8 @@ class PublicProxyTests(unittest.TestCase):
                                 f'admin off\n\tskip_install_trust\n\thttps_port {cls.port}\n\thttp_port {free_port()}')
         config = config.replace('bind {$APPS_PUBLIC_IPV4}', 'bind 127.0.0.1')
         config = config.replace('tls {\n\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}\n\t\tresolvers 1.1.1.1 1.0.0.1\n\t}', 'tls internal')
-        config = config.replace('/opt/personal-apps/halloween/current/dist', str(cls.path / 'dist'))
+        for app in ('halloween', 'rubixcube'):
+            config = config.replace(f'/opt/personal-apps/{app}/current/dist', str(cls.path / 'dist'))
         (cls.path / 'Caddyfile').write_text(config)
         env = {**os.environ, 'XDG_DATA_HOME': str(cls.path), 'XDG_CONFIG_HOME': str(cls.path)}
         cls.log = (cls.path / 'caddy.log').open('w')
@@ -168,10 +169,10 @@ class PublicProxyTests(unittest.TestCase):
         cls.work.cleanup()
 
     @classmethod
-    def get(cls, path):
+    def get(cls, path, host='ibilaw.moinax.com'):
         result = subprocess.run(['curl', '--silent', '--insecure', '--noproxy', '*', '--max-time', '1',
-            '--resolve', f'ibilaw.moinax.com:{cls.port}:127.0.0.1', '--dump-header', '-', '--output', '/dev/null',
-            f'https://ibilaw.moinax.com:{cls.port}{path}'], capture_output=True, text=True, check=False)
+            '--resolve', f'{host}:{cls.port}:127.0.0.1', '--dump-header', '-', '--output', '/dev/null',
+            f'https://{host}:{cls.port}{path}'], capture_output=True, text=True, check=False)
         lines = result.stdout.splitlines()
         status = lines[0].split()[1] if lines else ''
         return status, {k.lower(): v.strip() for k, _, v in (line.partition(':') for line in lines[1:]) if v}
@@ -186,6 +187,12 @@ class PublicProxyTests(unittest.TestCase):
         self.assertEqual(self.get('/')[1]['cache-control'], 'no-cache')
         self.assertEqual(self.get('/card-front.jpg')[1]['cache-control'], 'no-cache')
         self.assertEqual(self.get('/assets/index-abc123.js')[1]['cache-control'], 'public, max-age=31536000, immutable')
+
+    def test_web_manifest_has_its_media_type(self):
+        for host in ('ibilaw.moinax.com', 'rubixcube.moinax.com'):
+            status, headers = self.get('/manifest.webmanifest', host)
+            self.assertEqual(status, '200', host)
+            self.assertEqual(headers['content-type'], 'application/manifest+json', host)
 
 
 if __name__ == '__main__':
