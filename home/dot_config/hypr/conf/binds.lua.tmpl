@@ -216,12 +216,13 @@ hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax
 hl.bind(mod .. " + ALT + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/blur?toggle=true'"))                 -- Blur variant picker
 
 -- ── 12. Screenshots ──────────────────────────────────────────────
--- The bare key takes the focused screen, no click. The mod variant lets the
--- pointer say what to take: click a window, drag a region, click the bar or a
--- gap for the whole screen. Adding SHIFT freezes the screen before you aim.
-hl.bind("PRINT",                    hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))        -- Screenshot the focused screen, no click
-hl.bind(mod .. " + PRINT",          hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))          -- Screenshot: click a window / drag a region
-hl.bind(mod .. " + SHIFT + PRINT",  hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick --freeze")) -- Same, with the screen frozen first
+-- The bare key lets the pointer say what to take: click a window, drag a
+-- region, click the bar or a gap for the whole screen. SHIFT does the same with
+-- the screen frozen before you aim. The mod variant takes the focused screen,
+-- no click.
+hl.bind("PRINT",                    hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick"))          -- Screenshot: click a window / drag a region
+hl.bind("SHIFT + PRINT",            hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick --freeze")) -- Same, with the screen frozen first
+hl.bind(mod .. " + PRINT",          hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))        -- Screenshot the focused screen, no click
 
 -- ── 13. Screen recordings ────────────────────────────────────────
 -- Same selection as the screenshots: the bare chord takes the focused screen,

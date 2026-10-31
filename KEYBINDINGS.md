@@ -133,9 +133,9 @@
 
 | Action | Keys | Notes |
 |---|---|---|
-| Screenshot focused screen | `Print` | screenshot.sh; immediate, no click |
-| Screenshot, pick what | `Mod+Print` | screenshot.sh; click a window, drag a region, or click the bar or a gap for the whole screen |
-| Screenshot, pick what, frozen | `Mod+Shift+Print` | Same, with the screen frozen first |
+| Screenshot, pick what | `Print` | screenshot.sh; click a window, drag a region, or click the bar or a gap for the whole screen |
+| Screenshot, pick what, frozen | `Shift+Print` | Same, with the screen frozen first |
+| Screenshot focused screen | `Mod+Print` | screenshot.sh; immediate, no click |
 
 ## 12. Screen recordings
 
