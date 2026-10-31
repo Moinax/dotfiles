@@ -97,5 +97,24 @@ class AppsHostTests(unittest.TestCase):
                 self.assertTrue(json.load(tar.extractfile('release-manifest.json'))['dirty'])
 
 
+    def test_static_app_archive_is_only_its_dist(self):
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as work:
+            source = Path(work) / 'source'
+            for name in ['package.json', 'pnpm-lock.yaml', 'dist/index.html', 'src/main.ts', '.env.local']:
+                p = source / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text('fixture')
+            with patch.object(host, 'source_dir', return_value=source), \
+                 patch.object(host, 'SCRATCH', Path(work)), \
+                 patch.object(host, 'run') as run, patch.object(host, 'output', side_effect=['abcdef', '']):
+                archive, _ = host.package('halloween')
+            self.assertEqual(run.call_args_list[0].args[0], ['pnpm', 'install', '--frozen-lockfile'])
+            with tarfile.open(archive) as tar:
+                self.assertEqual(sorted(tar.getnames()), ['dist', 'dist/index.html', 'package.json',
+                                                          'pnpm-lock.yaml', 'release-manifest.json'])
+
+
 if __name__ == '__main__':
     unittest.main()

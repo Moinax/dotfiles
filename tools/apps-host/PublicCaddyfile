@@ -54,7 +54,28 @@ https://rubixcube.moinax.com {
 	file_server
 }
 
-http://twitch.moinax.com, http://rubixcube.moinax.com {
+https://ibilaw.moinax.com {
+	bind {$APPS_PUBLIC_IPV4}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+	# A private gift reached by its link: keep it out of search engines.
+	header {
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Content-Type-Options nosniff
+		X-Robots-Tag "noindex, nofollow"
+	}
+	# Static only, like rubixcube. Vite hashes asset names; the rest is revalidated on each visit.
+	root * /opt/personal-apps/halloween/current/dist
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@unhashed not path /assets/*
+	header @unhashed Cache-Control no-cache
+	file_server
+}
+
+http://twitch.moinax.com, http://rubixcube.moinax.com, http://ibilaw.moinax.com {
 	bind {$APPS_PUBLIC_IPV4}
 	redir https://{host}{uri} 308
 }

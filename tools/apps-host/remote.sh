@@ -132,16 +132,17 @@ PY
 }
 
 deploy() {
-    local app=$1 release=$2 dir old port origin owner code health_path=/
-    [[ $app == finance || $app == daylight || $app == twitch-grid || $app == rubixcube ]]
+    local app=$1 release=$2 dir old port origin owner code health_path=/ static=false
+    [[ $app == finance || $app == daylight || $app == twitch-grid || $app == rubixcube || $app == halloween ]]
+    [[ $app != rubixcube && $app != halloween ]] || static=true
     [[ $release =~ ^[0-9a-f]{16}$ ]]
     dir="$ROOT/$app/releases/$release"
     [[ -f "$dir/source.tar.gz" ]]
     if [[ ! -f $dir/.installed ]]; then
         tar -xzf "$dir/source.tar.gz" -C "$dir"
-        # The static app has no service account; the others install as their own user.
-        [[ $app == rubixcube ]] || chown -R "$app:$app" "$dir"
-        if [[ $app == rubixcube ]]; then
+        # Static apps have no service account; the others install as their own user.
+        "$static" || chown -R "$app:$app" "$dir"
+        if "$static"; then
             # Static only: the public proxy serves dist, nothing to install or run.
             test -f "$dir/dist/index.html"
         elif [[ $app == twitch-grid ]]; then
@@ -160,7 +161,7 @@ deploy() {
     old=$(readlink "$ROOT/$app/current" || true)
     ln -sfn "releases/$release" "$ROOT/$app/current.next"
     mv -Tf "$ROOT/$app/current.next" "$ROOT/$app/current"
-    [[ $app != rubixcube ]] || { echo "$app release $release live"; return 0; }
+    ! "$static" || { echo "$app release $release live"; return 0; }
     # A first deployment can precede migration. Do not create empty application data.
     [[ -f /etc/personal-apps/$app.env ]] || return 0
     [[ $app == twitch-grid || -f /var/lib/$app/.migrated ]] || return 0

@@ -7,7 +7,8 @@ ADMIN=/opt/personal-apps/admin
 for account in twitch-grid apps-public; do
     id "$account" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$account"
 done
-install -d /opt/personal-apps/twitch-grid/releases /opt/personal-apps/rubixcube/releases
+install -d /opt/personal-apps/twitch-grid/releases /opt/personal-apps/rubixcube/releases \
+    /opt/personal-apps/halloween/releases
 install -d -m 750 -o root -g apps-public /etc/apps-public-proxy
 install -m 644 "$ADMIN/PublicCaddyfile" /etc/apps-public-proxy/Caddyfile
 install -m 644 "$ADMIN/twitch-grid.service" "$ADMIN/apps-public-proxy.service" /etc/systemd/system/

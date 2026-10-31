@@ -26,7 +26,7 @@ for app in finance daylight; do
     cp "/opt/personal-apps/$app/current/source.tar.gz" "$stage/releases/$app.tar.gz"
     readlink "/opt/personal-apps/$app/current" > "$stage/releases/$app.txt"
 done
-for app in twitch-grid rubixcube; do
+for app in twitch-grid rubixcube halloween; do
     [[ -f /opt/personal-apps/$app/current/source.tar.gz ]] || continue
     cp "/opt/personal-apps/$app/current/source.tar.gz" "$stage/releases/$app.tar.gz"
     readlink "/opt/personal-apps/$app/current" > "$stage/releases/$app.txt"

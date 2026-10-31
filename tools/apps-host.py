@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host private Finance/Daylight and public Twitch Grid and Rubik's cube. No destructive host command."""
+"""Host private Finance/Daylight and the public sites (Twitch Grid, Rubik's cube, Ibilaw). No destructive host command."""
 import argparse
 import hashlib
 import io
@@ -21,7 +21,9 @@ SCRATCH = REPO / '.scratch' / 'apps-host'
 NAME = 'apps-host'
 ROOT = '/opt/personal-apps'
 APPS = ('finance', 'daylight')
-DEPLOY_APPS = (*APPS, 'twitch-grid', 'rubixcube')
+# Static apps have no service or user: the public proxy serves their dist.
+STATIC_APPS = ('rubixcube', 'halloween')
+DEPLOY_APPS = (*APPS, 'twitch-grid', *STATIC_APPS)
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10']
 BACKUPS = Path.home() / 'Backups' / NAME
 BACKUP_CONFIG = Path.home() / '.config' / NAME
@@ -32,7 +34,7 @@ COMMANDS = {
     'configure': 'Configure private HTTPS and the authorized owner',
     'prepare-domains': 'Prepare custom HTTPS on staging ports and verify provider callbacks',
     'activate-domains': 'Activate private app domains after public policy links have been updated',
-    'prepare-public': 'Prepare the isolated public services (Twitch Grid, Rubik\'s cube) without switching DNS',
+    'prepare-public': 'Prepare the isolated public services (Twitch Grid and static sites) without switching DNS',
     'activate-public': 'Open public HTTP/HTTPS and switch only the public app domains after health checks',
     'firewall': 'Close public ingress after verifying private SSH',
     'deploy': 'Build and deploy an app (without an argument: Finance and Daylight)',
@@ -246,7 +248,8 @@ def source_dir(app):
 
 PUBLIC_FILES = ('public.sh', 'PublicCaddyfile', 'twitch-grid.service', 'apps-public-proxy.service')
 # Paths checked on the host before ingress and DNS change for each public domain.
-PUBLIC_SITES = {'twitch.moinax.com': ('/', '/config.json', '/healthz'), 'rubixcube.moinax.com': ('/',)}
+PUBLIC_SITES = {'twitch.moinax.com': ('/', '/config.json', '/healthz'), 'rubixcube.moinax.com': ('/',),
+                'ibilaw.moinax.com': ('/',)}
 
 
 def prepare_public():
@@ -351,8 +354,8 @@ def activate_public():
 def package(app):
     source = source_dir(app)
     command = ['pnpm', 'run', 'build']
-    if app == 'rubixcube':
-        # Applies the patched cubejs dependency; the build fails on lockfile drift.
+    if app in STATIC_APPS:
+        # Applies rubixcube's patched cubejs dependency; the build fails on lockfile drift.
         run(['pnpm', 'install', '--frozen-lockfile'], cwd=source)
     run(command, cwd=source)
     archive = SCRATCH / f'{app}.tar.gz'
@@ -363,7 +366,7 @@ def package(app):
         names += ['shared']
     elif app == 'twitch-grid':
         names = ['package.json', 'pnpm-lock.yaml', 'dist', 'api', 'production.cjs']
-    elif app == 'rubixcube':
+    elif app in STATIC_APPS:
         names = ['package.json', 'pnpm-lock.yaml', 'dist']
     manifest = {'app': app, 'git_head': output(['git', '-C', source, 'rev-parse', 'HEAD']),
                 'dirty': bool(output(['git', '-C', source, 'status', '--porcelain'])),

@@ -1,5 +1,5 @@
 ---
-description: Persistent private Finance/Daylight and public Twitch Grid and Rubik's cube hosting, separate from T3.
+description: Persistent private Finance/Daylight and public Twitch Grid, Rubik's cube and Ibilaw hosting, separate from T3.
 paths:
   - tools/apps-host.py
   - tools/apps-host/**
@@ -26,6 +26,10 @@ paths:
   no service, user or server-side data. HTTPS is mandatory (camera access). Deploy
   it explicitly with `dots hosting deploy rubixcube`; `prepare-public` installs its
   route and `activate-public` adds its explicit unproxied A record.
+- The `halloween` app (a private gift) is public on `ibilaw.moinax.com` the same
+  way: static, `STATIC_APPS` in `apps-host.py`, deployed with
+  `dots hosting deploy halloween`. It sends `X-Robots-Tag: noindex`; only its
+  hashed `/assets/` are cached, so a redeploy shows up on the next visit.
 - Public Finance information stays on `finance-info.moinax.com` through Vercel.
   Update provider policy links before making `finance.moinax.com` private. Never
   change the Cloudflare wildcard or proxy the private A records through Cloudflare.
