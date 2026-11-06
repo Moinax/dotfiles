@@ -100,7 +100,7 @@ SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 push_and_run() {
     local target="$1" sub="$2" repo theme
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-    theme="$repo/home/dot_t3/userdata/themes/catppuccin.json"
+    theme="$repo/home/dot_t3/private_userdata/themes/catppuccin.json"
     scp -q "${SSH_OPTS[@]}" "${BASH_SOURCE[0]}" "$target:/tmp/t3-host.sh"
     scp -q "${SSH_OPTS[@]}" "$theme" "$target:/tmp/t3code-theme.json"
     ssh -t "${SSH_OPTS[@]}" "$target" "bash /tmp/t3-host.sh $sub"
