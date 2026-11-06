@@ -8,12 +8,11 @@ Keep tool-specific rules in that tool's own configuration.
 
 ## Language
 
-- **Reply in the language of the message you are answering.** The user writes
-  French and English and switches mid-thread. Follow the current message,
-  regardless of the language of the code.
-- **Only the prose addressed to them switches.** Code, identifiers, commit
-  messages, and every file written to disk stay in English, including in a
-  conversation held entirely in French.
+- **Always talk to the user in French**, whatever the language of their message,
+  the code, or tool output. Use another language only when they explicitly ask
+  for it, and only for the reply they asked it for.
+- **Only the prose addressed to them is in French.** Code, identifiers, comments,
+  documentation, commit messages, and every file written to disk stay in English.
 
 ## Test windows on Hyprland
 
