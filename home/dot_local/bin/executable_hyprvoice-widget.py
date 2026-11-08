@@ -966,24 +966,16 @@ class Overlay:
         self.accept.set_sensitive(False)
         self.lang_btn.set_sensitive(False)
         send_command("cancel")
-        GLib.timeout_add(POLL_MS, self.set_lang_when_idle, code, [25])
-
-    def set_lang_when_idle(self, code: str, budget: list[int]) -> bool:
-        # dictation-lang refuses while the daemon is busy, so wait out the cancel.
-        # ponytail: ~3s budget, then let dictation-lang refuse and report it.
-        budget[0] -= 1
-        if daemon_status() not in ("idle", None) and budget[0] > 0:
-            return True
+        # dictation-lang waits out the cancel itself (it owns the daemon-state
+        # checks), then the reload. Async: ~1s, and the pill animates through it.
         try:
             self.lang_proc = Gio.Subprocess.new(
                 ["dictation-lang", "set", code], Gio.SubprocessFlags.NONE
             )
         except GLib.Error:
             self.restart_capture()
-            return False
-        # Async: the reload wait is ~1s, and the pill keeps animating through it.
+            return
         self.lang_proc.wait_async(None, lambda *_: self.restart_capture())
-        return False
 
     def restart_capture(self) -> None:
         # Re-read rather than trust the pick: a refused or failed switch leaves
@@ -1020,6 +1012,9 @@ class Overlay:
         self.close()
 
     def enter_transcribing(self) -> None:
+        # Mod+D wakes a paused recorder behind our back before stopping it, so
+        # the pause can end without on_pause: settle it here, on every path.
+        self.resume()
         self.phase = "transcribing"
         self.meter.stop()
         self.accept.set_sensitive(False)
@@ -1072,10 +1067,11 @@ class Overlay:
         self.status.set_text(text or "")
         self.status.set_visible(text is not None)
         self.src_btn.set_visible(text is None)
-        if self.muted():
+        alerted = self.src_btn.has_css_class("alert")
+        if self.muted() and not alerted:
             self.src_btn.add_css_class("alert")
             self.src_btn.set_tooltip_text("Aucun signal — choisir un autre microphone")
-        elif self.src_btn.has_css_class("alert"):
+        elif alerted and not self.muted():
             self.src_btn.remove_css_class("alert")
             self.refresh_source()  # puts the device tooltip back
 

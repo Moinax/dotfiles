@@ -46,9 +46,8 @@ hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-di
 -- cancelling while idle is a no-op the daemon just logs and ignores. It cannot
 -- live in the overlay itself — a layer surface that takes keyboard focus becomes
 -- hyprvoice's injection target, so the dictation would land in the pill.
--- The CONT wakes a recorder the overlay paused, which would otherwise hold the
--- cancel (see toggle-dictation.sh).
-hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("pkill -CONT -x pw-record; hyprvoice cancel"))                            -- Cancel dictation (discard)
+-- Through toggle-dictation.sh, which first wakes a recorder the overlay paused.
+hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh --cancel"))                      -- Cancel dictation (discard)
 {{- end }}
 
 -- ── 2. Window Management ──────────────────────────────────────────

@@ -43,7 +43,8 @@ usage() {
 Usage: dictation-lang <command>
 
   get               language the next clip will be transcribed with
-  set <auto|fr|en>  remember a language and apply it now (daemon idle only)
+  set <auto|fr|en>  remember a language and apply it once the daemon is idle
+                    (waits up to 3s, then refuses)
 EOF
 }
 
@@ -140,7 +141,13 @@ apply_lang() {
         return 2
     fi
 
-    status=$(daemon_status)
+    # Wait out a dictation that is ending: the pill cancels its clip and calls
+    # this straight away, and the daemon takes a beat to fall idle.
+    for _ in $(seq 1 30); do
+        status=$(daemon_status)
+        [ "$status" = idle ] || [ "$status" = down ] && break
+        sleep 0.1
+    done
     if [ "$status" != idle ] && [ "$status" != down ]; then
         notify "Dictée en cours — langue inchangée"
         return 1

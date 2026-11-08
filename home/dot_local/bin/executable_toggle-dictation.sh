@@ -7,6 +7,24 @@ set -e
 
 LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprvoice.log"
 
+# The overlay pauses a dictation by SIGSTOPping the daemon's pw-record, and a
+# stopped recorder sits on the daemon's stop signal until it is continued — so
+# every stop path wakes it first, or it would hang behind a paused clip (say,
+# one whose overlay died mid-pause). Only the daemon's own child: a pw-record
+# the user stopped elsewhere is not ours to resume. A no-op when none is paused.
+wake_recorder() {
+    local daemon
+    daemon=$(pgrep -d, -x hyprvoice) || return 0
+    pkill -CONT -x -P "$daemon" pw-record || true
+}
+
+# `--cancel`: Mod+Shift+D, the keyboard twin of the overlay's ✕. Here rather
+# than inline in the bind so the wake above has one home.
+if [ "${1:-}" = "--cancel" ]; then
+    wake_recorder
+    exec hyprvoice cancel
+fi
+
 if ! command -v hyprvoice &>/dev/null; then
     notify-send -u critical "Dictation" "hyprvoice is not installed"
     exit 1
@@ -48,11 +66,7 @@ if [[ "$status" == *status=idle* ]]; then
     starting=yes
 fi
 
-# The overlay pauses a dictation by SIGSTOPping the daemon's pw-record, and a
-# stopped recorder sits on the daemon's stop signal until it is continued — so
-# wake it first, or this press would hang behind a paused clip (say, one whose
-# overlay died mid-pause). A no-op on a recorder that is running.
-pkill -CONT -x pw-record || true
+wake_recorder
 
 # Toggle recording on/off
 hyprvoice toggle
