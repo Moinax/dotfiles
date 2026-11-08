@@ -68,7 +68,13 @@ device = ""                      # Empty = follow the PipeWire default source, a
                                  # word the mic never captured. That is what the
                                  # LLM pass below is there to absorb.
 channel_buffer_size = 30         # Audio frame buffer size
-timeout = "5m"                   # Maximum recording duration per toggle
+timeout = "12m"                  # Whole-clip deadline, from the toggle: pauses,
+                                 # transcription and the LLM pass all count, and
+                                 # reaching it drops the clip silently (v1.0.2
+                                 # transcribes on the expired context). Bounded
+                                 # by Groq's 25 MB upload cap: 16 kHz mono s16
+                                 # WAV is 32 KB/s, ~13 min. The pill's timer
+                                 # turns orange in the last minute.
 
 # ── Transcription ───────────────────────────────────────────────
 [transcription]

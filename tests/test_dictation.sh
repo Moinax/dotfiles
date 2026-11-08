@@ -5,6 +5,8 @@
 #     refuses — config untouched — while a dictation is still in flight.
 #   * toggle-dictation.sh: wakes a recorder the overlay paused (SIGSTOP) before
 #     acting, and only the daemon's own — a pw-record stopped elsewhere stays.
+#   * hyprvoice-widget.py: reads `[recording] timeout` as the Go duration the
+#     daemon does, so the timer warns before the clip is dropped.
 #
 # Run: bash tests/test_dictation.sh
 
@@ -112,6 +114,24 @@ HOME="$test_home" HV_STATUS=transcribing HV_LOG="$fixtures/calls" \
 sleep 0.1
 check "--cancel wakes it too" S "$(proc_state "$ours")"
 check "then cancels" cancel "$(tail -n 1 "$fixtures/calls")"
+
+echo "hyprvoice-widget.py reads the daemon's recording deadline"
+# The pill turns its timer orange off this value; a misread Go duration warns
+# at the wrong time or never. Imported, not run: no display needed.
+WIDGET="$SCRIPT_DIR/../home/dot_local/bin/executable_hyprvoice-widget.py"
+for case in 12m=720.0 1m30s=90.0 1h=3600.0 500ms=0.5 =300.0 bogus=300.0; do
+    raw="${case%%=*}" want="${case#*=}"
+    got=$(HYPRVOICE_WIDGET_PRELOADED=1 python3 -I - "$WIDGET" "$raw" 2>/dev/null <<'EOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("hvw", sys.argv[1])
+hvw = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hvw)
+hvw.hyprvoice_config = lambda: {"recording": {"timeout": sys.argv[2]}}
+print(hvw.recording_limit_s())
+EOF
+)
+    check "timeout \"$raw\"" "$want" "$got"
+done
 
 echo
 if [ "$failures" -eq 0 ]; then

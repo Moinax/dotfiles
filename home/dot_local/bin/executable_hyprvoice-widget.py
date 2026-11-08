@@ -34,6 +34,7 @@
 import json
 import math
 import os
+import re
 import signal
 import socket
 import struct
@@ -107,6 +108,7 @@ PILL_BOTTOM = 90  # pill edge to screen bottom, shadow room included below
 # codes; anything it does not recognise reads as auto.
 LANGUAGES = {"auto": "Auto (détection)", "fr": "Français", "en": "English"}
 CAPTURE_GRACE_S = 1.0  # pw-record is not up the instant a toggle returns
+WARN_BEFORE_S = 60  # the timer turns orange this long before the daemon gives up
 
 # hyprvoice's own capture format (`pw-record --format s16 --rate 16000
 # --channels 1`), mirrored so the meter and the daemon hear the same thing.
@@ -137,6 +139,7 @@ DARK = {  # Catppuccin Mocha
     "dim": rgba("#a6adc8"),  # subtext0
     "accent": rgba("#cba6f7"),  # mauve
     "alert": rgba("#f38ba8"),  # red
+    "warn": rgba("#fab387"),  # peach
     "shadow": rgba("#11111b", 0.55),  # crust
 }
 LIGHT = {  # Catppuccin Latte
@@ -146,6 +149,7 @@ LIGHT = {  # Catppuccin Latte
     "dim": rgba("#6c6f85"),
     "accent": rgba("#8839ef"),
     "alert": rgba("#d20f39"),
+    "warn": rgba("#fe640b"),
     "shadow": rgba("#4c4f69", 0.18),
 }
 
@@ -181,6 +185,9 @@ label.timer.paused {{
   color: rgb({accent_r}, {accent_g}, {accent_b});
   animation: hv-pulse 1.4s ease-in-out infinite;
 }}
+/* Near the daemon's deadline; after .paused so it wins the colour while a
+ * paused pill keeps its pulse — the deadline runs through a pause. */
+label.timer.warn {{ color: rgb({warn_r}, {warn_g}, {warn_b}); }}
 @keyframes hv-pulse {{ 50% {{ opacity: 0.35; }} }}
 label.lang {{
   font-size: 11px;
@@ -430,7 +437,7 @@ def pactl_json(args: list[str]) -> list:
 
 @cache
 def hyprvoice_config() -> dict:
-    """The daemon's config, parsed once for the two settings read out of it."""
+    """The daemon's config, parsed once for the settings read out of it."""
     try:
         with CONFIG_PATH.open("rb") as handle:
             return tomllib.load(handle)
@@ -446,6 +453,22 @@ def pinned_device() -> str | None:
     it, so the picker says so instead of quietly doing nothing.
     """
     return hyprvoice_config().get("recording", {}).get("device", "") or None
+
+
+def recording_limit_s() -> float:
+    """hyprvoice's `[recording] timeout` (a Go duration), in seconds.
+
+    The daemon's deadline for the whole clip: it runs on the wall clock from the
+    toggle, pauses included, and covers transcription and the LLM pass too.
+    Reaching it loses the clip without a word — pipeline.go returns on the
+    expired context and the final transcribe then fails on that same context.
+    """
+    raw = str(hyprvoice_config().get("recording", {}).get("timeout", ""))
+    units = {"h": 3600, "m": 60, "s": 1, "ms": 0.001}
+    total = sum(
+        float(n) * units[u] for n, u in re.findall(r"(\d+(?:\.\d+)?)(ms|h|m|s)", raw)
+    )
+    return total or 300.0  # hyprvoice's own default
 
 
 def dictation_language() -> str:
@@ -675,6 +698,7 @@ class Overlay:
         self.levels = deque([0.0] * BARS, maxlen=BARS)
         self.phase = "listening"  # listening | switching | transcribing
         self.started_us = GLib.get_monotonic_time()
+        self.warn_at_s = recording_limit_s() - WARN_BEFORE_S
         # When this *device* started being listened to, which the picker resets
         # and the dictation timer does not — the two questions came apart the
         # moment a mic could be swapped mid-sentence.
@@ -993,6 +1017,7 @@ class Overlay:
         self.phase = "listening"
         self.accept.set_sensitive(True)
         self.started_us = self.device_since = GLib.get_monotonic_time()
+        self.warn_at_s = recording_limit_s() - WARN_BEFORE_S
         self.paused_us = 0
         self.meter.heard_signal = False
         self.levels.extend([0.0] * BARS)
@@ -1079,6 +1104,16 @@ class Overlay:
         if self.phase == "listening" and not self.paused:
             spoken = int(self.elapsed_s() - self.paused_us / 1e6)
             self.timer.set_text(f"{spoken // 60}:{spoken % 60:02d}")
+        # Wall clock, not the spoken time shown: the daemon's deadline counts
+        # the pauses too, and still runs while the clip is transcribed.
+        near = self.phase != "switching" and self.elapsed_s() > self.warn_at_s
+        if near != self.timer.has_css_class("warn"):
+            if near:
+                self.timer.add_css_class("warn")
+                self.timer.set_tooltip_text("Limite proche — valider avant la coupure")
+            else:
+                self.timer.remove_css_class("warn")
+                self.timer.set_tooltip_text(None)
         self.show_head()
         self.mic.queue_draw()
         self.wave.queue_draw()
