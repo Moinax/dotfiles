@@ -13,18 +13,11 @@
 # the English is gone by the time it sees the text.
 #
 # The only lever is `[transcription] language`, and `hyprvoice toggle` has no
-# per-clip flag for it, so the switch has to patch the config. Two shapes, both
-# needed:
-#
-#   set / cycle   sticky. Remembered in $STATE_FILE, which the chezmoi template
-#                 for config.toml interpolates — so `chezmoi apply` reproduces
-#                 the current choice instead of silently resetting it mid-session.
-#   oneshot       transient, for a single dictation: config only, the remembered
-#                 preference untouched, and a detached `restore` that puts it
-#                 back once the daemon falls idle. The caller only has to know
-#                 that it must run *before* `hyprvoice toggle`; everything else
-#                 about the round trip lives here, next to the daemon state it
-#                 depends on.
+# per-clip flag for it, so the switch has to patch the config. The choice is
+# remembered in $STATE_FILE, which the chezmoi template for config.toml
+# interpolates — so `chezmoi apply` reproduces the current choice instead of
+# silently resetting it mid-session. The caller is the dictation pill's language
+# chip (hyprvoice-widget.py), which cancels the clip, runs `set`, and restarts.
 #
 # Two daemon facts shape the rest, both read out of hyprvoice v1.0.2's source
 # and confirmed against the running daemon:
@@ -45,27 +38,12 @@ STATE_FILE="$STATE_DIR/hyprvoice-lang"
 LOG="$STATE_DIR/hyprvoice.log"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/hyprvoice/config.toml"
 
-# Poll cadence for `restore`. A tick is four forks (`hyprvoice status` and the
-# `sleep`, 5.8ms measured), and the loop lives as long as the dictation does —
-# at one second it costs 0.6% of a core against 2.3% at 250ms, and nothing reads
-# the restored language until the next keypress seconds later, so the finer
-# cadence bought precision no one can observe. SETTLE_TICKS of *continuous* idle
-# before writing, so a second Mod+D landing right after the first does not eat a
-# pipeline restart.
-POLL_S=1
-SETTLE_TICKS=2
-MAX_TICKS=400 # a little past the 5m recording timeout
-
 usage() {
     cat <<'EOF'
 Usage: dictation-lang <command>
 
-  get                  language the next clip will be transcribed with
-  set <auto|fr|en>     remember a language and apply it now
-  cycle                auto → fr → en → auto, remembered
-  oneshot <auto|fr|en> apply for the dictation about to start, then restore
-  restore              wait for the daemon to fall idle, then put the
-                       remembered language back
+  get               language the next clip will be transcribed with
+  set <auto|fr|en>  remember a language and apply it now (daemon idle only)
 EOF
 }
 
@@ -79,22 +57,10 @@ normalise() {
     esac
 }
 
-label() {
-    case "$1" in
-        fr) printf 'Français' ;;
-        en) printf 'English' ;;
-        *) printf 'Auto (détection)' ;;
-    esac
-}
-
 config_lang() {
     local value
     value=$(sed -n 's/^language = "\([^"]*\)".*/\1/p' "$CONFIG" 2>/dev/null | head -1)
     normalise "$value"
-}
-
-sticky_lang() {
-    normalise "$(cat "$STATE_FILE" 2>/dev/null || printf fr)"
 }
 
 # "idle" / "recording" / "transcribing" / "injecting", or "down" when no daemon
@@ -112,8 +78,8 @@ daemon_status() {
 
 notify() {
     if command -v notify-send &>/dev/null; then
-        # Synchronous hint so a held Mod+Ctrl+D replaces its own popup instead
-        # of stacking three of them down the corner.
+        # Synchronous hint so repeated failures replace one popup instead of
+        # stacking them down the corner.
         notify-send -t 1500 -h string:x-canonical-private-synchronous:dictation-lang \
             "Dictée" "$1" || true
     fi
@@ -163,15 +129,13 @@ wait_for_reload() {
     return 1
 }
 
-# 0 wrote it, 1 refused (a dictation is in flight), 2 nothing to write. Callers
-# need the third apart from the first: it is what tells `oneshot` there is no
-# reload to wait out and nothing to hand back afterwards.
+# 0 wrote it, 1 refused (a dictation is in flight, or the reload failed),
+# 2 nothing to write.
 apply_lang() {
     local code from status
     code=$(normalise "$1")
 
-    # Nothing to write is the common case for a sticky language, and it is what
-    # keeps a normal Mod+D free of the reload wait entirely.
+    # Nothing to write: no reload to wait out.
     if [ "$(config_lang)" = "$code" ]; then
         return 2
     fi
@@ -210,44 +174,6 @@ set_lang() {
 
     mkdir -p "$STATE_DIR"
     printf '%s\n' "$code" >"$STATE_FILE"
-    notify "Langue : $(label "$code")"
-}
-
-# Apply a language for the dictation the caller is about to start, and arrange
-# for it to be handed back. Detached, because it outlives this process by the
-# length of the dictation.
-oneshot() {
-    local rc=0
-    apply_lang "$1" || rc=$?
-    if [ "$rc" -eq 0 ]; then
-        setsid -f "$0" restore >/dev/null 2>&1 </dev/null || true
-    fi
-    return 0
-}
-
-# Wait out the dictation, then hand the config back to the remembered
-# preference. One loop: the recording is live before the caller's next line
-# runs, so the first tick a second later already sees it — an opening guard for
-# "has it started yet" would only be re-asking what the settle counter answers.
-# The count resets on a new dictation, which also means a burst of English clips
-# keeps the one-shot language for the whole burst rather than half of it.
-restore_when_idle() {
-    local idle=0 status
-
-    for _ in $(seq 1 "$MAX_TICKS"); do
-        status=$(daemon_status)
-        if [ "$status" = idle ] || [ "$status" = down ]; then
-            idle=$((idle + 1))
-            if [ "$idle" -ge "$SETTLE_TICKS" ]; then
-                break
-            fi
-        else
-            idle=0
-        fi
-        sleep "$POLL_S"
-    done
-
-    apply_lang "$(sticky_lang)" || true
 }
 
 case "${1:-}" in
@@ -262,22 +188,6 @@ case "${1:-}" in
         }
         set_lang "$2"
         ;;
-    cycle)
-        case "$(sticky_lang)" in
-            auto) next=fr ;;
-            fr) next=en ;;
-            *) next=auto ;;
-        esac
-        set_lang "$next"
-        ;;
-    oneshot)
-        [ -n "${2:-}" ] || {
-            usage >&2
-            exit 1
-        }
-        oneshot "$2"
-        ;;
-    restore) restore_when_idle ;;
     help | --help | -h) usage ;;
     *)
         usage >&2

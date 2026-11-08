@@ -34,10 +34,8 @@
 | Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
 | Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
 | Blur variant picker | `Mod+Alt+W` | Vicinae list of Hyprland's blur variants; stays open to compare, the pick persists across reloads |
-| Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level, a microphone picker and validate/cancel buttons, so a dictation can also be finished with the pointer |
+| Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level and two chips — language (`AUTO` / `FR` / `EN`, remembered across sessions; picking one restarts the clip, since a config reload discards the recording) and microphone source. The mic icon pauses and resumes without losing what was already said, and validate/cancel buttons finish the dictation with the pointer |
 | Cancel dictation (discard) | `Mod+Shift+D` | `hyprvoice cancel` — drops the recording with no transcription, the keyboard twin of the overlay's ✕ |
-| Dictate one clip in English | `Mod+Alt+D` | Same as `Mod+D`, with Whisper pinned to English for this dictation only; the language goes back to the remembered one when the daemon falls idle. Costs ~1s of config reload before the mic opens |
-| Cycle dictation language | `Mod+Ctrl+D` | `auto → fr → en → auto`, remembered across sessions and shown as a chip in the dictation pill. Auto-detect writes *in the language it hears*, so on accented English it translates instead of mis-spelling — this pins it. Ignored while a dictation is in flight |
 
 ## 2. Window Management
 

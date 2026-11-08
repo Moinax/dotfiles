@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 # Hyprvoice dictation overlay — a layer-shell pill showing the live microphone
-# level while hyprvoice records, plus pointer controls (validate / cancel) so a
-# dictation can be driven without reaching for Mod+D.
+# level while hyprvoice records, plus pointer controls (language and source
+# chips, pause, validate / cancel) so a dictation can be driven without
+# reaching for Mod+D.
 #
 # toggle-dictation.sh launches it on the keypress that *starts* a dictation; it
 # exits on its own once hyprvoice reports idle. A second launch is a no-op
@@ -33,15 +34,15 @@
 import json
 import math
 import os
+import signal
 import socket
 import struct
 import subprocess
 import sys
+import tomllib
 from collections import deque
 from functools import cache
 from pathlib import Path
-
-import tomllib
 
 PRELOAD = "/usr/lib/libgtk4-layer-shell.so"
 
@@ -78,7 +79,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 
-from gi.repository import Gio, GLib, Gtk
+from gi.repository import Gio, GLib, Gtk, Pango
 from gi.repository import Gtk4LayerShell as LayerShell
 
 CACHE = Path.home() / ".cache" / "hyprvoice"
@@ -86,18 +87,26 @@ SOCKET_PATH = CACHE / "control.sock"
 PID_PATH = CACHE / "hyprvoice.pid"
 CONFIG_PATH = Path.home() / ".config" / "hyprvoice" / "config.toml"
 
-BARS = 44  # waveform columns, newest on the right
+BARS = 36  # waveform columns, newest on the right
 BAR_MS = 45  # audio per column
 POLL_MS = 120  # hyprvoice status / phase poll
 FRAME_MS = 33  # ~30 fps; the ripple reads smooth and the pill is tiny
 SILENT_AFTER_S = 2.0  # flag a digitally-silent source after this long
 FLOOR_DB = -55.0  # quietest level the meter still shows movement for
 ROW_GAP = 8  # one gap value for every element in the control row
-PILL_WIDTH = 470  # fixed, so the waveform can absorb every width change
+PILL_WIDTH = 410  # fixed, so the waveform can absorb every width change
 WAVE_MIN = 140  # floor for the waveform; hexpand gives it whatever is left
+CONTROL = 28  # mic, validate and cancel: one size for every round control
+# Transparent room around the pill for its drop shadow: the layer surface is
+# sized to its content, so a shadow with nowhere to fall is clipped to nothing.
+# The bottom gets more, the shadow is offset downward.
+SHADOW_ROOM = (14, 18, 22, 18)  # top, right, bottom, left
+PILL_BOTTOM = 90  # pill edge to screen bottom, shadow room included below
 
-# Dictation languages worth a chip. Absent from here = auto-detect, the default.
-LANGUAGES = {"fr": "Français", "en": "English"}
+# Dictation languages the chip offers, in menu order. dictation-lang owns the
+# codes; anything it does not recognise reads as auto.
+LANGUAGES = {"auto": "Auto (détection)", "fr": "Français", "en": "English"}
+CAPTURE_GRACE_S = 1.0  # pw-record is not up the instant a toggle returns
 
 # hyprvoice's own capture format (`pw-record --format s16 --rate 16000
 # --channels 1`), mirrored so the meter and the daemon hear the same thing.
@@ -123,12 +132,12 @@ def rgba(colour: str, alpha: float = 1.0) -> tuple[float, float, float, float]:
 
 DARK = {  # Catppuccin Mocha
     "bg": rgba("#1e1e2e", 0.94),  # base
-    "rim": rgba("#cdd6f4", 0.10),
+    "rim": rgba("#cdd6f4", 0.14),
     "ink": rgba("#cdd6f4"),  # text
-    "dim": rgba("#a6adc8"),  # timer
+    "dim": rgba("#a6adc8"),  # subtext0
     "accent": rgba("#cba6f7"),  # mauve
     "alert": rgba("#f38ba8"),  # red
-    "ok": rgba("#a6e3a1"),  # green
+    "shadow": rgba("#11111b", 0.55),  # crust
 }
 LIGHT = {  # Catppuccin Latte
     "bg": rgba("#eff1f5", 0.96),  # base
@@ -137,103 +146,161 @@ LIGHT = {  # Catppuccin Latte
     "dim": rgba("#6c6f85"),
     "accent": rgba("#8839ef"),
     "alert": rgba("#d20f39"),
-    "ok": rgba("#40a02b"),
+    "shadow": rgba("#4c4f69", 0.18),
 }
 
 CSS = """
+/* One tint ladder for every control, so they read as one family: 0.06 at
+ * rest, 0.12 hovered, 0.18 open. Validate and a pinned language use the accent
+ * on the same ladder, everything else the text colour. */
 window.hv {{ background: transparent; }}
 box.pill {{
   background: rgba({bg_r}, {bg_g}, {bg_b}, {bg_a});
   border: 1px solid rgba({rim_r}, {rim_g}, {rim_b}, {rim_a});
-  border-radius: 999px;
-  padding: 4px 14px 4px 10px;
+  /* A rounded rectangle, not a stadium: on two rows a full-radius end is a
+   * 40px half-circle that squeezes the top line's ends into the curve. */
+  border-radius: 20px;
+  padding: 8px 12px;
+  box-shadow: 0 6px 18px rgba({shadow_r}, {shadow_g}, {shadow_b}, {shadow_a}),
+              0 1px 3px rgba({shadow_r}, {shadow_g}, {shadow_b}, {shadow_a});
 }}
-label.state {{
+/* The timer only: status words go on the top line, so this column keeps one
+ * width and the waveform never jumps. Tabular figures stop 1:11 from being
+ * narrower than 0:08. */
+label.timer {{
   color: rgb({dim_r}, {dim_g}, {dim_b});
-  font-family: "JetBrainsMono Nerd Font", "FiraCode Nerd Font", monospace;
-  font-size: 13px;
+  font-size: 12px;
+  font-feature-settings: "tnum";
+  min-width: 34px;
 }}
-label.state.alert {{ color: rgb({alert_r}, {alert_g}, {alert_b}); }}
-button.act {{
-  min-width: 22px;
-  min-height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: rgba({rim_r}, {rim_g}, {rim_b}, 0.55);
-  color: rgb({ink_r}, {ink_g}, {ink_b});
-  font-size: 11px;
-  transition: background 120ms ease, color 120ms ease;
-}}
-button.act:hover {{ background: rgba({ink_r}, {ink_g}, {ink_b}, 0.20); }}
-button.act.ok:hover {{ color: rgb({ok_r}, {ok_g}, {ok_b}); }}
-button.act.no:hover {{ color: rgb({alert_r}, {alert_g}, {alert_b}); }}
-button.act:disabled {{ opacity: 0.35; background: rgba({rim_r}, {rim_g}, {rim_b}, 0.30); }}
-label.source {{
-  color: rgb({dim_r}, {dim_g}, {dim_b});
-  font-size: 10.5px;
-  /* Negative vertical margins let the name overhang its own line, so it costs
-   * ~6px of height rather than a full text line. Without this the control row
-   * is pushed a full line below the pill's centre and reads bottom-heavy. */
-  margin: -4px 6px -5px 0;
-}}
-/* Accent, not the dimmed grey the device name uses: this one is a warning as
- * much as a label — it says the next clip will be *written* in that language
- * whatever is spoken into it. Same negative vertical margins as .source so the
- * top line keeps costing ~6px instead of a full text line. */
-label.lang {{
+label.source,
+label.status {{ font-size: 11px; }}
+label.status {{ color: rgb({dim_r}, {dim_g}, {dim_b}); }}
+/* Paused: the frozen timer pulses, the one moving thing on a held pill. */
+label.timer.paused {{
   color: rgb({accent_r}, {accent_g}, {accent_b});
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  margin: -4px 0 -5px 0;
+  animation: hv-pulse 1.4s ease-in-out infinite;
 }}
-/* GtkMenuButton's CSS node is `menubutton`, wrapping a `button` child — a
- * `button.micbtn` selector matches neither, so the platform theme's raised
- * button showed through as a dark slab around the mic. Both nodes have to be
- * flattened, background-image included (the theme paints its gradient there). */
-menubutton.micbtn,
-menubutton.micbtn > button {{
-  min-width: 30px;
-  min-height: 30px;
+@keyframes hv-pulse {{ 50% {{ opacity: 0.35; }} }}
+label.lang {{
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+}}
+button.act,
+button.micbtn,
+menubutton.langbtn > button,
+menubutton.srcbtn > button {{
   padding: 0;
   margin: 0;
   border: none;
   outline: none;
   box-shadow: none;
-  background: none;
   background-image: none;
   border-radius: 999px;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
 }}
-menubutton.micbtn > button:hover {{ background: rgba({ink_r}, {ink_g}, {ink_b}, 0.10); }}
-menubutton.micbtn > button:checked {{ background: rgba({ink_r}, {ink_g}, {ink_b}, 0.14); }}
+/* GtkMenuButton's CSS node is `menubutton`, wrapping a `button` child — a
+ * `button.langbtn` selector matches neither, so the platform theme's raised
+ * button showed through as a dark slab. The outer node is flattened too. */
+menubutton.langbtn,
+menubutton.srcbtn {{
+  padding: 0;
+  margin: 0;
+  background: none;
+  box-shadow: none;
+}}
+button.act,
+button.micbtn {{
+  min-width: {control}px;
+  min-height: {control}px;
+}}
+button.act.no,
+button.micbtn,
+menubutton.langbtn > button,
+menubutton.srcbtn > button {{
+  background-color: rgba({ink_r}, {ink_g}, {ink_b}, 0.06);
+  color: rgb({dim_r}, {dim_g}, {dim_b});
+}}
+button.act.no:hover,
+button.micbtn:hover,
+menubutton.langbtn > button:hover,
+menubutton.srcbtn > button:hover {{ background-color: rgba({ink_r}, {ink_g}, {ink_b}, 0.12); }}
+menubutton.langbtn > button:checked,
+menubutton.srcbtn > button:checked {{ background-color: rgba({ink_r}, {ink_g}, {ink_b}, 0.18); }}
+button.act.no:hover {{ color: rgb({alert_r}, {alert_g}, {alert_b}); }}
+button.act.ok,
+button.micbtn.paused,
+menubutton.langbtn.pinned > button {{
+  background-color: rgba({accent_r}, {accent_g}, {accent_b}, 0.16);
+  color: rgb({accent_r}, {accent_g}, {accent_b});
+}}
+button.act.ok:hover,
+button.micbtn.paused:hover,
+menubutton.langbtn.pinned > button:hover {{
+  background-color: rgba({accent_r}, {accent_g}, {accent_b}, 0.26);
+}}
+menubutton.langbtn.pinned > button:checked {{
+  background-color: rgba({accent_r}, {accent_g}, {accent_b}, 0.32);
+}}
+/* A dead source: the chip turns red but stays a chip — this is exactly when
+ * picking another microphone is the fix. */
+menubutton.srcbtn.alert > button {{
+  background-color: rgba({alert_r}, {alert_g}, {alert_b}, 0.14);
+  color: rgb({alert_r}, {alert_g}, {alert_b});
+}}
+/* Same height as the top line's text plus air, so the chips read as controls
+ * without making the line taller than the text needs. */
+menubutton.langbtn > button,
+menubutton.srcbtn > button {{
+  min-height: 20px;
+  min-width: 0;
+  padding: 0 8px;
+}}
+button.act:disabled,
+menubutton.langbtn > button:disabled,
+menubutton.srcbtn > button:disabled {{ opacity: 0.4; }}
+/* Opaque, unlike the pill: a menu always opens over the pill here, and
+ * through a translucent one the mic glyph showed under the first row. */
 popover > contents {{
-  background: rgba({bg_r}, {bg_g}, {bg_b}, {bg_a});
+  background: rgb({bg_r}, {bg_g}, {bg_b});
   border: 1px solid rgba({rim_r}, {rim_g}, {rim_b}, {rim_a});
-  border-radius: 14px;
-  padding: 6px;
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba({shadow_r}, {shadow_g}, {shadow_b}, {shadow_a});
 }}
-popover > arrow {{
-  background: rgba({bg_r}, {bg_g}, {bg_b}, {bg_a});
-  border: 1px solid rgba({rim_r}, {rim_g}, {rim_b}, {rim_a});
-}}
+/* The theme's button gradient and inset shadow drew a separator line under
+ * every row; all of it goes. Radius 8 = the popover's 12 minus its padding. */
 button.srcrow {{
   border: none;
+  outline: none;
+  box-shadow: none;
   background: transparent;
-  border-radius: 9px;
-  padding: 5px 9px;
-  color: rgb({dim_r}, {dim_g}, {dim_b});
-  font-size: 12.5px;
+  background-image: none;
+  border-radius: 8px;
+  min-height: 0;
+  padding: 6px 10px;
+  color: rgb({ink_r}, {ink_g}, {ink_b});
+  font-size: 12px;
+  transition: background 120ms ease;
 }}
-button.srcrow:hover {{ background: rgba({ink_r}, {ink_g}, {ink_b}, 0.14); }}
-button.srcrow.on {{ color: rgb({accent_r}, {accent_g}, {accent_b}); }}
-label.srcnone {{
+button.srcrow:hover {{ background: rgba({ink_r}, {ink_g}, {ink_b}, 0.10); }}
+button.srcrow.on {{
+  color: rgb({accent_r}, {accent_g}, {accent_b});
+  background: rgba({accent_r}, {accent_g}, {accent_b}, 0.10);
+}}
+label.srcnone,
+label.menunote {{
   color: rgb({dim_r}, {dim_g}, {dim_b});
-  font-size: 12.5px;
-  padding: 5px 9px;
+  padding: 6px 10px;
+}}
+label.srcnone {{ font-size: 12px; }}
+label.menunote {{
+  font-size: 11px;
+  border-top: 1px solid rgba({rim_r}, {rim_g}, {rim_b}, {rim_a});
+  margin-top: 4px;
 }}
 """
-
 
 def css_for(palette: dict) -> bytes:
     fields = {}
@@ -242,7 +309,7 @@ def css_for(palette: dict) -> bytes:
         fields[f"{name}_g"] = round(g * 255)
         fields[f"{name}_b"] = round(b * 255)
         fields[f"{name}_a"] = a
-    return CSS.format(**fields).encode()
+    return CSS.format(control=CONTROL, **fields).encode()
 
 
 def prefers_dark() -> bool:
@@ -280,8 +347,8 @@ def daemon_status() -> str | None:
     return None
 
 
-def capture_active() -> bool:
-    """True while the daemon's pw-record child is still capturing.
+def recorder_pid() -> int | None:
+    """The daemon's live pw-record child, or None once capture has ended.
 
     Two traps here, both verified against the running daemon:
 
@@ -301,7 +368,7 @@ def capture_active() -> bool:
             except OSError:
                 continue
     except OSError:
-        return False
+        return None
     for child in children:
         try:
             stat = Path(f"/proc/{child}/stat").read_text()
@@ -311,9 +378,31 @@ def capture_active() -> bool:
         # split on the *last* ')': what follows is the single-letter state.
         name = stat[stat.find("(") + 1 : stat.rfind(")")]
         tail = stat[stat.rfind(")") + 1 :].split()
+        # A stopped one ("T") is ours, paused: still the live recorder.
         if name == "pw-record" and tail and tail[0] != "Z":
-            return True
-    return False
+            return int(child)
+    return None
+
+
+def signal_recorder(signum: int) -> bool:
+    """Send `signum` to the daemon's recorder; False when there is none.
+
+    This is the whole pause mechanism. hyprvoice has no pause command, and
+    muting the stream instead records silence, on which Whisper invents text
+    ("Merci d'avoir regardé cette vidéo !" from a 60s gap, measured against
+    the same Groq model). A stopped pw-record records *nothing*: PipeWire
+    drops the frames it cannot deliver and resumes live on SIGCONT — measured
+    with a clock signal on a null sink, a 40s stop left no gap, no silence and
+    no stale audio in the file.
+    """
+    pid = recorder_pid()
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, signum)
+    except OSError:
+        return False
+    return True
 
 
 def run_pactl(args: list[str]) -> str | None:
@@ -359,22 +448,21 @@ def pinned_device() -> str | None:
     return hyprvoice_config().get("recording", {}).get("device", "") or None
 
 
-def pinned_language() -> str | None:
-    """hyprvoice's `[transcription] language`, when one is pinned.
+def dictation_language() -> str:
+    """hyprvoice's `[transcription] language`, as a LANGUAGES key.
 
-    Reported because it is the one setting that can silently *translate* a
+    Shown because it is the one setting that can silently *translate* a
     dictation: Whisper writes in whatever language it is given, so a pinned "fr"
     turns an English clip into French prose rather than into mis-spelled
-    English. Empty means auto-detect — the usual case, and nothing worth a chip.
+    English. Empty means auto-detect.
 
-    Read-only here, deliberately. Changing it writes config.toml, and the daemon
-    answers a config change by tearing the pipeline down — from inside a pill
-    that only exists *during* a dictation, offering the control would be
-    offering a button that discards what is being said. dictation-lang owns the
-    write, off the keypress, while the daemon is idle.
+    Changing it is not done here: dictation-lang owns the write (state file,
+    reload wait, the v1.0.2 restart workaround). And it cannot happen under a
+    live recording — the daemon answers a config change by tearing the pipeline
+    down — so the chip restarts the clip around it, see Overlay.on_pick_lang.
     """
     code = hyprvoice_config().get("transcription", {}).get("language", "")
-    return code if code in LANGUAGES else None
+    return code if code in LANGUAGES else "auto"
 
 
 def default_source() -> str:
@@ -426,6 +514,57 @@ def ensure_audible(source: dict) -> None:
     # Only rescue a fully closed channel; any audible level is the user's.
     if levels and all(c.get("value_percent") == "0%" for c in levels):
         run_pactl(["set-source-volume", name, "100%"])
+
+
+def menu_popover() -> Gtk.Popover:
+    """A popover without the arrow: the menu covers the pill it belongs to
+    (Hyprland opens it downward whatever GTK asks), so an arrow only points at
+    the control it is hiding."""
+    popover = Gtk.Popover()
+    popover.set_has_arrow(False)
+    return popover
+
+
+def draw_glyph(area, cr, width, height, kind: str) -> None:
+    """✓ or ✕ as strokes on a 28px grid, in the button's CSS colour."""
+    colour = area.get_color()
+    cr.set_source_rgba(colour.red, colour.green, colour.blue, colour.alpha)
+    u = min(width, height) / 28.0
+    cr.translate((width - 28.0 * u) / 2, (height - 28.0 * u) / 2)
+    cr.set_line_width(2.0 * u)
+    cr.set_line_cap(1)  # cairo.LINE_CAP_ROUND
+    cr.set_line_join(1)  # cairo.LINE_JOIN_ROUND
+    if kind == "ok":
+        # Optical centre, not geometric: a check's mass sits low-left.
+        cr.move_to(9.0 * u, 14.5 * u)
+        cr.line_to(12.5 * u, 18.0 * u)
+        cr.line_to(19.0 * u, 10.5 * u)
+    else:
+        cr.move_to(10.0 * u, 10.0 * u)
+        cr.line_to(18.0 * u, 18.0 * u)
+        cr.move_to(18.0 * u, 10.0 * u)
+        cr.line_to(10.0 * u, 18.0 * u)
+    cr.stroke()
+
+
+def menu_row(text: str, on: bool, handler, arg) -> Gtk.Button:
+    """One popover row with a tick column, shared by the mic and language menus."""
+    row = Gtk.Button()
+    row.add_css_class("srcrow")
+    line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    tick = Gtk.Label(label="✓" if on else "")
+    # A pixel width, not width_chars: the tick glyph is wider than the
+    # font's average character, so a character-based column leaves the
+    # checked row's label indented further than the unchecked ones.
+    tick.set_size_request(12, -1)
+    tick.set_xalign(0.5)
+    line.append(tick)
+    line.append(Gtk.Label(label=text, xalign=0.0))
+    row.set_child(line)
+    if on:
+        row.add_css_class("on")
+    row.connect("clicked", handler, arg)
+    return row
 
 
 def short_name(description: str) -> str:
@@ -534,7 +673,7 @@ class Overlay:
     def __init__(self, app):
         self.palette = DARK if prefers_dark() else LIGHT
         self.levels = deque([0.0] * BARS, maxlen=BARS)
-        self.phase = "listening"  # listening | transcribing
+        self.phase = "listening"  # listening | switching | transcribing
         self.started_us = GLib.get_monotonic_time()
         # When this *device* started being listened to, which the picker resets
         # and the dictation timer does not — the two questions came apart the
@@ -546,7 +685,7 @@ class Overlay:
         LayerShell.init_for_window(self.window)
         LayerShell.set_layer(self.window, LayerShell.Layer.OVERLAY)
         LayerShell.set_anchor(self.window, LayerShell.Edge.BOTTOM, True)
-        LayerShell.set_margin(self.window, LayerShell.Edge.BOTTOM, 90)
+        LayerShell.set_margin(self.window, LayerShell.Edge.BOTTOM, PILL_BOTTOM - SHADOW_ROOM[2])
         # NONE, emphatically: an overlay that takes keyboard focus would become
         # the injection target and swallow the dictation it is reporting on.
         LayerShell.set_keyboard_mode(self.window, LayerShell.KeyboardMode.NONE)
@@ -561,130 +700,165 @@ class Overlay:
         # Two rows: the device name sits alone on a thin top line, out of the
         # controls' way, so it can be spelled out in full and the waveform keeps
         # the whole width.
-        pill = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        pill = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         pill.add_css_class("pill")
         pill.set_halign(Gtk.Align.CENTER)
         pill.set_size_request(PILL_WIDTH, -1)
+        top, right, bottom, left = SHADOW_ROOM
+        pill.set_margin_top(top)
+        pill.set_margin_end(right)
+        pill.set_margin_bottom(bottom)
+        pill.set_margin_start(left)
         self.window.set_child(pill)
 
         # The thin top line carries the two things that decide what comes out of
         # a dictation and are otherwise invisible while speaking: the language
         # Whisper is pinned to, on the left, and the live microphone on the
-        # right. Spacing 0 — they sit at opposite ends of the row.
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        # right — or, in its place, what the pill is busy with. Both are chips
+        # opening the same kind of menu. Spacing 8 is only the floor for when a
+        # long device name meets the language chip.
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         pill.append(head)
 
-        # Only when pinned. Auto-detect is the default and the quiet case; a
-        # chip reading "auto" on every dictation would train the eye to skip the
-        # line, which is the one place a stuck "EN" has to be noticed.
-        code = pinned_language()
-        if code:
-            chip = Gtk.Label(label=code.upper())
-            chip.add_css_class("lang")
-            chip.set_xalign(0.0)
-            chip.set_tooltip_text(
-                f"Langue de dictée fixée : {LANGUAGES[code]} — Mod+Ctrl+D pour changer"
-            )
-            head.append(chip)
+        # Each chip is its own picker: the label is where one looks to ask
+        # "which language?" / "which microphone?".
+        self.lang = dictation_language()
+        self.lang_chip = Gtk.Label()
+        self.lang_chip.add_css_class("lang")
+        self.lang_btn = Gtk.MenuButton()
+        self.lang_btn.add_css_class("langbtn")
+        self.lang_btn.set_child(self.lang_chip)
+        self.lang_btn.set_popover(menu_popover())
+        self.lang_btn.set_tooltip_text("Langue de dictée")
+        self.lang_btn.set_valign(Gtk.Align.CENTER)
+        self.lang_btn.set_cursor_from_name("pointer")
+        self.lang_btn.connect("notify::active", self.on_lang_opened)
+        head.append(self.lang_btn)
+        self.show_lang()
 
         # Which microphone is live, spelled out: the level meter says whether
         # *something* is heard, never which device is being listened to.
+        # Ellipsized, because the pill's width is a minimum, not a cap: a long
+        # headset name would otherwise widen the whole surface. The tooltip
+        # keeps the full name.
+        self.device = ""
+        self.pinned = pinned_device()
         self.source = Gtk.Label()
         self.source.add_css_class("source")
-        self.source.set_xalign(1.0)
-        self.source.set_hexpand(True)
-        head.append(self.source)
+        self.source.set_ellipsize(Pango.EllipsizeMode.END)
+        self.source.set_max_width_chars(34)
+        self.src_btn = Gtk.MenuButton()
+        self.src_btn.add_css_class("srcbtn")
+        self.src_btn.set_child(self.source)
+        self.src_btn.set_popover(menu_popover())
+        self.src_btn.set_hexpand(True)
+        self.src_btn.set_halign(Gtk.Align.END)
+        self.src_btn.set_valign(Gtk.Align.CENTER)
+        if self.pinned:
+            self.src_btn.set_sensitive(False)
+        else:
+            self.src_btn.set_cursor_from_name("pointer")
+            # Rebuilt on every open: this desk's main microphone is a wireless
+            # headset, so the list genuinely changes between two dictations.
+            self.src_btn.connect("notify::active", self.on_source_opened)
+        head.append(self.src_btn)
+        # What the pill is busy with, in the source chip's place: a microphone
+        # cannot be changed while transcribing or restarting anyway.
+        self.status = Gtk.Label()
+        self.status.add_css_class("status")
+        self.status.set_hexpand(True)
+        self.status.set_xalign(1.0)
+        self.status.set_visible(False)
+        head.append(self.status)
+        self.refresh_source()
 
         # Single source of truth for the row's rhythm: every gap between the
         # mic, the waveform, the timer and the buttons comes from here.
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=ROW_GAP)
         pill.append(controls)
 
-        # The mic icon *is* the device picker — a separate button would crowd a
-        # pill this size, and the icon is where one looks to ask "which mic?".
-        self.pinned = pinned_device()  # before draw_mic, which keys the chevron off it
-        self.mic = Gtk.DrawingArea(content_width=30, content_height=30)
+        # The mic icon shows the signal (it breathes with the level, and turns
+        # red on a dead source) and is the pause toggle, the way a call app's
+        # mic button is.
+        self.paused = False
+        self.paused_us = 0  # paused time already banked, for the timer
+        self.paused_since = 0
+        self.mic = Gtk.DrawingArea(content_width=CONTROL, content_height=CONTROL)
         self.mic.set_draw_func(self.draw_mic)
-        self.picker = Gtk.MenuButton()
-        self.picker.add_css_class("micbtn")
-        self.picker.set_child(self.mic)
-        self.picker.set_popover(Gtk.Popover())
-        if self.pinned:
-            self.picker.set_sensitive(False)
-            self.picker.set_tooltip_text(f"Microphone fixé dans config.toml : {self.pinned}")
-        else:
-            self.picker.set_tooltip_text("Choisir le microphone")
-            # Rebuilt on every open: this desk's main microphone is a wireless
-            # headset, so the list genuinely changes between two dictations.
-            self.picker.connect("notify::active", self.on_picker_opened)
-        self.picker.set_valign(Gtk.Align.CENTER)
-        controls.append(self.picker)
-        self.refresh_source()
+        self.mic_btn = Gtk.Button()
+        self.mic_btn.add_css_class("micbtn")
+        self.mic_btn.set_child(self.mic)
+        self.mic_btn.set_tooltip_text("Mettre en pause")
+        self.mic_btn.set_cursor_from_name("pointer")
+        self.mic_btn.set_valign(Gtk.Align.CENTER)
+        self.mic_btn.connect("clicked", self.on_pause)
+        controls.append(self.mic_btn)
 
-        self.wave = Gtk.DrawingArea(content_width=WAVE_MIN, content_height=38)
+        self.wave = Gtk.DrawingArea(content_width=WAVE_MIN, content_height=CONTROL)
         self.wave.set_hexpand(True)
         self.wave.set_valign(Gtk.Align.CENTER)
         self.wave.set_draw_func(self.draw_wave)
         controls.append(self.wave)
 
-        self.state = Gtk.Label(label="0:00")
-        self.state.add_css_class("state")
-        self.state.set_xalign(1.0)
-        self.state.set_valign(Gtk.Align.CENTER)
-        controls.append(self.state)
+        self.timer = Gtk.Label(label="0:00")
+        self.timer.add_css_class("timer")
+        self.timer.set_xalign(1.0)
+        self.timer.set_valign(Gtk.Align.CENTER)
+        controls.append(self.timer)
 
-        self.accept = self.button("✓", "ok", self.on_accept, "Valider la dictée")
-        controls.append(self.accept)
-        controls.append(self.button("✕", "no", self.on_reject, "Annuler la dictée"))
+        # The pair sits closer than the row gap: they are one decision.
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        actions.set_valign(Gtk.Align.CENTER)
+        controls.append(actions)
+        self.accept = self.button("ok", self.on_accept, "Valider la dictée")
+        actions.append(self.accept)
+        actions.append(self.button("no", self.on_reject, "Annuler la dictée"))
 
         # The deque is the only thing a column has to reach, so the meter writes
         # straight into it: a push_level of our own held level_now as a second
         # copy of levels[-1], which the picker's reset then failed to clear.
-        self.meter = LevelMeter(self.levels.append)
+        self.meter = LevelMeter(self.on_level)
         self.meter.start()
+        self.show_head()  # needs the meter: muted() reads its verdict
         self.window.present()
 
         GLib.timeout_add(FRAME_MS, self.on_frame)
         GLib.timeout_add(POLL_MS, self.on_poll)
 
-    def button(self, glyph: str, kind: str, handler, tooltip: str) -> Gtk.Button:
-        btn = Gtk.Button(label=glyph)
+    def button(self, kind: str, handler, tooltip: str) -> Gtk.Button:
+        """A round control whose ✓ / ✕ is drawn, not typed.
+
+        Font glyphs sat off-centre and at different weights (✓ thinner and
+        lower than ✕); strokes on a fixed grid are centred by construction and
+        take their colour from CSS, so hover states still apply.
+        """
+        glyph = Gtk.DrawingArea(content_width=CONTROL, content_height=CONTROL)
+        glyph.set_draw_func(draw_glyph, kind)
+        btn = Gtk.Button()
+        btn.set_child(glyph)
         btn.add_css_class("act")
         btn.add_css_class(kind)
         btn.set_tooltip_text(tooltip)
-        btn.set_valign(Gtk.Align.CENTER)
+        btn.set_cursor_from_name("pointer")
         btn.connect("clicked", handler)
+        # A CSS colour change does not repaint a DrawingArea on its own.
+        btn.connect("state-flags-changed", lambda *_: glyph.queue_draw())
         return btn
 
     # ── microphone picker ──────────────────────────────────────────────────
-    def on_picker_opened(self, button, _param) -> None:
+    def on_source_opened(self, button, _param) -> None:
         if not button.get_active():
             return
         inputs = capture_inputs(pactl_json(["list", "sources"]))
         default = default_source()
         menu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         if not inputs:
-            empty = Gtk.Label(label="aucun microphone détecté")
+            empty = Gtk.Label(label="Aucun microphone détecté")
             empty.add_css_class("srcnone")
             menu.append(empty)
         for name, description in inputs:
-            row = Gtk.Button()
-            row.add_css_class("srcrow")
-            line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            tick = Gtk.Label(label="✓" if name == default else "")
-            # A pixel width, not width_chars: the tick glyph is wider than the
-            # font's average character, so a character-based column leaves the
-            # checked row's label indented further than the unchecked ones.
-            tick.set_size_request(12, -1)
-            tick.set_xalign(0.5)
-            line.append(tick)
-            line.append(Gtk.Label(label=description, xalign=0.0))
-            row.set_child(line)
-            if name == default:
-                row.add_css_class("on")
-            row.connect("clicked", self.on_pick_input, name)
-            menu.append(row)
-        self.picker.get_popover().set_child(menu)
+            menu.append(menu_row(description, name == default, self.on_pick_input, name))
+        self.src_btn.get_popover().set_child(menu)
 
     def refresh_source(self) -> None:
         """Label the live device, and make sure it is actually audible.
@@ -698,16 +872,20 @@ class Overlay:
         sources = pactl_json(["list", "sources"])
         target = self.pinned or default_source()
         entry = find_source(sources, target)
-        description = (entry or {}).get("description") or target or "microphone inconnu"
-        self.source.set_text(short_name(description))
-        self.source.set_tooltip_text(description)
+        description = (entry or {}).get("description") or target
+        description = description or "Microphone inconnu"
+        self.device = short_name(description)
+        self.source.set_text(self.device)
+        if self.pinned:
+            description = f"Microphone fixé dans config.toml : {description}"
+        self.src_btn.set_tooltip_text(description)
         if entry is not None:
             ensure_audible(entry)
 
     def on_pick_input(self, _row, name: str) -> None:
         select_input(name)
         self.refresh_source()
-        self.picker.get_popover().popdown()
+        self.src_btn.get_popover().popdown()
         # Judge the new device from scratch: without this the meter keeps the
         # old one's verdict, so a working mic stays flagged "micro muet" (and,
         # worse, a dead one inherits a clean bill of health).
@@ -715,15 +893,129 @@ class Overlay:
         self.device_since = GLib.get_monotonic_time()
         self.levels.extend([0.0] * BARS)
 
+    # ── pause ──────────────────────────────────────────────────────────────
+    def on_level(self, level: float) -> None:
+        # Frozen while paused: the meter's own stream keeps hearing the room,
+        # but what it hears then is not going into the dictation.
+        if not self.paused:
+            self.levels.append(level)
+
+    def on_pause(self, _btn) -> None:
+        if self.phase != "listening":
+            return
+        if self.paused:
+            self.resume()
+        elif signal_recorder(signal.SIGSTOP):
+            self.paused = True
+            self.paused_since = GLib.get_monotonic_time()
+            self.mic_btn.add_css_class("paused")
+            self.mic_btn.set_tooltip_text("Reprendre")
+            self.timer.add_css_class("paused")
+
+    def resume(self) -> None:
+        """Wake the recorder. Called before anything that ends or restarts the
+        clip, since a stopped pw-record sits on the daemon's stop signal until
+        it is continued — toggle-dictation.sh does the same for Mod+D."""
+        if not self.paused:
+            return
+        signal_recorder(signal.SIGCONT)
+        self.paused = False
+        self.paused_us += GLib.get_monotonic_time() - self.paused_since
+        self.mic_btn.remove_css_class("paused")
+        self.mic_btn.set_tooltip_text("Mettre en pause")
+        self.timer.remove_css_class("paused")
+
+    # ── language picker ────────────────────────────────────────────────────
+    def show_lang(self) -> None:
+        # Auto-detect is the quiet case, in the grey of everything else; a
+        # pinned language takes the accent, the one place a stuck "EN" must
+        # show — it means the clip is *written* in that language whatever is
+        # spoken into it.
+        self.lang_chip.set_text(self.lang.upper())
+        if self.lang == "auto":
+            self.lang_btn.remove_css_class("pinned")
+        else:
+            self.lang_btn.add_css_class("pinned")
+
+    def on_lang_opened(self, button, _param) -> None:
+        if not button.get_active():
+            return
+        menu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for code, name in LANGUAGES.items():
+            menu.append(menu_row(name, code == self.lang, self.on_pick_lang, code))
+        # Said before the click, not discovered after it: picking discards what
+        # has been dictated so far (see on_pick_lang).
+        note = Gtk.Label(label="Changer relance l'enregistrement à zéro", xalign=0.0)
+        note.add_css_class("menunote")
+        menu.append(note)
+        button.get_popover().set_child(menu)
+
+    def on_pick_lang(self, _row, code: str) -> None:
+        """Restart the clip in `code`: cancel, rewrite the config, toggle again.
+
+        The restart is the price of the daemon, not a choice: the pipeline is
+        built from config.toml at toggle time, and a config reload tears a live
+        one down. What was said so far is dropped — the chip is for the first
+        second of a dictation, before there is much to lose.
+        """
+        self.lang_btn.get_popover().popdown()
+        if code == self.lang or self.phase != "listening":
+            return
+        self.resume()
+        self.phase = "switching"
+        self.accept.set_sensitive(False)
+        self.lang_btn.set_sensitive(False)
+        send_command("cancel")
+        GLib.timeout_add(POLL_MS, self.set_lang_when_idle, code, [25])
+
+    def set_lang_when_idle(self, code: str, budget: list[int]) -> bool:
+        # dictation-lang refuses while the daemon is busy, so wait out the cancel.
+        # ponytail: ~3s budget, then let dictation-lang refuse and report it.
+        budget[0] -= 1
+        if daemon_status() not in ("idle", None) and budget[0] > 0:
+            return True
+        try:
+            self.lang_proc = Gio.Subprocess.new(
+                ["dictation-lang", "set", code], Gio.SubprocessFlags.NONE
+            )
+        except GLib.Error:
+            self.restart_capture()
+            return False
+        # Async: the reload wait is ~1s, and the pill keeps animating through it.
+        self.lang_proc.wait_async(None, lambda *_: self.restart_capture())
+        return False
+
+    def restart_capture(self) -> None:
+        # Re-read rather than trust the pick: a refused or failed switch leaves
+        # the old language in the file, and the chip must say what will be used.
+        hyprvoice_config.cache_clear()
+        self.lang = dictation_language()
+        self.show_lang()
+        self.lang_btn.set_sensitive(True)
+        # Only our own idle daemon gets toggled: a Mod+D that landed meanwhile
+        # already started a clip, and toggling would stop it.
+        if daemon_status() != "idle":
+            self.close()
+            return
+        send_command("toggle")
+        self.phase = "listening"
+        self.accept.set_sensitive(True)
+        self.started_us = self.device_since = GLib.get_monotonic_time()
+        self.paused_us = 0
+        self.meter.heard_signal = False
+        self.levels.extend([0.0] * BARS)
+
     # ── controls ───────────────────────────────────────────────────────────
     def on_accept(self, _btn) -> None:
         """Stop capturing and let hyprvoice transcribe + inject."""
         if self.phase != "listening":
             return
+        self.resume()
         self.enter_transcribing()
         send_command("toggle")
 
     def on_reject(self, _btn) -> None:
+        self.resume()
         send_command("cancel")
         self.close()
 
@@ -731,10 +1023,12 @@ class Overlay:
         self.phase = "transcribing"
         self.meter.stop()
         self.accept.set_sensitive(False)
-        self.state.set_text("transcription")
-        self.state.remove_css_class("alert")
+        self.mic_btn.set_sensitive(False)
+        # A pick now would be ignored (on_pick_lang only acts while listening).
+        self.lang_btn.set_sensitive(False)
 
     def close(self) -> None:
+        self.resume()
         self.meter.stop()
         app = self.window.get_application()
         self.window.close()
@@ -747,25 +1041,49 @@ class Overlay:
 
     # ── polling / animation ────────────────────────────────────────────────
     def on_poll(self) -> bool:
+        # Mid-switch the daemon is idle (or even restarting) on purpose.
+        if self.phase == "switching":
+            return True
         status = daemon_status()
         if status is None or status == "idle":
             self.close()
             return False
         # Mod+D can stop the capture behind our back, so trust the recorder
         # child rather than our own button having been pressed.
-        if self.phase == "listening" and not capture_active():
+        if (
+            self.phase == "listening"
+            and self.elapsed_s() > CAPTURE_GRACE_S
+            and recorder_pid() is None
+        ):
             self.enter_transcribing()
         return True
 
+    def show_head(self) -> None:
+        """The top line's right end: the source chip, or what the pill is busy with.
+
+        Status words live here rather than in the timer's slot, so the control
+        row keeps one geometry in every state. A dead source keeps its chip,
+        in red: that is when switching microphones is the fix. set_text and
+        set_visible on an unchanged value are no-ops in GTK, which keeps this
+        cheap at the frame rate.
+        """
+        busy = {"switching": "Redémarrage…", "transcribing": "Transcription…"}
+        text = busy.get(self.phase)
+        self.status.set_text(text or "")
+        self.status.set_visible(text is not None)
+        self.src_btn.set_visible(text is None)
+        if self.muted():
+            self.src_btn.add_css_class("alert")
+            self.src_btn.set_tooltip_text("Aucun signal — choisir un autre microphone")
+        elif self.src_btn.has_css_class("alert"):
+            self.src_btn.remove_css_class("alert")
+            self.refresh_source()  # puts the device tooltip back
+
     def on_frame(self) -> bool:
-        if self.phase == "listening":
-            if self.muted():
-                self.state.set_text("micro muet")
-                self.state.add_css_class("alert")
-            else:
-                elapsed = int(self.elapsed_s())
-                self.state.set_text(f"{elapsed // 60}:{elapsed % 60:02d}")
-                self.state.remove_css_class("alert")
+        if self.phase == "listening" and not self.paused:
+            spoken = int(self.elapsed_s() - self.paused_us / 1e6)
+            self.timer.set_text(f"{spoken // 60}:{spoken % 60:02d}")
+        self.show_head()
         self.mic.queue_draw()
         self.wave.queue_draw()
         return True
@@ -790,6 +1108,7 @@ class Overlay:
         """
         return (
             self.phase == "listening"
+            and not self.paused
             and not self.meter.heard_signal
             and GLib.get_monotonic_time() - self.device_since > SILENT_AFTER_S * 1e6
         )
@@ -806,18 +1125,25 @@ class Overlay:
         r, g, b = self.wave_colour()
 
         # The "ondulation": rings breathing outward, their reach tied to the
-        # live level so a quiet room stays visibly calm.
-        if self.phase == "listening":
+        # live level so a quiet room stays visibly calm. Two, and faint: the
+        # button's own tint is already a circle, and the waveform carries the
+        # motion.
+        if self.phase == "listening" and not self.paused:
             drive = 0.25 + 0.75 * self.levels[-1]
             near, far = 8.0 * u, min(width, height) / 2 - 1.0
-            for k in range(3):
-                t = (self.elapsed_s() / 1.7 + k / 3.0) % 1.0
-                cr.set_source_rgba(r, g, b, (1.0 - t) * 0.42 * drive)
+            for k in range(2):
+                t = (self.elapsed_s() / 1.7 + k / 2.0) % 1.0
+                cr.set_source_rgba(r, g, b, (1.0 - t) * 0.30 * drive)
                 cr.set_line_width(1.2 * u)
                 cr.arc(cx, cy, near + (far - near) * t, 0, 2 * math.pi)
                 cr.stroke()
 
-        ink = self.palette["alert"] if self.muted() else self.palette["ink"]
+        if self.muted():
+            ink = self.palette["alert"]
+        elif self.paused:
+            ink = self.palette["accent"]
+        else:
+            ink = self.palette["ink"]
         cr.set_source_rgba(*ink)
         # Capsule body.
         body_w, body_h, top = 7.0 * u, 11.5 * u, cy - 9.0 * u
@@ -833,22 +1159,21 @@ class Overlay:
         cr.move_to(cx, cy + 5.2 * u)
         cr.line_to(cx, cy + 8.2 * u)
         cr.stroke()
-
-        # A chevron so the icon reads as a control rather than as decoration;
-        # dropped when the device is pinned and there is nothing to open.
-        if not self.pinned:
-            cr.set_source_rgba(*self.palette["dim"])
-            cr.set_line_width(1.2 * u)
-            cr.move_to(cx + 5.6 * u, cy + 6.4 * u)
-            cr.line_to(cx + 7.6 * u, cy + 8.4 * u)
-            cr.line_to(cx + 9.6 * u, cy + 6.4 * u)
+        # Paused: the classic muted-mic slash.
+        if self.paused:
+            cr.set_line_width(1.6 * u)
+            cr.set_line_cap(1)  # cairo.LINE_CAP_ROUND
+            cr.move_to(cx - 7.5 * u, cy - 9.5 * u)
+            cr.line_to(cx + 7.5 * u, cy + 8.5 * u)
             cr.stroke()
 
     def draw_wave(self, _area, cr, width, height) -> None:
         r, g, b = self.wave_colour()
         cy = height / 2
         slot = width / BARS
-        bar_w = max(2.0, slot * 0.46)
+        # 3px bars on whole-pixel centres (+0.5: an odd width straddles the
+        # pixel grid otherwise), or antialiasing makes equal bars look unequal.
+        bar_w = 3.0
         cr.set_line_width(bar_w)
         cr.set_line_cap(1)  # cairo.LINE_CAP_ROUND, without importing cairo
 
@@ -860,11 +1185,13 @@ class Overlay:
                 # the API call is out, so the pill still reads as busy.
                 head = (self.elapsed_s() * 1.5) % 1.0 * (BARS + 12) - 6
                 level = 0.10 + 0.42 * math.exp(-(((i - head) / 4.0) ** 2))
-            bar_h = max(1.5, level * (height - 8))
-            x = slot * (i + 0.5)
+            bar_h = max(0.5, level * (height - 4 - bar_w))
+            x = math.floor(slot * (i + 0.5)) + 0.5
             # Oldest bars sit back, newest lead — the trail that makes the
-            # motion read as flowing rather than as 44 independent meters.
-            fade = 0.30 + 0.70 * (i / (BARS - 1))
+            # motion read as flowing rather than as independent meters.
+            fade = 0.40 + 0.60 * (i / (BARS - 1))
+            if self.paused:
+                fade *= 0.45  # held, not live
             cr.set_source_rgba(r, g, b, fade)
             cr.move_to(x, cy - bar_h / 2)
             cr.line_to(x, cy + bar_h / 2)

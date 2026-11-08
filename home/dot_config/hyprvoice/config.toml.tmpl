@@ -93,14 +93,14 @@ model = {{ .hyprvoice_model | quote }}    # Multilingual model (EN+FR).
 # leaves a confidently-English clip in English, same clip, measured. Only this
 # field moves it, and hyprvoice has no per-clip flag for it — so the switch is
 # ~/.local/bin/dictation-lang, which patches the line below in place and waits
-# out the reload or compatibility restart. Mod+Ctrl+D cycles auto → fr → en,
-# Mod+Alt+D dictates one clip in English and puts this back afterwards. Neither
-# writes mid-dictation: a reload calls stopPipeline(), so that would not
-# reconfigure the recording, it would destroy it.
+# out the reload or compatibility restart. The dictation pill's language chip
+# drives it. It never writes mid-dictation: a reload calls stopPipeline(), so
+# that would not reconfigure the recording, it would destroy it — the chip
+# cancels the clip first and starts a fresh one in the new language.
 #
 # French is the default for this primarily French dictation setup.
-# An explicit auto/en choice remains available through dictation-lang.
-# Preserve that choice across applies; Mod+Alt+D still overrides one clip.
+# An explicit auto/en choice remains available through the pill's chip.
+# Preserve that choice across applies.
 {{- $state := printf "%s/hyprvoice-lang" (env "XDG_STATE_HOME" | default (printf "%s/.local/state" .chezmoi.homeDir)) -}}
 {{- $sticky := "fr" -}}
 {{- if stat $state }}{{ $sticky = output "cat" $state | trim }}{{ end }}

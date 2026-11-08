@@ -46,13 +46,9 @@ hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-di
 -- cancelling while idle is a no-op the daemon just logs and ignores. It cannot
 -- live in the overlay itself — a layer surface that takes keyboard focus becomes
 -- hyprvoice's injection target, so the dictation would land in the pill.
-hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("hyprvoice cancel"))                                                      -- Cancel dictation (discard)
--- Whisper decides the language once per clip from the audio, then writes *in
--- it* — on accented English it picks French and translates rather than
--- mis-spells. These two are the switch: Alt for one clip (it puts the language
--- back on its own), Ctrl to stay there. dictation-lang carries the evidence.
-hl.bind(mod .. " + ALT + D",      hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh --lang en"))                      -- Dictate one clip in English
-hl.bind(mod .. " + CTRL + D",     hl.dsp.exec_cmd(home .. "/.local/bin/dictation-lang cycle"))                               -- Cycle dictation language (auto/fr/en)
+-- The CONT wakes a recorder the overlay paused, which would otherwise hold the
+-- cancel (see toggle-dictation.sh).
+hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd("pkill -CONT -x pw-record; hyprvoice cancel"))                            -- Cancel dictation (discard)
 {{- end }}
 
 -- ── 2. Window Management ──────────────────────────────────────────
