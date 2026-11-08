@@ -47,7 +47,10 @@ hl.bind(mod .. " + D",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-di
 -- live in the overlay itself — a layer surface that takes keyboard focus becomes
 -- hyprvoice's injection target, so the dictation would land in the pill.
 -- Through toggle-dictation.sh, which first wakes a recorder the overlay paused.
+-- Two keys for it on purpose: Mod+Shift+D keeps the ladder's "Shift cancels"
+-- slot (as Mod+Shift+R does for recording), Mod+Z is the one-handed undo.
 hl.bind(mod .. " + SHIFT + D",    hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh --cancel"))                      -- Cancel dictation (discard)
+hl.bind(mod .. " + Z",            hl.dsp.exec_cmd(home .. "/.local/bin/toggle-dictation.sh --cancel"))                      -- Cancel dictation (discard)
 {{- end }}
 
 -- ── 2. Window Management ──────────────────────────────────────────
