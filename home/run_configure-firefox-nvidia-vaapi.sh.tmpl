@@ -6,9 +6,17 @@
 # Since Firefox 137 VA-API is off on NVIDIA unless this pref forces it, and the
 # README lists it as required. Same per-profile user.js mechanism, and the same
 # reasons, as run_configure-firefox-locale.sh.
+#
+# Firefox 157 routes WebRTC AV1 (Google Meet screen share) through the platform
+# decoder (bugzilla 2062642, 2069901); on libva-nvidia-driver 0.0.18 the remote
+# share smears like wet paint after the first reference loss. Turning that path
+# off sends WebRTC AV1 back to dav1d; regular video playback keeps VA-API.
 set -e
 
-PREF='user_pref("media.hardware-video-decoding.force-enabled", true);'
+PREFS=(
+    'user_pref("media.hardware-video-decoding.force-enabled", true);'
+    'user_pref("media.navigator.mediadatadecoder_av1_enabled", false);'
+)
 FIREFOX_ROOT="$HOME/.config/mozilla/firefox"
 INI="$FIREFOX_ROOT/profiles.ini"
 
@@ -18,8 +26,10 @@ while IFS= read -r profile; do
     dir="$FIREFOX_ROOT/$profile"
     [ -d "$dir" ] || continue
     user_js="$dir/user.js"
-    [ -f "$user_js" ] && grep -qF "$PREF" "$user_js" && continue
-    printf '%s\n%s\n' '// NVIDIA VA-API video decoding. Managed by the dotfiles.' "$PREF" >> "$user_js"
-    echo "firefox-nvidia-vaapi: hardware decoding forced in $profile"
+    for pref in "${PREFS[@]}"; do
+        [ -f "$user_js" ] && grep -qF "$pref" "$user_js" && continue
+        printf '%s\n%s\n' '// NVIDIA VA-API video decoding. Managed by the dotfiles.' "$pref" >> "$user_js"
+        echo "firefox-nvidia-vaapi: $pref added to $profile"
+    done
 done < <(sed -n 's/^Path=//p' "$INI")
 {{- end -}}
