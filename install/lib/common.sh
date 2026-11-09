@@ -173,7 +173,7 @@ group_selected() {
 #
 # `grep -qxF`, not the `case " $list " in *" name "*` glob this replaces — the
 # selector joins kept entries with newlines, so only a single-entry list ever has
-# spaces around its one name. vibewatch was the sole user and the ai group has
+# spaces around its one name. vibewatch was the sole user and the ai group had
 # exactly one custom entry, which is why it went unnoticed; messaging has two, so
 # the second always read as unticked.
 custom_entry_selected() {
@@ -442,9 +442,9 @@ parse_custom_install_names() { parse_entry_names "$1" "custom_install"; }
 # group flag.
 #
 # The key exists because a few custom entries are not only *installed*: their
-# real payload is chezmoi-managed (vibewatch's waybar pill and Claude hook, the
-# two chat shells' launchers, .desktop files and icons). Unticking one of those
-# in the selector has to reach those files, which only a chezmoi flag can do.
+# real payload is chezmoi-managed (the two chat shells' launchers, .desktop
+# files and icons). Unticking one of those in the selector has to reach those
+# files, which only a chezmoi flag can do.
 #
 # Declared in the yaml rather than listed in the installer, for exactly the
 # reason the group-flag loop carries: a hand-kept list there is how `biometric`

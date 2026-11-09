@@ -72,7 +72,7 @@ Ordering in the installer matters and is not incidental: the refresh runs *after
 `setup_dotfiles`, because `group_enabled` reads chezmoi data that `setup_dotfiles` has only
 just written — an earlier scan finds no enabled group and reports nothing to do. The waybar
 restart then runs *after* the refresh, because the bar's custom modules are long-lived
-`exec` children (`vibewatch status --watch` streams until killed), so a bar restarted
+`exec` children (`waybar-notification.sh` streams `swaync-client` until killed), so a bar restarted
 before the binary moves keeps running the old one.
 
 GitHub release lookups go through `manage-external-apps.py` (shared concurrent cache) and

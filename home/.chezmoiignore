@@ -75,13 +75,6 @@ LICENSE
 .mozilla/native-messaging-hosts/com.8bit.bitwarden.json
 {{- end }}
 
-# vibewatch drop-in + enable symlink only when vibewatch is installed
-{{- if not .install_vibewatch }}
-.config/systemd/user/vibewatch.service.d
-.config/systemd/user/vibewatch.service.d/**
-.config/systemd/user/graphical-session.target.wants/vibewatch.service
-{{- end }}
-
 # Ignore Development configs if not selected
 {{- if not .install_development }}
 .config/nvim
@@ -165,7 +158,7 @@ Wallpapers/**
 {{- end }}
 
 # The two chat shells are gated per app, not per group: each is a custom_install
-# entry the selector lets you keep or drop, on the same rule as vibewatch. Icons
+# entry the selector lets you keep or drop (`chezmoi_flag: true`). Icons
 # included — they are hicolor entries for these launchers and mean nothing on
 # their own.
 #

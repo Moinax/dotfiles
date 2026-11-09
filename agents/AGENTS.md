@@ -46,10 +46,6 @@ Keep tool-specific rules in that tool's own configuration.
   settings in the provider's configuration. In this repository, manage these
   files through `home/dot_agents/` and the corresponding chezmoi symlinks.
 
-## Tools you maintain
-
-- **Restarting `vibewatch` needs no permission** — `systemctl --user restart vibewatch.service` is idempotent: the daemon rebuilds its whole session list by rescanning processes and transcripts on boot, so a restart mid-fleet loses nothing. Never leave a change to it merely compiled — `cargo install --path .`, restart, then look at the result. (Its source is its own repo, which is why this is here rather than in the dotfiles.)
-
 ## Scratch files
 
 - **Write throwaway artifacts under `.scratch/` at the workspace root, never `/tmp`.**

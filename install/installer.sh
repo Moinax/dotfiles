@@ -1090,9 +1090,9 @@ setup_dotfiles() {
     # `group_enabled` caller since — `dots packages sync`, the update delta, the
     # tool scan — read that silence as "disabled".
     # The same rule now covers the per-app flags of custom_install entries that
-    # declare `chezmoi_flag: true` — vibewatch, and the two chat shells whose
-    # launchers, .desktop files and icons chezmoi owns. Those were a hand-kept
-    # list of three right here, thirty lines under the comment that says not to
+    # declare `chezmoi_flag: true` — the two chat shells whose launchers,
+    # .desktop files and icons chezmoi owns (vibewatch was the third, until it
+    # was retired). Those were a hand-kept list of three right here, thirty lines under the comment that says not to
     # keep one: adding a fourth app meant editing this file twice and
     # .chezmoiignore once, and forgetting any of them fails silently.
     local -a group_flags=()
@@ -1352,16 +1352,6 @@ After=nss-lookup.target docker.socket firewalld.service containerd.service time-
 EOF
         sudo systemctl daemon-reload
         print_success "Docker drop-in installed at $docker_dropin_file"
-    fi
-
-    # 3. vibewatch — upstream installer enables the unit via default.target.wants,
-    # which fires it before the compositor exists. Remove that stale symlink;
-    # the chezmoi drop-in rebinds the lifecycle to graphical-session.target.
-    local stale_vibewatch_link="$HOME/.config/systemd/user/default.target.wants/vibewatch.service"
-    if [ -L "$stale_vibewatch_link" ]; then
-        print_info "Removing stale vibewatch enable symlink in default.target.wants/"
-        rm -f "$stale_vibewatch_link"
-        systemctl --user daemon-reload 2>/dev/null || true
     fi
 
     print_success "Boot performance tuned"

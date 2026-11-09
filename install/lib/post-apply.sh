@@ -38,7 +38,7 @@ reload_hyprland_after_apply() {
 # Waybar, unlike Hyprland, reads config-hyprland and modules.jsonc once at
 # startup — it only live-switches its *stylesheet* on a colour-scheme change.
 # So a running bar keeps the modules it booted with until something restarts it,
-# and a freshly applied module (a new vibewatch pill, a reworked group) silently
+# and a freshly applied module (a new pill, a reworked group) silently
 # does not show up until the next login or Mod+SHIFT+B.
 restart_waybar_after_apply() {
     restart_user_service waybar.service \
@@ -112,8 +112,8 @@ reconcile_theme_copies_after_apply() {
 # The whole set, in the one order that works.
 #
 # Waybar goes last, after any tool refresh the caller ran: the bar's custom
-# modules are long-lived `exec` children — `vibewatch status --watch` streams
-# until killed — so a bar restarted before the binary underneath it moves keeps
+# modules are long-lived `exec` children — waybar-notification.sh streams
+# `swaync-client` until killed — so a bar restarted before the binary underneath it moves keeps
 # running the old one.
 # A user service installed mid-session is enabled but not running — see
 # start_user_service_if_needed in services.sh for why systemd leaves it that way.

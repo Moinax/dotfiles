@@ -5,8 +5,8 @@
 # create_settings.json.tmpl only applies when the target file is missing, so
 # machines where it already exists never pick up later edits — this script
 # jq-merges the canonical keys on every change while leaving machine-specific
-# keys (model, theme, ...) untouched. Hooks ARE canonical (vibewatch), so a
-# wiped settings.json gets them back on the next apply.
+# keys (model, theme, ...) untouched. Hooks ARE canonical, so a wiped
+# settings.json gets them back on the next apply.
 set -e
 
 # Bail out if jq is not available
@@ -36,7 +36,16 @@ for dir in "$HOME/.claude" "$HOME/.claude-mbrella"; do
     [ -f "$settings" ] || cp "$HOME/.claude/settings.json" "$settings" 2>/dev/null || echo '{}' > "$settings"
     # Merge into existing settings (jq * operator does a recursive merge)
     tmp=$(mktemp)
-    if jq --argjson canonical "$CANONICAL" '. * $canonical' "$settings" > "$tmp"; then
+    # The merge only ever adds: a hook family dropped from CANONICAL keeps its
+    # events here forever, calling a binary that may be gone on every tool call.
+    # vibewatch was retired that way, so its hooks are pruned by command before
+    # the merge — and events left empty go with them.
+    if jq --argjson canonical "$CANONICAL" '
+        if .hooks then
+          .hooks |= (map_values(map(select(any(.hooks[]?; .command | test("vibewatch")) | not)))
+                     | with_entries(select(.value | length > 0)))
+        else . end
+        | . * $canonical' "$settings" > "$tmp"; then
         mv "$tmp" "$settings"
         chmod 644 "$settings"
         echo "claude-settings: canonical Claude Code settings converged into $settings"

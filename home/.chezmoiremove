@@ -195,3 +195,18 @@
 # Renamed to `create_private_config.toml`; the file the broken name produced is
 # unmanaged now and would sit in the Codex config dir forever.
 .codex/create_config.toml
+
+# vibewatch retired — T3 Code's own session list does the job the bar pill and
+# overlay did. `git show vibewatch-final` is the last tree that carried it.
+# Most of these were written by `vibewatch install` rather than by chezmoi (the
+# unit, ~/.config/vibewatch with the logos the Waybar CSS imported, the binary),
+# and that is why they are listed: nothing else would ever take them off a
+# machine. Its mute state under ~/.local/state is left alone, as herdr's was.
+.config/systemd/user/vibewatch.service
+.config/systemd/user/vibewatch.service.d
+.config/systemd/user/vibewatch.service.d/**
+.config/systemd/user/graphical-session.target.wants/vibewatch.service
+.config/systemd/user/default.target.wants/vibewatch.service
+.config/vibewatch
+.config/vibewatch/**
+.cargo/bin/vibewatch

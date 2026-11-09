@@ -381,11 +381,11 @@ cmd_claude() {
     chezmoi execute-template < "$repo/home/run_onchange_configure-claude-settings.sh.tmpl" > "$rendered"
     scp -q "${SSH_OPTS[@]}" "$rendered" "$target:/tmp/claude-settings.sh"
 
-    # statusLine and hooks name ccstatusline and vibewatch, two desktop binaries
-    # the host does not have. The statusline merely fails to draw; a hook whose
-    # command is missing fails on every single tool call, of every session, for
-    # seven events. Stripped here rather than filtered out of the canonical
-    # settings, which are the one copy the desktop shares and where both exist.
+    # statusLine names ccstatusline, a desktop binary the host does not have —
+    # the statusline merely fails to draw. Stripped here rather than filtered
+    # out of the canonical settings, which are the one copy the desktop shares.
+    # The hooks stay: since vibewatch was retired the only one left is the
+    # language reminder, a bare `echo` that works anywhere.
     #
     # `[ -f ]` first, and it is not defensive padding: the reconciler exits early
     # and writes nothing when jq or claude is missing, and jq against an absent
@@ -403,9 +403,9 @@ bash /tmp/claude-settings.sh </dev/null
 rm -f /tmp/claude-settings.sh
 s="$HOME/.claude/settings.json"
 [ -f "$s" ] || exit 0
-jq 'del(.statusLine, .hooks)' "$s" > "$s.new" && mv "$s.new" "$s"
+jq 'del(.statusLine)' "$s" > "$s.new" && mv "$s.new" "$s"
 REMOTE
-    ok "Settings converged, desktop-only keys stripped"
+    ok "Settings converged, desktop-only statusLine stripped"
 
     info "Skills are resolved by the SERVER — run 'dots t3-host fork' if the"
     info "host is still on upstream t3, which discovers none of them."

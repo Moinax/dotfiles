@@ -170,7 +170,7 @@ the `dots update` path it was written for.
 reconciliations that list justifies; called with no arguments (a full install,
 where there is no "before") it runs all of them. Waybar goes last, after the
 caller's tool refresh: the bar's custom modules are long-lived `exec` children
-(`vibewatch status --watch` streams until killed), so a bar restarted before the
+(`waybar-notification.sh` streams `swaync-client` until killed), so a bar restarted before the
 binary underneath it moves keeps running the old one.
 
 **`apply_dotfiles` is the sanctioned apply**, and `chezmoi apply` should not

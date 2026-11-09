@@ -14,63 +14,23 @@ dotfiles:
 descriptions:
   hyprvoice-bin: Speech-to-text dictation tool (AUR)
   whisper.cpp: Local speech recognition engine
-  vibewatch: AI agent status bar & overlay for Hyprland (built from source via cargo)
   python-gobject: Python GTK bindings (dictation overlay)
   gtk4-layer-shell: Layer-shell surfaces for GTK4 (dictation overlay)
   noise-suppression-for-voice: RNNoise denoising for the dictation mic
-
-# Tools installed via custom commands (not available in package managers).
-# These appear in the package selector alongside distro packages.
-# Fields: name (display + selection key), check (command to test if installed),
-#         install (shell command to run), requires (dependency command to check),
-#         requires_packages (map of distro family -> system packages to
-#         install before running `install`)
-custom_install:
-  - name: vibewatch
-    # Owns a chezmoi flag (`install_vibewatch`), because dropping it from the
-    # group's package list has to reach the configs that reference it — the
-    # waybar pill, the Claude settings hook — not just skip the install.
-    chezmoi_flag: true
-    check: command -v vibewatch
-    install: curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh
-    requires: cargo
-    # System prerequisites for `cargo install --git`: Rust toolchain +
-    # native libs for vibewatch's default features (panel=gtk4/libadwaita/
-    # gtk4-layer-shell, sound=alsa via rodio).
-    requires_packages:
-      arch: [rust, pkgconf, gtk4, libadwaita, gtk4-layer-shell, alsa-lib]
-    binary: vibewatch
-    source: Moinax/vibewatch
-    # `vibewatch --version` prints "0.3.0 (<git sha>)" — the updater keeps the
-    # leading version and ignores the build suffix.
-    #
-    # Same install script, plus the restart it does not do: it ends in
-    # `vibewatch install`, whose `systemctl --user enable --now` starts a stopped
-    # unit but leaves a running one on the old binary image — so the daemon and
-    # the waybar pill it feeds stayed on the previous build until the next login.
-    # Restarting is a supported path rather than a workaround: waybar's
-    # `status --watch` children reconnect on socket drop, the scanner re-adopts
-    # agents that were already running, and the mute state lives in the XDG
-    # state dir.
-    update: |
-      curl -fsSL https://raw.githubusercontent.com/Moinax/vibewatch/main/install.sh | sh
-      # try-restart, not restart: a no-op success when the unit isn't running,
-      # so a headless box or a session with no user bus doesn't turn a perfectly
-      # good binary update into a failed row.
-      systemctl --user try-restart vibewatch.service 2>/dev/null || true
 
 packages:
   arch:
     # Dictation (speech-to-text)
     - hyprvoice-bin
     # Runtime deps of the dictation overlay (hyprvoice-widget.py), declared here
-    # rather than inherited: gtk4-layer-shell was only ever listed as a *build*
-    # prereq of vibewatch's custom_install, so an AI-group install that skips
-    # vibewatch got no GTK4 layer-shell stack, and python-gobject was in no
-    # package file at all. Both failures are silent — toggle-dictation.sh
-    # launches the widget with `setsid -f … >/dev/null 2>&1 || true`, so a
-    # missing `import gi` never surfaces, and a missing libgtk4-layer-shell.so
-    # makes the overlay a focus-stealing toplevel instead of a layer surface.
+    # rather than inherited: gtk4-layer-shell used to be listed only as a *build*
+    # prereq of vibewatch's custom_install (vibewatch is retired since), so an
+    # AI-group install that skipped vibewatch got no GTK4 layer-shell stack, and
+    # python-gobject was in no package file at all. Both failures are silent —
+    # toggle-dictation.sh launches the widget with `setsid -f … >/dev/null 2>&1
+    # || true`, so a missing `import gi` never surfaces, and a missing
+    # libgtk4-layer-shell.so makes the overlay a focus-stealing toplevel instead
+    # of a layer surface.
     # (gtk4 itself comes in as a dependency of gtk4-layer-shell.)
     - python-gobject
     - gtk4-layer-shell

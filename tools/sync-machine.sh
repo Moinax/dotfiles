@@ -326,7 +326,7 @@ reconcile_group_flags() {
 # machine never runs — so a machine that adopted a group here got the group flag
 # and nothing else. That is not a gap the templates can paper over: they read the
 # key directly, and chezmoi *errors* on a missing one rather than treating it as
-# false, so `install_ai = true` with no `install_vibewatch` breaks every
+# false, so `install_messaging = true` with no `install_messenger` breaks every
 # `chezmoi apply` on that machine outright. Seeding at the single writer fixes it
 # for every template at once, instead of each gate carrying its own fallback.
 #

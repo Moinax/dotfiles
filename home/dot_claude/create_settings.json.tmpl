@@ -48,22 +48,13 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  {{- /* Hooks: vibewatch, one per event, mirroring `vibewatch install`'s merge
-         (the CLI subcommand is the kebab-cased event name). PermissionRequest
-         is the one sync hook, as vibewatch installs it. */}}
-  {{- /* Built as data and serialized, not printed as text: hand-placed commas
-         between a variable number of hook objects is the one part of this that
-         can emit invalid JSON. A second family — this carried herdr-agent-title
-         on SessionStart and Stop until herdr was retired — is one more range
-         over the same dict, which is why the shape stays even at one. */}}
+  {{- /* Hooks, built as data and serialized, not printed as text: hand-placed
+         commas between a variable number of hook objects is the one part of
+         this that can emit invalid JSON. Two families lived here before the
+         language reminder was the only one left — herdr-agent-title until herdr
+         was retired, and vibewatch (one per event) until it was too; a new one
+         is one more `set` on the same dict, which is why the shape stays. */}}
   {{- $hooks := dict }}
-  {{- if .install_vibewatch }}
-  {{-   range $event := list "PermissionRequest" "PostToolUse" "PreToolUse" "SessionStart" "Stop" "SubagentStop" "UserPromptSubmit" }}
-  {{-     $vibe := dict "type" "command" "command" (printf "~/.cargo/bin/vibewatch notify %s --agent claude-code" (kebabcase $event)) }}
-  {{-     if ne $event "PermissionRequest" }}{{ $vibe = set $vibe "async" true }}{{ end }}
-  {{-     $hooks = set $hooks $event (list (dict "matcher" "" "hooks" (list $vibe))) }}
-  {{-   end }}
-  {{- end }}
   {{- /* The Language rule of ~/.agents/AGENTS.md is loaded once at session start
          and gets outweighed in long English-heavy sessions (code, tool output,
          English tickets), so it is restated on every prompt. No apostrophe in
