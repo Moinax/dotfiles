@@ -43,9 +43,9 @@
     "separate-outputs": true,
     "icon": true,
     "icon-size": 16,
-    "max-length": 60,
-  },
-{{ end }}
+    // The tray sits in modules-center, so the title shares its half of the bar
+    // with the workspaces only. The laptop's 1920px bar leaves less of it.
+    "max-length": {{ if eq .chezmoi.hostname "moinax-laptop" }}45{{ else }}60{{ end }}
   "custom/exit": {
     "format": "",
     "tooltip-format": "Powermenu",

@@ -67,9 +67,8 @@ tooltip label {
   border-radius: 8px;
 }
 /* `hyprland/window` keeps its widget when the workspace is empty, so the chip
- * `.module` gives it stays on the bar as a blank pill with nothing in it — it
- * read as a margin back when it sat against #workspaces, and reads as a broken
- * widget now that a gauge precedes it. The class lands on the whole bar, not on
+ * `.module` gives it stays on the bar as a blank pill with nothing in it, which
+ * reads as a broken widget. The class lands on the whole bar, not on
  * the module (waybar-hyprland-window(5)), and `separate-outputs` is what makes
  * that per-monitor rather than global. Zeroing the box and not just the fill:
  * a transparent chip still holds its 8px of padding open. */
@@ -104,6 +103,10 @@ window#waybar.empty #window {
 #workspaces {
   padding: 0 2px;
   background: transparent;
+  /* 4 + 2 padding + 2 button margin = 8: the first pill lines up with the
+   * outer edge of a tiled window's border (gaps_out 8, hypr/conf/general.lua).
+   * #custom-exit's margin-right mirrors it on the other end. */
+  margin-left: 4px;
 }
 /* A button does not stretch to the bar the way a module does, and its padding
  * does not drive its height either — both were measured, both are no-ops here.
@@ -216,7 +219,8 @@ window#waybar.empty #window {
 #custom-hdr.sdr { color: #6c7086; }
 #custom-hdr.mixed { color: #f9e2af; }
 #custom-exit {
-  margin-right: 20px;
+  /* Same 8px as gaps_out, see #workspaces. */
+  margin-right: 8px;
 }
 
 @keyframes blink {

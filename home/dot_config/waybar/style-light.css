@@ -82,6 +82,10 @@ window#waybar.empty #window {
 #workspaces {
   padding: 0 2px;
   background: transparent;
+  /* 4 + 2 padding + 2 button margin = 8: the first pill lines up with the
+   * outer edge of a tiled window's border (gaps_out 8, hypr/conf/general.lua).
+   * #custom-exit's margin-right mirrors it on the other end. */
+  margin-left: 4px;
 }
 /* See style-dark.css: only `min-height` pins a button to the group tab's 26px;
  * its padding does not drive its height. */
@@ -197,7 +201,8 @@ window#waybar.empty #window {
 #custom-hdr.sdr { color: #9ca0b0; }
 #custom-hdr.mixed { color: #df8e1d; }
 #custom-exit {
-  margin-right: 20px;
+  /* Same 8px as gaps_out, see #workspaces. */
+  margin-right: 8px;
 }
 
 @keyframes blink {

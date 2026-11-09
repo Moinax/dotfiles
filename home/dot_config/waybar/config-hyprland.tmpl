@@ -9,16 +9,11 @@
     ],
     "modules-left": [
       "hyprland/workspaces",
-      "group/stats",
-      "pulseaudio",
-      "custom/headset-battery",
-      "battery",
       "hyprland/window"
     ],
     "modules-center": [
-{{- if .install_vibewatch }}
-      "group/vibewatch"
-{{- end }}
+      "group/stats",
+      "clock"
     ],
     "modules-right": [
       "mpd",
@@ -27,8 +22,10 @@
       "custom/dark-mode",
       "custom/caffeine",
       "custom/vpn",
+      "pulseaudio",
+      "custom/headset-battery",
+      "battery",
       "tray",
-      "clock",
       "custom/notification",
       "custom/exit"
     ]
@@ -42,17 +39,15 @@
     ],
     "modules-left": [
       "hyprland/workspaces",
-      "battery",
-      "hyprland/window"
+      "hyprland/window#minimal"
     ],
     "modules-center": [
-{{- if .install_vibewatch }}
-      "group/vibewatch"
-{{- end }}
+      "group/stats",
+      "clock"
     ],
     "modules-right": [
+      "battery",
       "tray",
-      "clock",
       "custom/notification",
       "custom/exit"
     ]
