@@ -8,8 +8,8 @@
 #           first, for a state that would change while you aim. The shot is
 #           then cropped from a grab taken before the freeze, never grabbed
 #           off hyprpicker's overlay: that overlay redraws the screen with
-#           lifted blacks and drained colour, plus the pointer baked in, and
-#           grim faithfully saved it that way.
+#           lifted blacks and drained colour, and grim faithfully saved it
+#           that way.
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
 # Prefixed with `geometry`, either mode prints the box instead of shooting it;
