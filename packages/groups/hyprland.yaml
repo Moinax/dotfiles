@@ -33,6 +33,7 @@ descriptions:
   awww: Animated wallpaper daemon (renamed swww) with IPC and transitions
   hyprpicker: Color picker for Hyprland (also freezes the screen under a screenshot)
   grim: Wayland screen grabber (the shutter behind screenshot.sh)
+  imagemagick: Crops a frozen screenshot out of its full-screen grab (screenshot.sh)
   slurp: Wayland region/box selector (screenshot.sh and screen-record.sh)
   libnotify: notify-send, the client side of the notifications
   polkit-kde-agent: Polkit authentication agent (KDE)
@@ -74,6 +75,7 @@ packages:
     # call them directly, so they are declared directly.
     - grim
     - slurp
+    - imagemagick  # screenshot.sh --freeze crops its pre-freeze grab
     - libnotify
     - wf-recorder
     - uwsm

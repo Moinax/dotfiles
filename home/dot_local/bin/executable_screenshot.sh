@@ -5,7 +5,11 @@
 #
 #   pick    let the pointer answer -- click a window, drag a region, click
 #           the bar or a gap for the whole screen. --freeze freezes the screen
-#           first, for a state that would change while you aim.
+#           first, for a state that would change while you aim. The shot is
+#           then cropped from a grab taken before the freeze, never grabbed
+#           off hyprpicker's overlay: that overlay redraws the screen with
+#           lifted blacks and drained colour, plus the pointer baked in, and
+#           grim faithfully saved it that way.
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
 # Prefixed with `geometry`, either mode prints the box instead of shooting it;
@@ -68,10 +72,13 @@ fi
 case "${1-}" in
     pick)
         if [ "${2-}" = --freeze ]; then
+            frozen=$(mktemp --suffix=.png)
+            # -s 1: logical pixels, so slurp's boxes crop it as they are.
+            grim -s 1 "$frozen"
             hyprpicker -r -z >/dev/null 2>&1 &
             picker=$!
             # Nothing but this clears a frozen screen, so never leave one up.
-            trap 'kill "$picker" 2>/dev/null || true' EXIT
+            trap 'kill "$picker" 2>/dev/null || true; rm -f "$frozen"' EXIT
             sleep 0.2
         fi
 
@@ -102,7 +109,14 @@ fi
 
 mkdir -p "$shot_dir"
 path="$shot_dir/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
-grim -g "$geometry" "$path"
+if [ -n "${frozen-}" ]; then
+    # The grab spans every screen, so its origin is the layout's top-left.
+    read -r origin size <<< "$geometry"
+    read -r ox oy < <(hyprctl -j monitors | jq -r '"\(map(.x) | min) \(map(.y) | min)"')
+    magick "$frozen" -crop "${size}+$(( ${origin%,*} - ox ))+$(( ${origin#*,} - oy ))" +repage "$path"
+else
+    grim -g "$geometry" "$path"
+fi
 wl-copy --type image/png < "$path"
 
 # -A default makes the notification clickable; -c x-open plus the hint route
