@@ -28,6 +28,7 @@ GROUPS_DIR="$PACKAGES_DIR/groups"
 source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
 source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
+source "$DOTFILES_DIR/install/lib/local-packages.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/nvidia-vram-suspend.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
@@ -1273,6 +1274,8 @@ do_sync() {
     resolve_base
     # Before anything installs — see the function.
     update_system_packages
+    # Right after the upgrade, which is what moves the repo past a patched build.
+    reconcile_local_packages
     reconcile_group_flags
     # Before sync_packages, and independent of the anchor — see the function.
     reconcile_custom_requires

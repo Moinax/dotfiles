@@ -12,7 +12,7 @@ question, so a laptop that never wanted the gaming group had to say so again
 every time. This asks the smaller question: what has the repo gained since this
 machine last agreed with it?
 
-Phases: system update (`cachy-update`) → new groups → custom-install prerequisites
+Phases: system update (`cachy-update`) → patched packages (`install/lib/local-packages.sh`) → new groups → custom-install prerequisites
 → package delta → declared services → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
 `run_post_apply` → login wallpaper → encrypted DNS → regional formats → reclaim

@@ -1,0 +1,30 @@
+diff --git a/src/portals/Screencopy.cpp b/src/portals/Screencopy.cpp
+index c5b0baf..49de66d 100644
+--- a/src/portals/Screencopy.cpp
++++ b/src/portals/Screencopy.cpp
+@@ -538,6 +538,12 @@ void CScreencopyPortal::SSession::initCallbacks() {
+             if (!self)
+                 return;
+             sharingData.status = FRAME_FAILED;
++            // A copy fails whenever the source changed size between the buffer
++            // event and the copy -- every frame of an interactive resize. Drop the
++            // dead frame and queue the next one, or the share freezes for good.
++            // The frame owns this lambda: keep it alive until we return.
++            const auto EXPIRED = std::move(sharingData.frameCallback);
++            g_pPortalManager->m_sPortals.screencopy->queueNextShareFrame(this);
+         });
+         sharingData.frameCallback->setDamage([this, self = self](CCZwlrScreencopyFrameV1* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+             Debug::log(TRACE, "[sc] wlrOnDamage for {}", (void*)self.get());
+@@ -656,6 +662,12 @@ void CScreencopyPortal::SSession::initCallbacks() {
+             if (!self)
+                 return;
+             sharingData.status = FRAME_FAILED;
++            // A copy fails whenever the source changed size between the buffer
++            // event and the copy -- every frame of an interactive resize. Drop the
++            // dead frame and queue the next one, or the share freezes for good.
++            // The frame owns this lambda: keep it alive until we return.
++            const auto EXPIRED = std::move(sharingData.windowFrameCallback);
++            g_pPortalManager->m_sPortals.screencopy->queueNextShareFrame(this);
+         });
+         sharingData.windowFrameCallback->setDamage([this, self = self](CCHyprlandToplevelExportFrameV1* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+             Debug::log(TRACE, "[sc] hlOnDamage for {}", (void*)self.get());

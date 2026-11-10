@@ -28,6 +28,8 @@ went stale before, listing commands that never existed.
 
 **Packages** (`packages/`): every file in `packages/groups/` is one selectable group — `ls` it rather than trusting a list. `packages/arch/base.yaml` is what every machine gets regardless of selection; its `services:` key carries the same `core`/`desktop` purpose gating as its package sections. A service declared by two groups is the smell: each is asserting a baseline rather than a need of its own.
 
+`packages/local/<pkg>/` carries patches for repo packages upstream has not fixed yet — only the `*.patch` files; `dots update` builds them onto Arch's PKGBUILD and pins the package with `IgnorePkg` (`install/lib/local-packages.sh` has the why).
+
 **Chezmoi source** (`home/`): `home/.chezmoiignore` gates configs on template variables (`.install_hyprland`, `.install_development`, …) — one flag per group, plus one per `custom_install` entry marked `chezmoi_flag: true`, so unticking a single app also reaches the files chezmoi owns for it. Both kinds are written by `dots setup` and backfilled by `reconcile_group_flags` — chezmoi *errors* on a key that was never written, so a gate must never reference a flag nothing seeds.
 
 ## Conventions
