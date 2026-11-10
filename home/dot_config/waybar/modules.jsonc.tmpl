@@ -98,13 +98,13 @@
   },
   // CPU
   "cpu": {
-    "format": " {usage}%  ",
+    "format": " {usage}%",
     // "on-click": "alacritty -e htop"
     "on-click": "kitty -T btop btop",
   },
   // Memory
   "memory": {
-    "format": " {used}G",
+    "format": " {used:.0f}G",
     // Same command as cpu on purpose: the two are one visible pill (group/stats)
     // and the whole pill has to be clickable. The -T is load-bearing — it is what
     // the float+center window rule matches on (hypr/conf/windowrules.lua).

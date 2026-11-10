@@ -70,6 +70,17 @@ window#waybar.empty #window {
   background: transparent;
   border: none;
 }
+/* The stats pill and the clock sit side by side in modules-center, so the gap
+ * between them lands on the screen's midline only if both are the same width.
+ * Fixed widths, not min-length: the stats halves vary with the numbers and
+ * the clock is the reference, so each half is half the clock. */
+#cpu,
+#memory {
+  min-width: 56px;
+}
+#clock {
+  min-width: 112px;
+}
 /* `#workspaces` also matches `.module`, so without this the pills would sit on
  * a second indigo layer of their own container — measured (74,65,114) in the
  * gaps, against a bar of (62,49,55). Because the strip and an inactive button
