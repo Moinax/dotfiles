@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from chat_shell import ChatApp, run
+from chat_shell import EXTERNAL, ChatApp, run
 
 AUTH_PATH_PREFIXES = (
     "/login",
@@ -25,8 +25,13 @@ AUTH_PATH_PREFIXES = (
 )
 
 
-def rewrite_facebook_navigation(host, path):
-    """Keep Messenger's post-authentication redirects out of full Facebook."""
+def rewrite_facebook_navigation(host, path, user_initiated):
+    """Keep Messenger's post-authentication redirects out of full Facebook.
+
+    A Facebook link the user clicked (a shared post, a profile) is content,
+    not a redirect: it opens in the default browser instead of being folded
+    back onto the Messenger home page, which reads as the app reloading.
+    """
     if not (host == "facebook.com" or host.endswith(".facebook.com")):
         return None
     if path.startswith(AUTH_PATH_PREFIXES):
@@ -34,7 +39,7 @@ def rewrite_facebook_navigation(host, path):
     match = re.match(r"^/messages/t/(\w+)", path)
     if match:
         return f"https://www.messenger.com/t/{match.group(1)}/"
-    return "https://www.messenger.com/"
+    return EXTERNAL if user_initiated else "https://www.messenger.com/"
 
 
 CONFIG = ChatApp(

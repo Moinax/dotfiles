@@ -95,8 +95,26 @@ def check_reload_deferrals():
         assert hasattr(owner, method), f"{owner.__name__}.{method}() is gone"
 
 
+def check_messenger_rewrite():
+    # The launcher has no .py suffix, so it is loaded by path.
+    from importlib.machinery import SourceFileLoader
+    launcher = SourceFileLoader("messenger", str(
+        Path(__file__).resolve().parent.parent
+        / "home" / "dot_local" / "bin" / "executable_messenger")).load_module()
+    rewrite = launcher.rewrite_facebook_navigation
+    fb = "www.facebook.com"
+    # A clicked post leaves for the browser; the same host as a redirect is
+    # folded back onto Messenger, as the auth flow needs.
+    assert rewrite(fb, "/groups/1/posts/2/", True) == chat_shell.EXTERNAL
+    assert rewrite(fb, "/groups/1/posts/2/", False) == "https://www.messenger.com/"
+    assert rewrite(fb, "/messages/t/42", True) == "https://www.messenger.com/t/42/"
+    assert rewrite(fb, "/login/", True) is None
+    assert rewrite("www.messenger.com", "/t/42", True) is None
+
+
 def main():
     check_titles()
+    check_messenger_rewrite()
     check_reload_deferrals()
     # Held: collecting it mid-test aborts Qt. Built after chat_shell is
     # imported, deliberately — QtWebEngine aborts if it arrives second.

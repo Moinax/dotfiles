@@ -69,7 +69,10 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-NavigationRewrite = Callable[[str, str], str | None]
+# (host, path, user_initiated) -> a URL to load in-app instead, EXTERNAL to
+# hand the navigation to the default browser, or None for the default rules.
+NavigationRewrite = Callable[[str, str, bool], str | None]
+EXTERNAL = "external"
 
 
 @dataclass(frozen=True)
@@ -583,11 +586,16 @@ class ShellPage(QWebEnginePage):
         if scheme in {"http", "https"}:
             host = url.host()
             path = url.path()
+            user_initiated = nav_type in USER_NAV_TYPES
 
             target_url = (
-                CONFIG.rewrite_navigation(host, path)
+                CONFIG.rewrite_navigation(host, path, user_initiated)
                 if CONFIG.rewrite_navigation else None
             )
+            if target_url == EXTERNAL:
+                log("EXTERNAL", f"{host}{path[:40]} -> handing off (rewrite)")
+                hand_to_browser(url)
+                return False
             if target_url:
                 target = QUrl(target_url)
                 log("SCOPE", f"{host}{path[:40]} -> {target.toString()}")
@@ -598,7 +606,7 @@ class ShellPage(QWebEnginePage):
 
             # Only deliberate navigation leaves. Redirects and form posts are
             # the auth machinery working; they stay, whatever host they land on.
-            if nav_type in USER_NAV_TYPES and not is_internal(host):
+            if user_initiated and not is_internal(host):
                 log("EXTERNAL", f"{host} -> handing off")
                 hand_to_browser(url)
                 return False
