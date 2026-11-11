@@ -27,7 +27,7 @@ finish() {
     local disposition="$1"
     if ! active_recording; then
         rm -f -- "$state"
-        [ "$disposition" = cancel ] && notify-send -u low "Screen recording" "No recording is running."
+        [ "$disposition" = cancel ] && notify-send -a "Screen recorder" -u low "Screen recording" "No recording is running."
         return 1
     fi
 
@@ -37,7 +37,7 @@ finish() {
         sleep 0.1
     done
     if kill -0 "$recorder_pid" 2>/dev/null; then
-        notify-send -u critical "Screen recording could not stop" \
+        notify-send -a "Screen recorder" -u critical "Screen recording could not stop" \
             "wf-recorder is still running; the recording was left untouched."
         return 1
     fi
@@ -45,7 +45,7 @@ finish() {
 
     if [ "$disposition" = cancel ]; then
         rm -f -- "$output_file"
-        notify-send -u low "Screen recording cancelled" "The unfinished video was deleted."
+        notify-send -a "Screen recorder" -u low "Screen recording cancelled" "The unfinished video was deleted."
     elif [ -f "$output_file" ]; then
         notify-send -a "Screen recorder" -i "$output_file" -t 8000 \
             -A default=Open -c x-open -h "string:x-open-path:$output_file" \
@@ -72,12 +72,12 @@ case "${1:-}" in
         recorder_pid=$!
         sleep 0.2
         if ! kill -0 "$recorder_pid" 2>/dev/null; then
-            notify-send -u critical "Screen recording failed" "wf-recorder could not start."
+            notify-send -a "Screen recorder" -u critical "Screen recording failed" "wf-recorder could not start."
             exit 1
         fi
         printf '%s\t%s\n' "$recorder_pid" "$output_file" > "$state"
         # Progress state, not history: display it without retaining it in SwayNC.
-        notify-send -e -u low -t 2500 "Screen recording started" \
+        notify-send -a "Screen recorder" -e -u low -t 2500 "Screen recording started" \
             "Press any recording shortcut again to save, or Mod+Shift+R to cancel."
         ;;
     *)

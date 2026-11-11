@@ -31,7 +31,7 @@ dashes→underscores, string values wrapped in literal single quotes.
 
 - Kitty-forwarded notifications (the "Claude Code" needs-attention ones) already
   focus their window on click; kitty owns that action.
-- **hyprshot must never be notified around directly** — it backgrounds its grab
-  and returns before the PNG is written, which is why `screenshot.sh` only
-  notifies from hyprshot's `-- command` callback. A notify with the half-written
-  file as icon makes swaync drop the notification wholesale.
+- **Notify only once the image file is complete** — `screenshot.sh` notifies
+  after its synchronous grim/magick write, never around a grabber that
+  backgrounds its write (hyprshot did, and was dropped). A notify with a
+  half-written file as icon makes swaync drop the notification wholesale.

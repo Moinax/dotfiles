@@ -44,10 +44,14 @@ visible_boxes() {
     # a special workspace draws over the active one, so its windows are on
     # screen too; specialWorkspace.id is 0 when none is up
     shown=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id] + [.[].specialWorkspace.id]')
+    # a fullscreen or maximised window hides the rest of its workspace, whose
+    # smaller boxes would otherwise win under the cursor
     hyprctl -j clients | jq -r --argjson shown "$shown" '
-        .[]
-        | select(.mapped and (.hidden | not))
-        | select(.workspace.id as $id | $shown | index($id))
+        map(select(.mapped and (.hidden | not)))
+        | map(select(.workspace.id as $id | $shown | index($id)))
+        | group_by(.workspace.id)[]
+        | (map(select(.fullscreen > 0)) | if length > 0 then . else empty end) // .
+        | .[]
         | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
     monitor_boxes '.[]'
 }
@@ -72,17 +76,25 @@ fi
 case "${1-}" in
     pick)
         if [ "${2-}" = --freeze ]; then
-            frozen=$(mktemp --suffix=.png)
+            # PPM: a scratch file magick reads straight back, so skip the PNG
+            # encode that sits between the keypress and the freeze.
+            frozen=$(mktemp --suffix=.ppm)
             # -s 1: logical pixels, so slurp's boxes crop it as they are.
-            grim -s 1 "$frozen"
+            grim -s 1 -t ppm "$frozen"
             hyprpicker -r -z >/dev/null 2>&1 &
             picker=$!
             # Nothing but this clears a frozen screen, so never leave one up.
             trap 'kill "$picker" 2>/dev/null || true; rm -f "$frozen"' EXIT
-            sleep 0.2
         fi
 
         boxes=$(visible_boxes)
+        # ponytail: fixed wait for hyprpicker to map before slurp does, or the
+        # click lands on the freeze; hyprctl may list a layer before it is drawn,
+        # so polling it is no better. Raise it if a frozen click gets eaten.
+        [ -z "${frozen-}" ] || sleep 0.2
+
+        # Its overlay is a translucent white wash; the `slurp-no-animation`
+        # layer rule (hypr windowrules) drops its fade-out, or grim catches it.
         geometry=$(slurp <<< "$boxes") || exit 0  # Esc, or a right click
         # A click that drifts a single pixel while the button is down comes
         # back as a 1x1 region -- one near-black pixel, saved as a screenshot
@@ -90,7 +102,8 @@ case "${1-}" in
         # the way slurp would have had it not been dragged.
         read -r origin size <<< "$geometry"
         if [ "${size%x*}" -lt 8 ] || [ "${size#*x}" -lt 8 ]; then
-            geometry=$(smallest_box_at "${origin%,*}" "${origin#*,}" <<< "$boxes")
+            box=$(smallest_box_at "${origin%,*}" "${origin#*,}" <<< "$boxes")
+            geometry=${box:-$geometry}  # nothing under it: keep slurp's own
         fi
         ;;
     output)
