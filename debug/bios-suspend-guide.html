@@ -57,6 +57,14 @@
 <h1>BIOS — Veille silencieuse & suspend</h1>
 <p class="sub">Gigabyte Z790 AORUS MASTER X · manuel officiel BIOS Intel série 700 · entrer dans le BIOS : touche <code>Suppr</code> au démarrage, mode <b>Advanced</b> (<code>F2</code> bascule Easy/Advanced)</p>
 
+<div class="why" lang="en">
+  <b>2026-11-11: S3 recovery validated.</b> Three real deep-sleep cycles passed after disabling
+  <code>Above 4GB MMIO BIOS assignment</code>, with Above 4G Decoding and ReBAR already disabled.
+  These are separate options. See <a href="#s3-recovery">the validated settings below</a> and
+  <a href="s3-deep-investigation.md">the investigation record</a>.
+  The earlier idle/fan-tuning notes below are historical and are not prerequisites for this S3 fix.
+</div>
+
 <div class="why">
   <b>Pourquoi :</b> sous Linux, le CPU ne dispose que des C-states <code>C1/C2/C3</code> (fallback ACPI) — jamais les états profonds <code>C6/C8/C10</code>. Il ne se met donc jamais en veille profonde, même au repos → il reste chaud → ventilos audibles, éveillé comme en s2idle. <b>Cause quasi certaine : les C-States sont désactivés/capés dans le BIOS.</b> Les réactiver = idle froid + (avec Fan Stop) veille réellement silencieuse, sans dépendre du deep/S3 qui plante.
 </div>
@@ -96,7 +104,7 @@
 <table>
   <tr><th>Option (nom exact BIOS)</th><th>Conseil</th><th>Note</th></tr>
   <tr><td class="opt">S3 Save Mode</td><td class="val note">noter sa valeur</td><td class="cmt">Mode d'éco en état S3 — directement lié au deep/S3 qui plante. Photographie sa valeur actuelle.</td></tr>
-  <tr><td class="opt">Power Loading</td><td class="val">Enabled</td><td class="cmt">Évite que le PSU haut de gamme se coupe à très faible charge (idle profond / veille)</td></tr>
+  <tr lang="en"><td class="opt">Power Loading</td><td class="val">Auto</td><td class="cmt">Unchanged during all three successful S3 tests. The earlier Enabled recommendation was not the demonstrated fix.</td></tr>
   <tr><td class="opt">PEG ASPM</td><td class="val">Disabled</td><td class="cmt"><b>⚠ sur cette carte NVIDIA : Disabled.</b> Activé (Auto/L1), le lien GPU ne se ré-entraîne pas au réveil → écrans noirs jusqu'à un modeset forcé (bascule TTY). Coût conso négligeable.</td></tr>
   <tr><td class="opt">PCH ASPM / DMI ASPM</td><td class="val note">Auto</td><td class="cmt">Idem côté chipset / lien DMI</td></tr>
   <tr><td class="opt">Native ASPM</td><td class="val note">Auto</td><td class="cmt">Laisse l'OS/BIOS gérer l'ASPM</td></tr>
@@ -104,18 +112,30 @@
   <tr><td class="opt">ErP</td><td class="val note">à ton choix</td><td class="cmt">Enabled = conso mini en S5 (éteint), mais désactive « Resume by Alarm »</td></tr>
 </table>
 
-<h2 class="s3">④ Si un jour tu veux retenter le deep/S3 — leviers anti-hang</h2>
-<div class="warn">⚠️ Le deep/S3 fige actuellement le PC (LED carte mère figée à <b>03</b>, hard reboot obligatoire). Ne le retente que volontairement, travail sauvegardé. Le faisceau pointe vers un S3 cassé au niveau firmware/plateforme — pas garanti réparable côté OS.</div>
-<p><span class="path">Settings ▸ IO Ports</span> — coupables classiques de hang au resume NVIDIA :</p>
+<section lang="en" id="s3-recovery">
+<h2 class="s3">④ Validated S3 recovery — 2026-11-11</h2>
+<p>BIOS F11 contains a 32-bit address truncation in its S3 handler for I2C controller
+<code>0000:00:15.2</code>. Linux had placed that controller above 4 GiB. The following
+configuration moved it below 4 GiB and passed three real S3 entry/wake cycles with
+the usual NVIDIA driver and desktop. This strongly supports the mechanism;
+the exact failing firmware instruction was not captured.</p>
+<p><span class="path">Settings ▸ IO Ports</span> — use <code>Alt+F</code> and search
+<code>MMIO</code> if the option is elsewhere.</p>
 <table>
-  <tr><th>Option</th><th>Test</th><th>Note</th></tr>
-  <tr><td class="opt">Re-Size BAR Support</td><td class="val note">tester Disabled</td><td class="cmt">ReBAR est un suspect récurrent des hangs resume NVIDIA</td></tr>
-  <tr><td class="opt">Above 4G Decoding</td><td class="val note">tester Disabled</td><td class="cmt">Va de pair avec ReBAR (le couper coûte un peu de perf GPU)</td></tr>
+  <tr><th>Option</th><th>Validated value</th><th>Evidence</th></tr>
+  <tr><td class="opt" style="white-space:normal">Above 4GB MMIO BIOS assignment</td><td class="val">Disabled</td><td class="cmt">Decisive change: removed the high PCI window and moved the controller to 0x40402000.</td></tr>
+  <tr><td class="opt" style="white-space:normal">Above 4G Decoding</td><td class="val">Disabled</td><td class="cmt">Disabling this alone left the controller above 4 GiB. It is separate from MMIO BIOS assignment.</td></tr>
+  <tr><td class="opt" style="white-space:normal">Re-Size BAR Support</td><td class="val">Disabled</td><td class="cmt">Already disabled during failed tests. Retained in the validated configuration.</td></tr>
 </table>
-<ul>
-  <li>Vérifie aussi que le <b>BIOS est à jour</b> (actuellement F11) : <span class="path">Save &amp; Exit / Q-Flash</span> — un correctif S3 vient parfois d'une révision firmware.</li>
-  <li>Côté Linux (de mon côté) : passer le driver <code>nvidia-open</code> → <code>nvidia</code> propriétaire permettrait <code>NVreg_EnableGpuFirmware=0</code> (fix S3 classique, impossible sur les modules open). À garder pour plus tard.</li>
-</ul>
+<p>After a BIOS reset or update, verify these distinct options and the actual address:
+<code>head -n 1 /sys/bus/pci/devices/0000:00:15.2/resource</code>.
+The validated start address is <code>0x0000000040402000</code>; it must remain below
+<code>0x100000000</code> for this mechanism to be avoided. A low address alone does
+not validate every aspect of sleep: confirm real S3 entry and wake.</p>
+<p>All diagnostic hooks were removed. No NVIDIA replacement, permanent kernel
+parameter, sensor blacklist, or BIOS update was required.
+See <a href="s3-deep-investigation.md">the complete evidence and limits</a>.</p>
+</section>
 
 <h2 class="nav">⑤ Navigation BIOS & vérif au retour</h2>
 <ul>

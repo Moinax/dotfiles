@@ -87,7 +87,9 @@
   // Clock
   "clock": {
     // "timezone": "America/New_York",
-    "format": "{:%d.%m - %H:%M}",
+    // fr_BE: the only French locale generated here; same month names as fr_FR
+    "locale": "fr_BE.UTF-8",
+    "format": "{:L%e %b · %H:%M}",
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
     // "format-alt": "{:%Y-%m-%d}",
   },

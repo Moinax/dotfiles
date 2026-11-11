@@ -220,6 +220,23 @@ Why:
 
 ## Observed Failure Clues
 
+### 2026-11-11: S3 recovered after correcting firmware MMIO allocation
+
+See the [controlled S3 investigation](s3-deep-investigation.md). All five
+kernel `pm_test` stages returned, but real S3 hung both with the usual desktop
+and with the graphical session closed and every NVIDIA module unloaded.
+The October hypothesis below is not an established explanation of this hang.
+The current firmware's code `03` is a sleep-preparation marker, as verified in
+its extracted DSDT, rather than a component fault code.
+
+Disabling **Above 4GB MMIO BIOS assignment** moved the I2C controller's BAR0
+below 4 GiB and was followed by three successful real S3 cycles with the normal
+NVIDIA driver and desktop. Above 4G Decoding and ReBAR were already disabled;
+Above 4G Decoding alone had left the high address unchanged. Static F11 S3 code
+contains a matching 32-bit BAR truncation; the exact executed fault was not
+captured. The linked investigation records settings, evidence, and validation.
+No NVIDIA driver change, blacklist, or permanent sleep hook was needed.
+
 ### 2026-10-13: frozen entering S3, in the NVIDIA suspend hook
 
 Two nights in a row (11→12 and 12→13 October). The journal only reaches back to
