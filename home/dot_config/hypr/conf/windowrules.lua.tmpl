@@ -145,6 +145,16 @@ hl.layer_rule({
     no_anim = true,
 })
 
+-- slurp's overlay ("selection") washes the screen in translucent white. With
+-- the layer fade it is still on screen, fading, when screenshot.sh runs grim
+-- right after slurp exits — so the shot came out with lifted blacks and
+-- drained colour. Gone instantly, it is never in the grab.
+hl.layer_rule({
+    match  = { namespace = "selection" },
+    name   = "slurp-no-animation",
+    no_anim = true,
+})
+
 -- ── Chat apps ─────────────────────────────────────────────────────
 -- `chats` opens the four at once; these are what make them land in the layout
 -- instead of wherever the compositor felt like. It tabs them in pairs itself,
