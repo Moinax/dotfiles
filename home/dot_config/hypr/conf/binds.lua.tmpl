@@ -100,13 +100,6 @@ hl.bind("ALT + TAB",            hl.dsp.group.next())                            
 hl.bind("ALT + SHIFT + TAB",    hl.dsp.group.prev())                                       -- Cycle group backward
 hl.bind("ALT + CTRL + TAB",     hl.dsp.group.move_window({ forward = true }))              -- Move window in group
 
--- ── 6b. Layout Switching ─────────────────────────────────────────
--- Scrolling layout reuses the standard focus / move / resize / group-swap
--- arrow binds above (focus, movewindow, group-swap script all work in both
--- layouts). Column-stacking ops (consume/expel/promote/inhibit/swapcol) and
--- viewport pan are unused.
-hl.bind(mod .. " + SHIFT + T",       hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
-
 -- ── 7. Workspace Navigation ──────────────────────────────────────
 -- Hyprland resolves these symbols through the first configured layout (French),
 -- so they keep the same physical positions when another XKB group is active.
@@ -153,7 +146,7 @@ for i, key in ipairs(workspace_keys) do
     hl.bind(mod .. " + CTRL + SHIFT + " .. key, hl.dsp.exec_cmd(move_all .. i .. " --silent")) -- Move every window to this workspace (silent)
 end
 
--- ── 10. Scratchpad (default unnamed special workspace) ──────────
+-- ── 9. Scratchpad (default unnamed special workspace) ───────────
 -- The scratchpad has no home monitor of its own: every dispatcher that reveals
 -- it shows it on whichever monitor is focused, dragging it off the one it was
 -- on. A `monitor:` workspace rule on `special:special` does not hold it either
@@ -207,13 +200,13 @@ local reveal_scratchpad = " && { hyprctl eval 'ScratchpadToMain()' >/dev/null" .
 hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent" .. reveal_scratchpad))                   -- Move every window of the workspace to the scratchpad
 hl.bind(mod .. " + CTRL + SHIFT + S", hl.dsp.exec_cmd(move_all .. "special --silent"))                                 -- Same, silent
 
--- ── 11. Reload Configs ───────────────────────────────────────────
+-- ── 10. Reload Configs ───────────────────────────────────────────
 -- The infrequent reload actions live in Vicinae's Reload command rather than
 -- occupying global chords. Search "reload" from the launcher to reach them.
 hl.bind(mod .. " + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/wallpaper?toggle=true'"))                  -- Wallpaper picker (grid preview)
 hl.bind(mod .. " + ALT + W", hl.dsp.exec_cmd("vicinae 'vicinae://launch/@moinax/moinax/blur?toggle=true'"))                 -- Blur variant picker
 
--- ── 12. Screenshots ──────────────────────────────────────────────
+-- ── 11. Screenshots ──────────────────────────────────────────────
 -- The bare key lets the pointer say what to take: click a window, drag a
 -- region, click the bar or a gap for the whole screen. SHIFT does the same with
 -- the screen frozen before you aim. The mod variant takes the focused screen,
@@ -222,7 +215,7 @@ hl.bind("PRINT",                    hl.dsp.exec_cmd(home .. "/.local/bin/screens
 hl.bind("SHIFT + PRINT",            hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh pick --freeze")) -- Same, with the screen frozen first
 hl.bind(mod .. " + PRINT",          hl.dsp.exec_cmd(home .. "/.local/bin/screenshot.sh output"))        -- Screenshot the focused screen, no click
 
--- ── 13. Screen recordings ────────────────────────────────────────
+-- ── 12. Screen recordings ────────────────────────────────────────
 -- Same selection as the screenshots: the bare chord takes the focused screen,
 -- ALT lets the pointer pick a window, a region or a whole screen. A second
 -- press on either stops and saves; SHIFT stops and deletes the unfinished file.
@@ -231,7 +224,7 @@ hl.bind(mod .. " + R",         hl.dsp.exec_cmd(record .. "toggle output")) -- Re
 hl.bind(mod .. " + ALT + R",   hl.dsp.exec_cmd(record .. "toggle pick"))   -- Record: click a window / drag a region / stop and save
 hl.bind(mod .. " + SHIFT + R", hl.dsp.exec_cmd(record .. "cancel"))        -- Cancel recording and delete it
 
--- ── 14. Media & Volume ───────────────────────────────────────────
+-- ── 13. Media & Volume ───────────────────────────────────────────
 -- `locked = true` on all six: Hyprland dispatches only flagged binds while a
 -- session lock holds the screen, so without it the volume and brightness keys are
 -- dead the whole time the laptop sits locked. The test for the flag is not "is it
@@ -276,3 +269,10 @@ hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })        
 hl.bind(mod .. " + o",         hl.dsp.window.tag({ tag = "switch_opacity" }))       -- focused window → opaque
 hl.bind(mod .. " + CTRL + o",  hl.dsp.window.tag({ tag = "switch_opacity_half" }))  -- focused window → 50%
 hl.bind(mod .. " + ALT + o",   hl.dsp.exec_cmd(home .. "/.local/bin/toggle-all-opacity.sh"))  -- global opacity on/off
+
+-- ── 17. Layout Switching ─────────────────────────────────────────
+-- Scrolling layout reuses the standard focus / move / resize / group-swap
+-- arrow binds above (focus, movewindow, group-swap script all work in both
+-- layouts). Column-stacking ops (consume/expel/promote/inhibit/swapcol) and
+-- viewport pan are unused.
+hl.bind(mod .. " + SHIFT + T",       hl.dsp.exec_cmd(home .. "/.config/hypr/scripts/toggle-workspace-scrolling.sh")) -- Toggle tape (scrolling) layout ↔ baseline
