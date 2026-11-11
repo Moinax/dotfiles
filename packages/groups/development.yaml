@@ -69,6 +69,7 @@ descriptions:
   direnv: Per-directory environment variables (auto-loads .env)
   jdk17-openjdk: OpenJDK 17 — the toolchain Gradle 9 and AGP 9 require for `t3fork mobile`
   android-udev: udev rules so adb can reach a plugged-in phone without root
+  libxcrypt-compat: libcrypt.so.1 for the fpm electron-builder runs to package the .deb `t3fork install` builds beside the AppImage
   android-sdk: Android SDK command-line tools and adb (`t3fork mobile` builds the T3 Code fork's APK with them)
 
 desktop_only:
@@ -342,3 +343,8 @@ packages:
     # membership — and therefore no re-login — is needed.
     - jdk17-openjdk
     - android-udev
+
+    # `t3fork install`: upstream's Linux build also packages a .deb, through
+    # the fpm electron-builder downloads, whose bundled ruby links
+    # libcrypt.so.1 — the legacy ABI only this package ships on Arch.
+    - libxcrypt-compat
