@@ -59,22 +59,33 @@ fi
 #
 # So `term` starts it, since what `term` starts is a Kitty running the client.
 # It returns once the window has focus, which is before that client has
-# finished attaching — hence the wait. `query-tab-names` is the probe because
-# it is the same call the tab check below makes: exit 0 means the server is
-# answering, 1 means there is no session (measured; `list-sessions` answers the
-# weaker question of whether the *name* is known).
-session_up() { zellij -s "$session" action query-tab-names >/dev/null 2>&1; }
+# finished attaching — hence the wait.
+#
+# The gate is an attached client, not a live server. The server outlives its
+# Kitty, and with no client it has no size either: `new-tab` there fails the
+# same way ("Not enough room for panes"), yet still becomes the active tab, so
+# the Kitty that attaches next lands on a tab that was never made — the same
+# blank pane. `list-clients` prints a header, then one row per attached client
+# (measured), and fails when there is no session at all.
+client_attached() {
+    zellij -s "$session" action list-clients 2>/dev/null | awk 'NR > 1 { n++ } END { exit !n }'
+}
 
-if ! session_up; then
+if ! client_attached; then
     # Bare, this dies silently under `set -e` when there is no compositor to
     # put a window on — an ssh shell, a plain TTY.
     term || { echo "dev: could not bring up the terminal" >&2; exit 1; }
 
     for _ in $(seq 50); do
-        session_up && break
+        client_attached && break
         sleep 0.1
     done
-    session_up || { echo "dev: zellij session \"$session\" did not come up" >&2; exit 1; }
+    # `term` only raises a Kitty it finds, so a window whose client sits on
+    # another session, or never finished attaching, lands here.
+    client_attached || {
+        echo "dev: no zellij client attached to \"$session\" — switch the terminal back to it, or close it" >&2
+        exit 1
+    }
 fi
 
 # `go-to-tab-name` exits 0 whether or not the tab existed, so it cannot be used
@@ -85,7 +96,7 @@ fi
 # explicit command is a *command* pane, which zellij keeps alive on exit with
 # its "press <Enter> to re-run, <Esc> to close" screen — so Ctrl+D would leave
 # a dead tab behind. `--close-on-exit` gives back the plain-shell behaviour.
-if ! zellij -s "$session" action query-tab-names 2>/dev/null | grep -qxF "$name"; then
+if ! zellij -s "$session" action query-tab-names 2>/dev/null | grep -xF "$name" >/dev/null; then
     shell="${SHELL:-/usr/bin/zsh}"
     tab_id="$(zellij -s "$session" action new-tab --cwd "$dir" --name "$name" --close-on-exit -- "$shell")"
 
