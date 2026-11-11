@@ -178,68 +178,6 @@ update_system_packages() {
 
 # ── Packages the repo gained ────────────────────────────────────────────────
 
-# Every package declared for this machine — base plus every enabled group — as
-# it reads in a given commit. Called once for the anchor and once for HEAD; the
-# difference is what the repo gained.
-#
-# Parsed from a worktree of that commit rather than diffed textually, so the
-# answer comes from `base_desired_packages`/`get_group_packages` — the same pair
-# `dots packages sync` and the manage view ask — and a reformatted list is not
-# mistaken for new packages.
-#
-# Emits "pkg<TAB>group-file", the file being empty for a distro package and the
-# declaring group's yaml for a custom_install entry. The caller needs that split
-# anyway (the two have different install paths and different installed-checks),
-# and carrying it out of here is what saves a second parse of every group file.
-#
-# **`requires_packages` counts as declared, and leaving it out is what made
-# `dots update` uninstall a runtime the repo still asks for.** Moving
-# `python-pyqt6-webengine` out of messaging's `packages:` and into the
-# `requires_packages:` of the two chat shells changed nothing about whether the
-# machine wants it — but this walk only saw the `packages:` key, so the name
-# vanished from the HEAD set while remaining in the anchor's, and the drop half
-# offered it for removal under the heading "Dropped from the dotfiles". It was
-# removed, taking python-pyqt6 with it, and both launchers died on `import
-# PyQt6` at their next start. Neither guard could have caught it: pacman's
-# dependency graph does not know a Python script imports a module, and the
-# confirmation prompt was asking about a list that was wrong.
-declared_packages_at() {
-    local root="$1"
-    local file pkg flag rows
-
-    while IFS= read -r pkg; do
-        [ -n "$pkg" ] && printf '%s\t\n' "$pkg"
-    done < <(base_desired_packages "$root/packages")
-
-    for file in "$root"/packages/groups/*.yaml; do
-        [ -f "$file" ] || continue
-        # Enabled-ness is a property of *this machine*, read from chezmoi data,
-        # so it is judged on the group's name and not on the old file's content.
-        group_enabled "$file" || continue
-
-        # One read, classified twice — the split group_declared_lists exists for.
-        # group_declared_packages would be the same yq call over again just to
-        # reach the prerequisite rows it drops on the floor.
-        rows=$(group_declared_lists "$file")
-
-        # classify_declared_rows already knows which names are custom_install
-        # entries — it had to, to build its list. Asking again with a second
-        # parse_custom_install_names was the same yq work twice per group, and the
-        # only thing this needs on top is *which file* declared it.
-        while IFS=$'\t' read -r pkg flag; do
-            [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "${flag:+$file}"
-        done < <(printf '%s\n' "$rows" | classify_declared_rows)
-
-        # Emitted with no group file, i.e. as distro packages, which is what they
-        # are: pacman installs them and pacman can remove them. The custom-entry
-        # column means "installed by a bespoke command, so it has no uninstall" —
-        # a prerequisite is neither.
-        while IFS= read -r pkg; do
-            [ -n "$pkg" ] && printf '%s\t\n' "$pkg"
-        done < <(printf '%s\n' "$rows" | selected_requires_packages)
-    done
-}
-
 # Groups this machine has never answered for: a group file exists and chezmoi
 # data holds no flag for it at all — neither true nor false.
 #

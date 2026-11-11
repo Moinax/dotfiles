@@ -61,4 +61,27 @@ _local_pkg_apply_patches "$stage/pristine/src" "$stage/pkg"
 check "apply lands in the dir it matched" "$(cat "$stage/fixed/src/app/main.c")" "$(cat "$stage/pristine/src/app/main.c")"
 check "the decoy dir is untouched" decoy "$(cat "$stage/pristine/src/protocols/main.c")"
 
+# Only the orphans the build added are removed; ones that were already there
+# are the user's to deal with, and none added means no sudo at all.
+# Removing meson orphans python-x, which comes off on the next level; ninja, a
+# dependency of meson the repo declares, stays.
+pacman() { cat "$stage/orphans"; }
+sudo() {
+    shift 3; echo "$*" >>"$stage/removed"
+    { grep -vxFf <(printf '%s\n' "$@") "$stage/orphans"
+      [[ " $* " == *" meson "* ]] && printf 'python-x\nninja\n'; } | sort >"$stage/next"
+    mv "$stage/next" "$stage/orphans"
+}
+declared_packages_at() { printf 'cmake\t\nninja\t\n'; }
+printf 'old-orphan\n' >"$stage/before"
+printf 'cmake\nmeson\nold-orphan\nrust\n' >"$stage/orphans"
+_local_pkg_drop_makedeps "$stage/before" >/dev/null
+check "drops the undeclared makedeps the build added, level by level" \
+    "meson rust|python-x" "$(paste -sd'|' "$stage/removed")"
+rm "$stage/removed"
+printf 'cmake\nmeson\nold-orphan\nrust\n' >"$stage/before"
+printf 'cmake\nmeson\nold-orphan\nrust\n' >"$stage/orphans"
+check "nothing added -> no removal" "" "$(_local_pkg_drop_makedeps "$stage/before"; cat "$stage/removed" 2>/dev/null)"
+unset -f pacman sudo declared_packages_at
+
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

@@ -19,8 +19,10 @@
 #   The last two verdicts are remembered per repo version and patch, so a run
 #   that would reach the same one again only repeats the message.
 #
-# makepkg -s installs makedepends --asdeps and they are left in place on
-# purpose: the next rebuild needs them again.
+# makepkg -s installs makedepends --asdeps, and once the build is done they are
+# orphans that cachy-update offers to remove on every run. So the ones this
+# build added are removed with it; a rebuild only happens when the repo moves,
+# and reinstalling them then is cheap.
 #
 # Requires common.sh (print helpers, track_warning) to be sourced.
 
@@ -32,6 +34,26 @@ LOCAL_PACKAGES_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/local-packa
 
 _local_pkg_ignored() {
     pacman-conf IgnorePkg 2>/dev/null | grep -qxF "$1"
+}
+
+# $1: the sorted `pacman -Qdtq` taken before makepkg -s ran. A makedepend the
+# dotfiles also declare (cmake, in development) stays: makepkg installed it
+# first, so it reads as a dependency, and removing it would undo the group.
+#
+# -Rn, level by level, rather than -Rns: the recursive form also takes a
+# makedepend's own dependencies, which the declared filter never sees.
+_local_pkg_drop_makedeps() {
+    local declared="" ; local -a added
+    while :; do
+        mapfile -t added < <(comm -13 "$1" <(pacman -Qdtq 2>/dev/null | sort))
+        [ ${#added[@]} -gt 0 ] || return 0
+        [ -n "$declared" ] || declared="$(declared_packages_at "$DOTFILES_DIR" | cut -f1)"
+        mapfile -t added < <(printf '%s\n' "${added[@]}" | grep -vxFf <(printf '%s\n' "$declared"))
+        [ ${#added[@]} -gt 0 ] || return 0
+        print_info "Removing the build dependencies this build installed: ${added[*]}"
+        sudo pacman -Rn --noconfirm "${added[@]}" || {
+            track_warning "could not remove build dependencies: ${added[*]}"; return 0; }
+    done
 }
 
 _local_pkg_pin() {
@@ -136,6 +158,11 @@ _local_pkg_sync() {
     trap "rm -rf '$work'; trap - RETURN" RETURN
     git clone -q --depth 1 --branch "$tag" "$url" "$work" || {
         track_warning "$pkg: could not fetch the Arch PKGBUILD ($tag)"; return 0; }
+    # After the clone, which refuses a non-empty target, and before makepkg -s
+    # installs anything.
+    { pacman -Qdtq 2>/dev/null || true; } | sort >"$work/.orphans"
+    # shellcheck disable=SC2064
+    trap "_local_pkg_drop_makedeps '$work/.orphans'; rm -rf '$work'; trap - RETURN" RETURN
     echo "pkgdesc+=\" $LOCAL_PACKAGES_MARKER\"" >>"$work/PKGBUILD"
     # Pinned so a BUILDDIR/PKGDEST in makepkg.conf cannot move the tree we patch
     # or the package we install.
