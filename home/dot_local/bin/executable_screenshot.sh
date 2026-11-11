@@ -5,11 +5,9 @@
 #
 #   pick    let the pointer answer -- click a window, drag a region, click
 #           the bar or a gap for the whole screen. --freeze freezes the screen
-#           first, for a state that would change while you aim. The shot is
-#           then cropped from a grab taken before the freeze, never grabbed
-#           off hyprpicker's overlay: that overlay redraws the screen with
-#           lifted blacks and drained colour, and grim faithfully saved it
-#           that way.
+#           first, for a state that would change while you aim; grim then
+#           shoots hyprpicker's overlay, which is the screen as it was, pixel
+#           for pixel (measured).
 #   output  the focused screen, no freeze, no click, shutter on the keypress.
 #
 # Prefixed with `geometry`, either mode prints the box instead of shooting it;
@@ -76,22 +74,18 @@ fi
 case "${1-}" in
     pick)
         if [ "${2-}" = --freeze ]; then
-            # PPM: a scratch file magick reads straight back, so skip the PNG
-            # encode that sits between the keypress and the freeze.
-            frozen=$(mktemp --suffix=.ppm)
-            # -s 1: logical pixels, so slurp's boxes crop it as they are.
-            grim -s 1 -t ppm "$frozen"
             hyprpicker -r -z >/dev/null 2>&1 &
             picker=$!
             # Nothing but this clears a frozen screen, so never leave one up.
-            trap 'kill "$picker" 2>/dev/null || true; rm -f "$frozen"' EXIT
+            # It stays up until exit: grim has to shoot the frozen frame.
+            trap 'kill "$picker" 2>/dev/null || true' EXIT
         fi
 
         boxes=$(visible_boxes)
         # ponytail: fixed wait for hyprpicker to map before slurp does, or the
         # click lands on the freeze; hyprctl may list a layer before it is drawn,
         # so polling it is no better. Raise it if a frozen click gets eaten.
-        [ -z "${frozen-}" ] || sleep 0.2
+        [ -z "${picker-}" ] || sleep 0.2
 
         # Its overlay is a translucent white wash; the `slurp-no-animation`
         # layer rule (hypr windowrules) drops its fade-out, or grim catches it.
@@ -122,14 +116,7 @@ fi
 
 mkdir -p "$shot_dir"
 path="$shot_dir/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
-if [ -n "${frozen-}" ]; then
-    # The grab spans every screen, so its origin is the layout's top-left.
-    read -r origin size <<< "$geometry"
-    read -r ox oy < <(hyprctl -j monitors | jq -r '"\(map(.x) | min) \(map(.y) | min)"')
-    magick "$frozen" -crop "${size}+$(( ${origin%,*} - ox ))+$(( ${origin#*,} - oy ))" +repage "$path"
-else
-    grim -g "$geometry" "$path"
-fi
+grim -g "$geometry" "$path"
 wl-copy --type image/png < "$path"
 
 # -A default makes the notification clickable; -c x-open plus the hint route
