@@ -14,6 +14,14 @@ Keep tool-specific rules in that tool's own configuration.
 - **Only the prose addressed to them is in French.** Code, identifiers, comments,
   documentation, commit messages, and every file written to disk stay in English.
 
+## Replies and questions
+
+- **Answer every ask.** When a message lists several asks, the reply names each
+  one as done, changed or refused. Never drop one silently.
+- **Questions go through the ask tool**, never inside a summary: Claude Code's
+  `AskUserQuestion`, Codex's `request_user_input`. Plain chat only when the
+  client has none.
+
 ## Test windows on Hyprland
 
 - **All GUI apps and browsers launched for testing or verification MUST open on
