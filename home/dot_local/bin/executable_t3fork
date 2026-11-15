@@ -29,6 +29,9 @@
 set -euo pipefail
 
 repo="${T3CODE_REPO:-$HOME/Projects/labs/t3code}"
+# Without it the desktop build caps native modules at the release glibc, and
+# node-pty built against this host's newer one fails the build.
+export T3CODE_REPO="$repo"
 branch="${T3CODE_FORK_BRANCH:-moinax}"
 
 # $app_name is what `dots apps` slugifies, and the slug is what names every
