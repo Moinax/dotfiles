@@ -1,6 +1,7 @@
 {{- if index . "install_browsers" -}}
 #!/bin/bash
-# Per-site page styling through Firefox's own userContent.css, no extension needed.
+# Per-site page styling through Firefox's own userContent.css, and browser UI
+# tweaks through userChrome.css, no extension needed.
 #
 # Same per-profile mechanism, and the same reasons, as
 # run_configure-firefox-locale.sh. Firefox reads both the pref and the stylesheet
@@ -18,9 +19,20 @@ while IFS= read -r profile; do
     [ -d "$dir" ] || continue
     user_js="$dir/user.js"
     if ! { [ -f "$user_js" ] && grep -qF "$PREF" "$user_js"; }; then
-        printf '%s\n%s\n' '// Load chrome/userContent.css. Managed by the dotfiles.' "$PREF" >> "$user_js"
+        printf '%s\n%s\n' '// Load chrome/userChrome.css and userContent.css. Managed by the dotfiles.' "$PREF" >> "$user_js"
     fi
     mkdir -p "$dir/chrome"
+    cat > "$dir/chrome/userChrome.css" <<'CSS'
+/* Managed by the dotfiles: home/run_configure-firefox-user-content.sh.tmpl */
+
+/* The stock selected tab is a faint grey slab, lost among the favicons of the
+   collapsed vertical tab strip. Paint it the waybar @accent pill instead, the
+   colour Hyprland's active group tab is solved from: keep both in step with
+   home/dot_config/waybar/style-{dark,light}.css. */
+.tab-background[selected]:not([multiselected]) {
+  background: light-dark(rgba(170, 40, 170, 0.45), rgba(255, 100, 255, 0.35)) !important;
+}
+CSS
     cat > "$dir/chrome/userContent.css" <<'CSS'
 /* Managed by the dotfiles: home/run_configure-firefox-user-content.sh.tmpl */
 
