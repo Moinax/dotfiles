@@ -26,15 +26,17 @@ follow=true
 # normal workspace underneath even while the special one is shown on top, so the
 # monitor is what has to be asked. Moving *to* the scratchpad is the exception —
 # source and target would be the same workspace and nothing would move — so that
-# direction always reads the normal one.
-ws=$(hyprctl monitors -j | jq --arg t "$target" 'map(select(.focused))[0]
-    | if .specialWorkspace.id != 0 and $t != "special"
-      then .specialWorkspace.id else .activeWorkspace.id end')
+# direction always reads the normal one. Workspaces are matched by name: a
+# special workspace has no id in hyprctl's JSON, and specialWorkspace.name is ""
+# when none is up.
+ws=$(hyprctl monitors -j | jq -r --arg t "$target" 'map(select(.focused))[0]
+    | if .specialWorkspace.name != "" and $t != "special"
+      then .specialWorkspace.name else .activeWorkspace.name end')
 [ -n "$ws" ] && [ "$ws" != "null" ] || { echo "$0: no focused monitor" >&2; exit 1; }
 
-batch=$(hyprctl clients -j | jq -r --argjson ws "$ws" --arg t "$target" --arg f "$follow" '
+batch=$(hyprctl clients -j | jq -r --arg ws "$ws" --arg t "$target" --arg f "$follow" '
     [ .[]
-      | select(.workspace.id == $ws)
+      | select(.workspace.name == $ws)
       | "dispatch hl.dsp.window.move({ workspace = \"\($t)\", follow = \($f), window = \"address:\(.address)\" })"
     ] | join(" ; ")')
 

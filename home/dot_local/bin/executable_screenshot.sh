@@ -40,14 +40,16 @@ monitor_boxes() {
 visible_boxes() {
     local shown
     # a special workspace draws over the active one, so its windows are on
-    # screen too; specialWorkspace.id is 0 when none is up
-    shown=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id] + [.[].specialWorkspace.id]')
+    # screen too. Matched by name: a special workspace has no id in hyprctl's
+    # JSON, so a hidden scratchpad's null id matched the null of a monitor
+    # showing none. specialWorkspace.name is "" when none is up.
+    shown=$(hyprctl -j monitors | jq -c '[.[] | .activeWorkspace.name, .specialWorkspace.name | select(. != "")]')
     # a fullscreen or maximised window hides the rest of its workspace, whose
     # smaller boxes would otherwise win under the cursor
     hyprctl -j clients | jq -r --argjson shown "$shown" '
         map(select(.mapped and (.hidden | not)))
-        | map(select(.workspace.id as $id | $shown | index($id)))
-        | group_by(.workspace.id)[]
+        | map(select(.workspace.name as $n | $shown | index($n)))
+        | group_by(.workspace.name)[]
         | (map(select(.fullscreen > 0)) | if length > 0 then . else empty end) // .
         | .[]
         | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
