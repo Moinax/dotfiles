@@ -210,3 +210,7 @@
 .config/vibewatch
 .config/vibewatch/**
 .cargo/bin/vibewatch
+
+# Blur variant picker removed — script and the state it persisted
+.config/hypr/scripts/blur-variant.sh
+.local/state/hypr/blur-variant

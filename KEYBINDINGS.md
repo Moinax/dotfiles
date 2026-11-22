@@ -33,7 +33,6 @@
 | Theme selector | Search `theme` in Vicinae | `Mod+N` switches the whole desktop dark/light and moves vicinae with it |
 | Toggle monitors | `Mod+M` | Vicinae list of outputs with their mode and on/off state; one toggle per action, refuses to disable the last active output |
 | Wallpaper picker | `Mod+W` | Vicinae grid with real 16/9 previews of `~/Wallpapers/`, applied via awww |
-| Blur variant picker | `Mod+Alt+W` | Vicinae list of Hyprland's blur variants; stays open to compare, the pick persists across reloads |
 | Toggle dictation (speech-to-text) | `Mod+D` | hyprvoice toggle (AI group only); shows an overlay with the live mic level and two chips — language (`AUTO` / `FR` / `EN`, remembered across sessions; picking one restarts the clip, since a config reload discards the recording) and microphone source. The mic icon pauses and resumes without losing what was already said, and validate/cancel buttons finish the dictation with the pointer |
 | Cancel dictation (discard) | `Mod+Z` or `Mod+Shift+D` | `hyprvoice cancel` (waking a paused recorder first) — drops the recording with no transcription, the keyboard twin of the overlay's ✕ |
 

@@ -68,13 +68,6 @@
       "mode": "view"
     },
     {
-      "name": "blur",
-      "title": "Blur Variant",
-      "subtitle": "Moinax",
-      "description": "Switch Hyprland's blur variant; the active one is marked.",
-      "mode": "view"
-    },
-    {
       "name": "keybindings",
       "title": "Keybindings",
       "subtitle": "Moinax",
