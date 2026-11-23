@@ -39,6 +39,7 @@ source "$SCRIPT_DIR/lib/hyprvoice.sh"
 source "$SCRIPT_DIR/lib/dns-encrypted.sh"
 source "$SCRIPT_DIR/lib/regional-formats.sh"
 source "$SCRIPT_DIR/lib/login-wallpaper.sh"
+source "$SCRIPT_DIR/lib/hyprlock-pam.sh"
 source "$SCRIPT_DIR/lib/zram-tuning.sh"
 source "$SCRIPT_DIR/lib/nvidia-vram-suspend.sh"
 source "$SCRIPT_DIR/lib/post-apply.sh"
@@ -1481,7 +1482,7 @@ RULEEOF
     # instead of system-auth, where pam_fprintd sits before pam_unix — so a
     # password typed at the greeter would otherwise wait out the fprintd
     # timeout before falling through. (hyprlock had the same problem; it now
-    # gets its own self-contained stack further down, for a second reason.)
+    # gets its own self-contained stack, install/lib/hyprlock-pam.sh.)
     # `password-auth` is a Fedora/RHEL PAM name that does not exist on Arch —
     # generate it as system-auth minus pam_fprintd so the include below
     # resolves. A dangling include makes every pam_authenticate fail
@@ -1497,8 +1498,8 @@ RULEEOF
         sudo tee /etc/systemd/system/pam-password-auth.service >/dev/null <<'UNIT'
 [Unit]
 Description=Regenerate /etc/pam.d/password-auth from system-auth (minus fprintd)
-# Installed by the dotfiles installer (setup_biometric); hyprlock's PAM stack
-# includes password-auth for an instant, fprintd-free password fallback.
+# Installed by the dotfiles installer (setup_biometric); the plasmalogin PAM
+# override includes password-auth for an instant, fprintd-free password fallback.
 
 [Service]
 Type=oneshot
@@ -1506,7 +1507,7 @@ ExecStart=/bin/sh -c 'if [ ! -f /etc/pam.d/password-auth ] || head -n1 /etc/pam.
 
 # Enabled directly (besides the path-unit trigger) so every boot re-runs the
 # generation once: a password-auth that went missing self-heals instead of
-# leaving the hyprlock/plasmalogin includes dangling (instant auth failure).
+# leaving the plasmalogin include dangling (instant auth failure).
 # Boot-time self-heal must NOT live in the path unit as PathExists= — that
 # condition stays true after the oneshot exits, so systemd re-triggers it in
 # a loop until the start limit kills the path unit.
@@ -1531,55 +1532,6 @@ UNIT
         sudo systemctl enable --now pam-password-auth.service >/dev/null
         print_success "password-auth generated and kept in sync with system-auth"
     fi
-
-    # hyprlock gets a self-contained auth stack rather than an include, because
-    # it must contain neither pam_fprintd nor pam_faillock:
-    #
-    #   pam_fprintd — a typed password would wait out the fingerprint timeout
-    #   (~10s) before pam_unix ever sees it. Fingerprint at the lockscreen is
-    #   handled by hyprlock natively over D-Bus (auth.fingerprint in
-    #   hyprlock.conf), independently of this stack.
-    #
-    #   pam_faillock — hyprlock races the PAM password conversation against
-    #   that D-Bus fingerprint check and aborts the conversation when the
-    #   fingerprint wins. pam_unix then returns "conversation failed", which
-    #   faillock's authfail branch records as a failed login — so every
-    #   SUCCESSFUL fingerprint unlock increments the tally. At the stock
-    #   deny=3 fail_interval=900, three unlocks inside 15 minutes lock the
-    #   account for unlock_time (600s), taking sudo, TTY login and this
-    #   screen's own password fallback down with it. A screen locker is a
-    #   local-presence unlock; faillock buys nothing here and self-DoSes
-    #   instead, so it stays in the greeter and login stacks only.
-    #
-    # Deriving this from system-auth with a sed was the obvious alternative and
-    # is a trap: deleting the three pam_faillock lines shifts the [success=N]
-    # jump counts on pam_systemd_home and pam_unix, and a miscounted jump in an
-    # auth stack fails open. Hand-authored and auditable beats generated here.
-    # Only `account` includes system-auth, which pambase always ships — so that
-    # include cannot dangle.
-    local pam_file=/etc/pam.d/hyprlock ts
-    ts=$(date +%s)
-    if [ -f "$pam_file" ] && ! head -n2 "$pam_file" | grep -q '^# Installed by the dotfiles installer'; then
-        sudo cp "$pam_file" "${pam_file}.bak.${ts}"
-        print_info "Backed up $pam_file to ${pam_file}.bak.${ts}"
-    fi
-    print_info "Installing hyprlock PAM stack (no fprintd, no faillock)"
-    sudo tee "$pam_file" >/dev/null <<'PAMEOF'
-#%PAM-1.0
-# Installed by the dotfiles installer — hyprlock's own auth stack.
-# Deliberately not an include of login/system-auth/password-auth: it must carry
-# neither pam_fprintd (a typed password would wait out the fingerprint timeout)
-# nor pam_faillock (hyprlock records a PAM failure on every SUCCESSFUL
-# fingerprint unlock, which locks the account after three of them). See
-# setup_biometric in install/installer.sh for the full reasoning.
-
--auth      [success=1 default=ignore]  pam_systemd_home.so
-auth       required                    pam_unix.so          try_first_pass nullok
-auth       required                    pam_env.so
-
-account    include                     system-auth
-PAMEOF
-    print_success "$pam_file installed"
 
     # Same fprintd-timeout problem at the login screen: the Plasma Login
     # Manager's vendor stack (/usr/lib/pam.d/plasmalogin) includes
@@ -1816,6 +1768,14 @@ setup_login_wallpaper() {
     # A failure is already tracked as a warning by apply_login_wallpaper, and must
     # not abort the install over a wallpaper.
     apply_login_wallpaper || return 0
+}
+
+# The installer's framing over install/lib/hyprlock-pam.sh (`dots update`'s is
+# reconcile_hyprlock_pam in tools/sync-machine.sh). The lib skips a machine
+# without hyprlock by itself.
+setup_hyprlock_pam() {
+    print_header "Lock Screen PAM"
+    apply_hyprlock_pam || return 0
 }
 
 # Setup Plymouth boot splash screen (CachyOS usually ships Plymouth
@@ -2083,6 +2043,7 @@ main() {
     setup_nvidia_vram_suspend
     if [ "$INSTALL_PURPOSE" = "desktop" ]; then
         setup_login_wallpaper
+        setup_hyprlock_pam
         setup_plymouth
     fi
     setup_ssh

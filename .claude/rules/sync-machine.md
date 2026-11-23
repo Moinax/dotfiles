@@ -15,7 +15,7 @@ machine last agreed with it?
 Phases: system update (`cachy-update`) → patched packages (`install/lib/local-packages.sh`) → new groups → custom-install prerequisites
 → package delta → declared services → `chezmoi apply` → tool refresh
 (`tools/manage-updates.sh`, still reachable alone as `dots update tools`) →
-`run_post_apply` → login wallpaper → encrypted DNS → regional formats → reclaim
+`run_post_apply` → login wallpaper → hyprlock PAM stack → encrypted DNS → regional formats → reclaim
 tuning → NVIDIA suspend VRAM path → prune old Codex releases → re-stamp the
 profile → report fork drift →
 report a waiting backup.
@@ -113,12 +113,12 @@ and reachable from nothing but `dots setup` — grep `tools/` and `install/lib/`
 for any of them and you get nothing. `setup_biometric` is the live instance worth
 knowing about: enabling the `biometric` group later through `dots packages manage`
 installs `fprintd` and reconciles the declared services but never lays down the
-PAM stack, the polkit rule or the enrolment unit — the wallpaper bug's exact
+pam_fprintd entries, the polkit rule or the enrolment unit — the wallpaper bug's exact
 shape, already shipped. Anything moved out of that list wants the same treatment.
 
 **None of them asks first.** sudo already prompts for a password, which is the
 same question with a way out built in, and the alternative to answering it is a
-broken machine. All three are gated on a tty, since sudo under a pipe would sit
+broken machine. Every one of them is gated on a tty, since sudo under a pipe would sit
 unanswered.
 
 ### Fork drift is discovered, not declared

@@ -29,6 +29,7 @@ source "$DOTFILES_DIR/install/lib/common.sh"
 source "$DOTFILES_DIR/install/lib/detect.sh"
 source "$DOTFILES_DIR/install/lib/dns-encrypted.sh"
 source "$DOTFILES_DIR/install/lib/local-packages.sh"
+source "$DOTFILES_DIR/install/lib/hyprlock-pam.sh"
 source "$DOTFILES_DIR/install/lib/login-wallpaper.sh"
 source "$DOTFILES_DIR/install/lib/nvidia-vram-suspend.sh"
 source "$DOTFILES_DIR/install/lib/post-apply.sh"
@@ -849,6 +850,27 @@ reconcile_login_wallpaper() {
     apply_login_wallpaper || return 0
 }
 
+# hyprlock's faillock-free PAM stack — see install/lib/hyprlock-pam.sh, which
+# both this and `dots setup` call. Here for the reason spelled out at
+# reconcile_login_wallpaper: it used to be laid down by setup_biometric only, so
+# every machine without that group kept the stock stack and could lock its own
+# account from the lock screen. The trigger is the file's content, never
+# CHANGED_FILES.
+reconcile_hyprlock_pam() {
+    hyprlock_pam_needs_setup || return 0
+
+    # sudo prompts for a password of its own, and under a pipe or a cron there is
+    # nobody to type it — the same judgement update_system_packages makes.
+    if [ ! -t 0 ]; then
+        print_info "Not a terminal — skipping the hyprlock PAM stack"
+        return 0
+    fi
+
+    print_header "Lock Screen PAM"
+    print_info "hyprlock's PAM stack differs from the faillock-free one the dotfiles ship — rewriting it (needs sudo)"
+    apply_hyprlock_pam || return 0
+}
+
 # The standalone Codex installer keeps every release it ever laid down under
 # ~/.codex/packages/standalone/releases and prunes none of them: fifteen were
 # sitting there after two months, at ~330MB each. Keep the one `current` points
@@ -1234,6 +1256,7 @@ do_sync() {
     # After the apply, which is what puts wallpaper-picker.sh on the machine that
     # is missing this — the seed inside it runs the picker.
     reconcile_login_wallpaper
+    reconcile_hyprlock_pam
     reconcile_encrypted_dns
     reconcile_regional_formats
     reconcile_zram_tuning
