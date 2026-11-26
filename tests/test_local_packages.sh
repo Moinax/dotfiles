@@ -84,4 +84,15 @@ printf 'cmake\nmeson\nold-orphan\nrust\n' >"$stage/orphans"
 check "nothing added -> no removal" "" "$(_local_pkg_drop_makedeps "$stage/before"; cat "$stage/removed" 2>/dev/null)"
 unset -f pacman sudo declared_packages_at
 
+# A broken soname under our pinned build forces the rebuild; a clean one, or a
+# non-ELF file ldd declines, keeps it up to date.
+touch "$stage/bin" "$stage/plugin.so"
+pacman() { printf '%s\n' "$stage" "$stage/bin" "$stage/plugin.so"; }
+ldd() { [ "$1" = "$stage/plugin.so" ] && printf '%s\n' "${LDD_PLUGIN:-}"; return 0; }
+LDD_PLUGIN='libc.so.6 => /usr/lib/libc.so.6'
+check "every library resolves -> links ok" 0 "$(_local_pkg_links_ok pkg >/dev/null; echo $?)"
+LDD_PLUGIN='libhyprtoolkit.so.6 => not found'
+check "a 644 .so with a missing soname -> rebuild" 1 "$(_local_pkg_links_ok pkg >/dev/null; echo $?)"
+unset -f pacman ldd
+
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

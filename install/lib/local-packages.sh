@@ -11,7 +11,8 @@
 #   build, and makes it print "ignoring package upgrade (a => b)" on every
 #   upgrade -- the reminder comes for free from pacman itself.
 # - reconcile_local_packages (dots update) rebuilds once the repo moves past the
-#   installed version, or when the installed build is not ours at all. The
+#   installed version, when the installed build is not ours at all, or when it
+#   links a library that is gone (a dependency's soname bump). The
 #   patch is tried against the new sources first, which settles three cases:
 #     applies          -> upstream still lacks the fix: build and install
 #     applies reversed -> upstream ships it: unpin and go back to the repo build
@@ -21,8 +22,8 @@
 #
 # makepkg -s installs makedepends --asdeps, and once the build is done they are
 # orphans that cachy-update offers to remove on every run. So the ones this
-# build added are removed with it; a rebuild only happens when the repo moves,
-# and reinstalling them then is cheap.
+# build added are removed with it; a rebuild only happens when the repo or a
+# linked library moves, and reinstalling them then is cheap.
 #
 # Requires common.sh (print helpers, track_warning) to be sourced.
 
@@ -54,6 +55,20 @@ _local_pkg_drop_makedeps() {
         sudo pacman -Rn --noconfirm "${added[@]}" || {
             track_warning "could not remove build dependencies: ${added[*]}"; return 0; }
     done
+}
+
+# False when any file of the installed package links a library that is gone.
+# Every regular file, not only executables: a dlopen'd .so often ships 644, and
+# ldd just declines the non-ELF ones.
+_local_pkg_links_ok() {
+    local f
+    while read -r f; do
+        [ -f "$f" ] || continue
+        if LC_ALL=C ldd "$f" 2>/dev/null | grep -q 'not found'; then
+            print_warning "$1: $f links a library that is gone"
+            return 1
+        fi
+    done < <(pacman -Qlq "$1")
 }
 
 _local_pkg_pin() {
@@ -126,10 +141,13 @@ _local_pkg_sync() {
     repo="$(LC_ALL=C pacman -Si "$pkg" 2>/dev/null | awk '/^Version/{print $3; exit}')" || return 0
     [ -n "$repo" ] || return 0
 
-    # Up to date: our build, and the repo has not moved past its pkgver. pkgrel
-    # is ignored -- CachyOS rebuilds (1.5.0-1.1) are not new upstream code.
+    # Up to date: our build, the repo has not moved past its pkgver, and its
+    # binaries still load. pkgrel is ignored -- CachyOS rebuilds (1.5.0-1.1) are
+    # not new upstream code -- so a dependency's soname bump only shows up here:
+    # IgnorePkg holds our build while the library moves on under it.
     if LC_ALL=C pacman -Qi "$pkg" | grep '^Description' | grep -qF "$LOCAL_PACKAGES_MARKER" &&
-        [ "$(vercmp "${repo%-*}" "${installed%-*}")" -le 0 ]; then
+        [ "$(vercmp "${repo%-*}" "${installed%-*}")" -le 0 ] &&
+        _local_pkg_links_ok "$pkg"; then
         _local_pkg_pin "$pkg"
         return 0
     fi
